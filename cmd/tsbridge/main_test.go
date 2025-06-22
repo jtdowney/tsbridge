@@ -176,5 +176,7 @@ func TestRegisterProviders(t *testing.T) {
 	_, err = testRegistry.Get("docker", config.DockerProviderOptions{})
 	// Should get an error about Docker connection, not about provider not being registered
 	testutil.AssertNotNil(t, err)
-	testutil.AssertNotContains(t, err.Error(), "provider not registered")
+	if err != nil {
+		testutil.AssertNotContains(t, err.Error(), "provider not registered")
+	}
 }
