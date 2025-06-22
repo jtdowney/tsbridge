@@ -288,8 +288,9 @@ func getDefaultStateDir() string {
 
 // primeCertificate makes an HTTPS request to the service to trigger certificate provisioning
 func (s *Server) primeCertificate(serviceServer tsnetpkg.TSNetServer, serviceName string) {
-	// Wait a bit for the service to start listening
-	time.Sleep(2 * time.Second)
+	// Wait longer for the service to fully start and be reachable
+	// This is especially important in Docker environments
+	time.Sleep(5 * time.Second)
 
 	// Get the LocalClient to fetch status
 	lc, err := serviceServer.LocalClient()
@@ -326,30 +327,44 @@ func (s *Server) primeCertificate(serviceServer tsnetpkg.TSNetServer, serviceNam
 		return
 	}
 
-	// Build the HTTPS URL
-	url := fmt.Sprintf("https://%s", fqdn)
+	// Get the Tailscale IP address
+	if len(status.Self.TailscaleIPs) == 0 {
+		slog.Warn("no Tailscale IP found for certificate priming",
+			"service", serviceName)
+		return
+	}
 
-	slog.Info("priming TLS certificate",
-		"service", serviceName,
-		"url", url)
+	tsIP := status.Self.TailscaleIPs[0].String()
 
 	// Create a custom HTTP client with a short timeout
+	// Always use the IP address with SNI set to the FQDN
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				// Skip verification since we're just priming the cert
 				InsecureSkipVerify: true, // #nosec G402 - connecting to ourselves to prime certificate
+				ServerName:         fqdn, // Use FQDN for SNI to get the correct certificate
 			},
 		},
 	}
+
+	// Always use the Tailscale IP to avoid DNS resolution issues
+	url := fmt.Sprintf("https://%s", tsIP)
+
+	slog.Info("priming TLS certificate",
+		"service", serviceName,
+		"url", url,
+		"sni", fqdn)
 
 	// Make the request - we don't care about the response
 	resp, err := client.Get(url)
 	if err != nil {
 		// This is expected if the backend isn't ready yet
-		slog.Debug("certificate priming request completed",
+		slog.Info("certificate priming request completed (certificate will be provisioned on first request)",
 			"service", serviceName,
+			"url", url,
+			"sni", fqdn,
 			"error", err)
 		return
 	}
@@ -357,5 +372,6 @@ func (s *Server) primeCertificate(serviceServer tsnetpkg.TSNetServer, serviceNam
 
 	slog.Info("TLS certificate primed successfully",
 		"service", serviceName,
-		"url", url)
+		"url", url,
+		"sni", fqdn)
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"runtime"
 	"strings"
@@ -1435,14 +1436,15 @@ func TestSecretValidationErrorMessages(t *testing.T) {
 
 func TestCertificatePriming(t *testing.T) {
 	tests := []struct {
-		name           string
-		serviceName    string
-		tlsMode        string
-		funnelEnabled  bool
-		expectPriming  bool
-		mockDNSName    string
-		statusError    error
-		localClientErr error
+		name             string
+		serviceName      string
+		tlsMode          string
+		funnelEnabled    bool
+		expectPriming    bool
+		mockDNSName      string
+		mockTailscaleIPs []string
+		statusError      error
+		localClientErr   error
 	}{
 		{
 			name:          "TLS auto mode triggers priming",
@@ -1490,6 +1492,24 @@ func TestCertificatePriming(t *testing.T) {
 			expectPriming: true,
 			mockDNSName:   "",
 		},
+		{
+			name:             "Certificate priming uses IP with SNI",
+			serviceName:      "test-service",
+			tlsMode:          "auto",
+			funnelEnabled:    false,
+			expectPriming:    true,
+			mockDNSName:      "test-service.tailnet.ts.net.",
+			mockTailscaleIPs: []string{"100.100.100.100"},
+		},
+		{
+			name:             "No Tailscale IP skips priming",
+			serviceName:      "test-service",
+			tlsMode:          "auto",
+			funnelEnabled:    false,
+			expectPriming:    true,
+			mockDNSName:      "test-service.tailnet.ts.net.",
+			mockTailscaleIPs: []string{}, // No IPs
+		},
 	}
 
 	for _, tt := range tests {
@@ -1511,9 +1531,19 @@ func TestCertificatePriming(t *testing.T) {
 					if tt.statusError != nil {
 						return nil, tt.statusError
 					}
+
+					// Convert IP strings to netip.Addr
+					var tailscaleIPs []netip.Addr
+					for _, ip := range tt.mockTailscaleIPs {
+						if addr, err := netip.ParseAddr(ip); err == nil {
+							tailscaleIPs = append(tailscaleIPs, addr)
+						}
+					}
+
 					return &ipnstate.Status{
 						Self: &ipnstate.PeerStatus{
-							DNSName: tt.mockDNSName,
+							DNSName:      tt.mockDNSName,
+							TailscaleIPs: tailscaleIPs,
 						},
 					}, nil
 				}
@@ -1540,7 +1570,7 @@ func TestCertificatePriming(t *testing.T) {
 
 			// Give some time for the goroutine to run if priming is expected
 			if tt.expectPriming {
-				time.Sleep(3 * time.Second)
+				time.Sleep(6 * time.Second)
 			}
 		})
 	}
