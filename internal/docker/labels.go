@@ -73,13 +73,8 @@ func validateBackendAddress(addr string) error {
 	}
 
 	// For network addresses, validate host:port format
-	host, portStr, err := net.SplitHostPort(addr)
+	_, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		return errors.NewValidationError("invalid backend address format")
-	}
-
-	// Validate host is not empty
-	if host == "" {
 		return errors.NewValidationError("invalid backend address format")
 	}
 

@@ -450,11 +450,14 @@ func TestValidateBackendAddress(t *testing.T) {
 		{"valid unix socket", "unix:///var/run/app.sock", true, ""},
 		{"valid unix socket with complex path", "unix:///tmp/sockets/app.sock", true, ""},
 
+		// Valid addresses - port only (binds to all interfaces)
+		{"port only", ":8080", true, ""},
+		{"port only high", ":65535", true, ""},
+
 		// Invalid addresses - format issues
 		{"missing port", "localhost", false, "invalid backend address format"},
 		{"empty address", "", false, "backend address cannot be empty"},
-		{"just colon", ":", false, "invalid backend address format"},
-		{"missing host", ":8080", false, "invalid backend address format"},
+		{"just colon", ":", false, "invalid port"},
 		{"invalid unix prefix", "unix:/var/run/app.sock", false, "unix socket path must start with unix://"},
 		{"unix with port", "unix://socket:8080", false, "unix socket cannot have port"},
 
