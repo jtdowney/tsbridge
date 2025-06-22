@@ -63,7 +63,6 @@ func TestE2EShutdownWithActiveRequests(t *testing.T) {
 	cfg := helpers.CreateTestConfig(t, "active-requests-service", backend.Listener.Addr().String())
 	cfg.Global.MetricsAddr = ""
 	cfg.Global.ShutdownTimeout = config.Duration{Duration: 2 * time.Second}
-	cfg.Global.RetryCount = 1
 	configPath := helpers.WriteConfigFile(t, cfg)
 
 	// Start tsbridge process

@@ -66,8 +66,6 @@ func createTestConfig(t *testing.T) *config.Config {
 			WriteTimeout:          config.Duration{Duration: 30 * time.Second},
 			IdleTimeout:           config.Duration{Duration: 120 * time.Second},
 			ResponseHeaderTimeout: config.Duration{Duration: 10 * time.Second},
-			RetryCount:            3,
-			RetryDelay:            config.Duration{Duration: 1 * time.Second},
 		},
 		Services: []config.Service{
 			{
@@ -499,8 +497,6 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with 3 services, 2 will fail
 		cfg := &config.Config{
 			Global: config.Global{
-				RetryCount:      0,
-				RetryDelay:      config.Duration{Duration: 10 * time.Millisecond},
 				ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
 				ReadTimeout:     config.Duration{Duration: 30 * time.Second},
 				WriteTimeout:    config.Duration{Duration: 30 * time.Second},
@@ -561,12 +557,10 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("app exits when all services fail", func(t *testing.T) {
-		// Create config with 2 services that will both fail
+	t.Run("app starts successfully with unreachable backends", func(t *testing.T) {
+		// Create config with 2 services that have unreachable backends
 		cfg := &config.Config{
 			Global: config.Global{
-				RetryCount:      0,
-				RetryDelay:      config.Duration{Duration: 10 * time.Millisecond},
 				ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
 				ReadTimeout:     config.Duration{Duration: 30 * time.Second},
 				WriteTimeout:    config.Duration{Duration: 30 * time.Second},
@@ -598,27 +592,16 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// Create a context
-		ctx, cancel := context.WithCancel(context.Background())
+		// Create a context with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 
 		// Start the app
 		err = app.Start(ctx)
 
-		// Should get an error when all services fail
-		if err == nil {
-			t.Fatal("expected error when all services fail")
-		}
-
-		// Should be a ServiceStartupError
-		startupErr, ok := errors.AsServiceStartupError(err)
-		if !ok {
-			t.Errorf("expected ServiceStartupError, got %v", err)
-		}
-
-		// All services should have failed
-		if !startupErr.AllFailed() {
-			t.Error("expected AllFailed() to be true")
+		// Should succeed because we use lazy connections
+		if err != nil {
+			t.Fatalf("expected app to start successfully with lazy connections, got error: %v", err)
 		}
 	})
 
@@ -644,8 +627,6 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with metrics and mixed services
 		cfg := &config.Config{
 			Global: config.Global{
-				RetryCount:      0,
-				RetryDelay:      config.Duration{Duration: 10 * time.Millisecond},
 				ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
 				ReadTimeout:     config.Duration{Duration: 30 * time.Second},
 				WriteTimeout:    config.Duration{Duration: 30 * time.Second},

@@ -23,8 +23,6 @@ services:
       - "tsbridge.global.read_timeout=30s"
       - "tsbridge.global.write_timeout=30s"
       - "tsbridge.global.idle_timeout=120s"
-      - "tsbridge.global.retry_count=5"
-      - "tsbridge.global.retry_delay=5s"
       - "tsbridge.global.access_log=true"
     environment:
       # Replace with your actual OAuth credentials
@@ -101,9 +99,6 @@ services:
       - "tsbridge.service.whois_enabled=true"
       #- "tsbridge.service.funnel_enabled=true"  # Expose via Tailscale Funnel
       - "tsbridge.service.ephemeral=false"
-      # Retry configuration
-      - "tsbridge.service.retry_count=3"
-      - "tsbridge.service.retry_delay=2s"
 
 volumes:
   tsbridge-state:

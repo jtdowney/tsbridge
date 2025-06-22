@@ -46,8 +46,6 @@ type Global struct {
 	ReadTimeout           Duration `mapstructure:"read_timeout"`
 	WriteTimeout          Duration `mapstructure:"write_timeout"`
 	IdleTimeout           Duration `mapstructure:"idle_timeout"`
-	RetryCount            int      `mapstructure:"retry_count"`
-	RetryDelay            Duration `mapstructure:"retry_delay"`
 	ShutdownTimeout       Duration `mapstructure:"shutdown_timeout"`
 	ResponseHeaderTimeout Duration `mapstructure:"response_header_timeout"`
 	MetricsAddr           string   `mapstructure:"metrics_addr"`
@@ -70,8 +68,6 @@ type Service struct {
 	WhoisTimeout Duration `mapstructure:"whois_timeout"`
 	TLSMode      string   `mapstructure:"tls_mode"` // "auto" (default), "off"
 	// Optional overrides
-	RetryCount            *int     `mapstructure:"retry_count"`
-	RetryDelay            Duration `mapstructure:"retry_delay"`
 	ReadTimeout           Duration `mapstructure:"read_timeout"`
 	WriteTimeout          Duration `mapstructure:"write_timeout"`
 	IdleTimeout           Duration `mapstructure:"idle_timeout"`
@@ -331,12 +327,6 @@ func (c *Config) SetDefaults() {
 	if c.Global.IdleTimeout.Duration == 0 {
 		c.Global.IdleTimeout.Duration = constants.DefaultIdleTimeout
 	}
-	if c.Global.RetryCount == 0 {
-		c.Global.RetryCount = constants.DefaultRetryCount
-	}
-	if c.Global.RetryDelay.Duration == 0 {
-		c.Global.RetryDelay.Duration = constants.DefaultRetryDelay
-	}
 	if c.Global.ShutdownTimeout.Duration == 0 {
 		c.Global.ShutdownTimeout.Duration = constants.DefaultShutdownTimeout
 	}
@@ -409,14 +399,6 @@ func (c *Config) Normalize() {
 		}
 		if svc.ResponseHeaderTimeout.Duration == 0 {
 			svc.ResponseHeaderTimeout = c.Global.ResponseHeaderTimeout
-		}
-
-		// Copy retry settings if not set
-		if svc.RetryCount == nil {
-			svc.RetryCount = &c.Global.RetryCount
-		}
-		if svc.RetryDelay.Duration == 0 {
-			svc.RetryDelay = c.Global.RetryDelay
 		}
 
 		// Copy access log setting if not set
@@ -528,12 +510,6 @@ func (c *Config) validateGlobal() error {
 	if c.Global.IdleTimeout.Duration <= 0 {
 		return errors.NewValidationError("idle_timeout must be positive")
 	}
-	if c.Global.RetryCount < 0 {
-		return errors.NewValidationError("retry_count must be non-negative")
-	}
-	if c.Global.RetryDelay.Duration <= 0 {
-		return errors.NewValidationError("retry_delay must be positive")
-	}
 	if c.Global.ShutdownTimeout.Duration <= 0 {
 		return errors.NewValidationError("shutdown_timeout must be positive")
 	}
@@ -601,12 +577,6 @@ func (c *Config) validateService(svc *Service) error {
 	}
 
 	// Validate service-level overrides if provided
-	if svc.RetryCount != nil && *svc.RetryCount < 0 {
-		return errors.NewValidationError("retry_count must be non-negative")
-	}
-	if svc.RetryDelay.Duration < 0 {
-		return errors.NewValidationError("retry_delay must be non-negative")
-	}
 	if svc.ReadTimeout.Duration < 0 {
 		return errors.NewValidationError("read_timeout must be non-negative")
 	}
@@ -670,8 +640,6 @@ func (c *Config) String() string {
 	b.WriteString(fmt.Sprintf("  WriteTimeout: %s\n", c.Global.WriteTimeout.Duration))
 	b.WriteString(fmt.Sprintf("  IdleTimeout: %s\n", c.Global.IdleTimeout.Duration))
 	b.WriteString(fmt.Sprintf("  ResponseHeaderTimeout: %s\n", c.Global.ResponseHeaderTimeout.Duration))
-	b.WriteString(fmt.Sprintf("  RetryCount: %d\n", c.Global.RetryCount))
-	b.WriteString(fmt.Sprintf("  RetryDelay: %s\n", c.Global.RetryDelay.Duration))
 	b.WriteString(fmt.Sprintf("  ShutdownTimeout: %s\n", c.Global.ShutdownTimeout.Duration))
 	b.WriteString(fmt.Sprintf("  MetricsAddr: %s\n", c.Global.MetricsAddr))
 	if c.Global.AccessLog != nil {
@@ -705,12 +673,6 @@ func (c *Config) String() string {
 		}
 		if svc.ResponseHeaderTimeout.Duration > 0 {
 			b.WriteString(fmt.Sprintf("    ResponseHeaderTimeout: %s\n", svc.ResponseHeaderTimeout.Duration))
-		}
-		if svc.RetryCount != nil {
-			b.WriteString(fmt.Sprintf("    RetryCount: %d\n", *svc.RetryCount))
-		}
-		if svc.RetryDelay.Duration > 0 {
-			b.WriteString(fmt.Sprintf("    RetryDelay: %s\n", svc.RetryDelay.Duration))
 		}
 		if svc.AccessLog != nil {
 			b.WriteString(fmt.Sprintf("    AccessLog: %t\n", *svc.AccessLog))

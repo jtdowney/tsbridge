@@ -17,8 +17,7 @@ type TestFixture struct {
 
 // GetTestFixtures returns all available test fixtures
 func GetTestFixtures() []TestFixture {
-	// Helper to create int pointers
-	intPtr := func(i int) *int { return &i }
+	// Helper to create bool pointers
 	boolPtr := func(b bool) *bool { return &b }
 
 	return []TestFixture{
@@ -59,8 +58,6 @@ oauth_client_secret = "prod-client-secret"
 read_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
-retry_count = 3
-retry_delay = "1s"
 shutdown_timeout = "30s"
 response_header_timeout = "10s"
 metrics_addr = ":9090"
@@ -73,8 +70,6 @@ backend_addr = "localhost:8080"
 whois_enabled = true
 whois_timeout = "5s"
 tls_mode = "off"
-retry_count = 5
-retry_delay = "2s"
 read_timeout = "60s"
 write_timeout = "60s"
 access_log = false
@@ -99,8 +94,6 @@ whois_enabled = false
 					ReadTimeout:           Duration{30 * time.Second},
 					WriteTimeout:          Duration{30 * time.Second},
 					IdleTimeout:           Duration{120 * time.Second},
-					RetryCount:            3,
-					RetryDelay:            Duration{time.Second},
 					ShutdownTimeout:       Duration{30 * time.Second},
 					ResponseHeaderTimeout: Duration{10 * time.Second},
 					MetricsAddr:           ":9090",
@@ -114,8 +107,6 @@ whois_enabled = false
 						WhoisEnabled:  boolPtr(true),
 						WhoisTimeout:  Duration{5 * time.Second},
 						TLSMode:       "off",
-						RetryCount:    intPtr(5),
-						RetryDelay:    Duration{2 * time.Second},
 						ReadTimeout:   Duration{60 * time.Second},
 						WriteTimeout:  Duration{60 * time.Second},
 						AccessLog:     boolPtr(false),

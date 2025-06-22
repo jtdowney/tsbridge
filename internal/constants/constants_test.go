@@ -52,33 +52,6 @@ func TestTimeoutConstants(t *testing.T) {
 	}
 }
 
-func TestRetryConstants(t *testing.T) {
-	tests := []struct {
-		name     string
-		value    interface{}
-		expected interface{}
-	}{
-		{
-			name:     "DefaultRetryCount",
-			value:    DefaultRetryCount,
-			expected: 3,
-		},
-		{
-			name:     "DefaultRetryDelay",
-			value:    DefaultRetryDelay,
-			expected: 1 * time.Second,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if tt.value != tt.expected {
-				t.Errorf("%s = %v, want %v", tt.name, tt.value, tt.expected)
-			}
-		})
-	}
-}
-
 func TestOAuthConstants(t *testing.T) {
 	// OAuth token expiry is 90 days in seconds
 	expectedExpiry := 90 * 24 * 60 * 60

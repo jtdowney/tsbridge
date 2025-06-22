@@ -86,9 +86,6 @@ labels:
   - "tsbridge.global.shutdown_timeout=15s"
   - "tsbridge.global.response_header_timeout=10s"
 
-  # Retry configuration
-  - "tsbridge.global.retry_count=5"
-  - "tsbridge.global.retry_delay=5s"
 
   # Metrics
   - "tsbridge.global.metrics_addr=:9090"
@@ -145,9 +142,6 @@ labels:
   - "tsbridge.service.idle_timeout=300s"
   - "tsbridge.service.response_header_timeout=30s"
 
-  # Retry configuration (override global)
-  - "tsbridge.service.retry_count=3"
-  - "tsbridge.service.retry_delay=1s"
 
   # Access logging (override global)
   - "tsbridge.service.access_log=false"

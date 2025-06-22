@@ -593,9 +593,6 @@ func TestProviderConfigProcessing(t *testing.T) {
 				if service.IdleTimeout.Duration == 0 {
 					t.Error("Default IdleTimeout not applied")
 				}
-				if service.RetryCount == nil || *service.RetryCount == 0 {
-					t.Error("Default RetryCount not applied")
-				}
 			})
 
 			// Test normalization
@@ -606,12 +603,10 @@ oauth_client_id = "test-id"
 oauth_client_secret = "test-secret"
 
 [global]
-retry_count = 5
 
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
-# retry_count not set, should inherit from global
 `
 				provider, cleanup := tt.createProvider(t, content)
 				defer cleanup()
@@ -623,11 +618,8 @@ backend_addr = "localhost:8080"
 				}
 
 				// Check normalization - global values copied to services
-				service := cfg.Services[0]
-				if service.RetryCount == nil || *service.RetryCount != 5 {
-					t.Errorf("Service retry_count not inherited from global: got %v, want 5",
-						service.RetryCount)
-				}
+				_ = cfg.Services[0]
+				// Add any specific checks here if needed
 			})
 
 			// Test validation
@@ -838,8 +830,6 @@ func TestDockerProviderLabelParsing(t *testing.T) {
 			"tsbridge.service.whois_enabled":                    "true",
 			"tsbridge.service.whois_timeout":                    "5s",
 			"tsbridge.service.tls_mode":                         "off",
-			"tsbridge.service.retry_count":                      "5",
-			"tsbridge.service.retry_delay":                      "2s",
 			"tsbridge.service.upstream_headers.X-Custom-Header": "custom-value",
 		}
 

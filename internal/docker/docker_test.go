@@ -81,8 +81,6 @@ func TestParseServiceConfig(t *testing.T) {
 					"tsbridge.service.whois_enabled":             "true",
 					"tsbridge.service.whois_timeout":             "2s",
 					"tsbridge.service.tls_mode":                  "off",
-					"tsbridge.service.retry_count":               "3",
-					"tsbridge.service.retry_delay":               "1s",
 					"tsbridge.service.access_log":                "false",
 					"tsbridge.service.funnel_enabled":            "true",
 					"tsbridge.service.ephemeral":                 "true",
@@ -96,8 +94,6 @@ func TestParseServiceConfig(t *testing.T) {
 				assert.True(t, *svc.WhoisEnabled)
 				assert.Equal(t, 2*time.Second, svc.WhoisTimeout.Duration)
 				assert.Equal(t, "off", svc.TLSMode)
-				assert.Equal(t, 3, *svc.RetryCount)
-				assert.Equal(t, 1*time.Second, svc.RetryDelay.Duration)
 				assert.False(t, *svc.AccessLog)
 				assert.True(t, *svc.FunnelEnabled)
 				assert.True(t, svc.Ephemeral)
@@ -169,8 +165,6 @@ func TestParseGlobalConfig(t *testing.T) {
 				"tsbridge.global.read_timeout":               "30s",
 				"tsbridge.global.write_timeout":              "30s",
 				"tsbridge.global.idle_timeout":               "120s",
-				"tsbridge.global.retry_count":                "5",
-				"tsbridge.global.retry_delay":                "5s",
 				"tsbridge.global.access_log":                 "true",
 				"tsbridge.global.trusted_proxies":            "10.0.0.0/8,172.16.0.0/12",
 			},
@@ -193,8 +187,6 @@ func TestParseGlobalConfig(t *testing.T) {
 		assert.Equal(t, 30*time.Second, cfg.Global.ReadTimeout.Duration)
 		assert.Equal(t, 30*time.Second, cfg.Global.WriteTimeout.Duration)
 		assert.Equal(t, 120*time.Second, cfg.Global.IdleTimeout.Duration)
-		assert.Equal(t, 5, cfg.Global.RetryCount)
-		assert.Equal(t, 5*time.Second, cfg.Global.RetryDelay.Duration)
 		assert.True(t, *cfg.Global.AccessLog)
 		assert.Equal(t, []string{"10.0.0.0/8", "172.16.0.0/12"}, cfg.Global.TrustedProxies)
 	})

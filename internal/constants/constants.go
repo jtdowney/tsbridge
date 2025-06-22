@@ -47,15 +47,6 @@ const (
 	DefaultMetricsReadHeaderTimeout = 5 * time.Second
 )
 
-// Retry constants define the default retry behavior.
-const (
-	// DefaultRetryCount is the default number of times to retry a failed request.
-	DefaultRetryCount = 3
-
-	// DefaultRetryDelay is the default delay between retry attempts.
-	DefaultRetryDelay = 1 * time.Second
-)
-
 // OAuth constants define OAuth-related configuration.
 const (
 	// OAuthTokenExpirySeconds is the expiry time for OAuth tokens in seconds (90 days).

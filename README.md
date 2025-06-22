@@ -158,9 +158,6 @@ write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "15s"
 
-# Retry configuration for backend connections
-retry_count = 5
-retry_delay = "5s"
 
 # Whois lookup timeout
 whois_timeout = "1s"
@@ -184,7 +181,6 @@ whois_timeout = "500ms"              # Override global whois timeout
 # Override global settings for this service
 read_timeout = "60s"
 write_timeout = "60s"
-retry_count = 3
 access_log = false
 
 # Add security headers to downstream responses

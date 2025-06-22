@@ -5,6 +5,14 @@ All notable changes to tsbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **BREAKING:** Removed retry configuration (`retry_count`, `retry_delay`, `retry_strategy`, `max_retry_attempts`) 
+- Simplified architecture to use lazy connections instead of startup validation
+- Services now always start successfully and handle backend connection failures at request time by returning appropriate HTTP error codes (502/504)
+
 ## [0.3.1] - 2025-06-22
 
 ### Fixed

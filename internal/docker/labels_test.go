@@ -209,7 +209,6 @@ func TestLabelParser(t *testing.T) {
 	labels := map[string]string{
 		"tsbridge.service.name":            "test-service",
 		"tsbridge.service.whois_enabled":   "true",
-		"tsbridge.service.retry_count":     "3",
 		"tsbridge.service.read_timeout":    "30s",
 		"tsbridge.service.remove_upstream": "X-Forwarded-For,X-Real-IP",
 	}
@@ -234,11 +233,8 @@ func TestLabelParser(t *testing.T) {
 	})
 
 	t.Run("getInt", func(t *testing.T) {
-		result := parser.getInt("service.retry_count")
-		require.NotNil(t, result)
-		assert.Equal(t, 3, *result)
-
-		result = parser.getInt("nonexistent")
+		// No int fields in current config, just test nonexistent key
+		result := parser.getInt("nonexistent")
 		assert.Nil(t, result)
 	})
 

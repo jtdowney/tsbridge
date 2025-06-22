@@ -68,8 +68,6 @@ read_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "5s"
-retry_count = 3
-retry_delay = "1s"
 
 [[services]]
 name = "perf-test-%d"
@@ -205,8 +203,6 @@ read_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "5s"
-retry_count = 3
-retry_delay = "1s"
 
 [[services]]
 name = "goroutine-test"
@@ -344,8 +340,6 @@ read_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "10s"
-retry_count = 3
-retry_delay = "100ms"
 
 [[services]]
 name = "resource-test"

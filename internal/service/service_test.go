@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -94,8 +93,6 @@ func TestRegistry_StartServices(t *testing.T) {
 	// Create config with services
 	cfg := &config.Config{
 		Global: config.Global{
-			RetryCount:      0,
-			RetryDelay:      config.Duration{Duration: 10 * time.Millisecond},
 			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
 		},
 		Services: []config.Service{
@@ -147,99 +144,41 @@ func TestRegistry_StartServices(t *testing.T) {
 }
 
 func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
+	// With lazy connections, services always start successfully
+	// Backend connectivity is only checked when requests come in
 	tests := []struct {
 		name             string
 		services         []config.Service
-		backendServers   []func() (net.Listener, error) // Mock backend servers
 		expectedServices int
 		expectError      bool
 	}{
 		{
-			name: "all backends healthy",
+			name: "all services start regardless of backend availability",
 			services: []config.Service{
 				{Name: "service1", BackendAddr: "localhost:9001"},
-				{Name: "service2", BackendAddr: "localhost:9002"},
-			},
-			backendServers: []func() (net.Listener, error){
-				func() (net.Listener, error) { return net.Listen("tcp", "localhost:9001") },
-				func() (net.Listener, error) { return net.Listen("tcp", "localhost:9002") },
+				{Name: "service2", BackendAddr: "localhost:9999"}, // Non-existent backend
 			},
 			expectedServices: 2,
+			expectError:      false, // No error expected with lazy connections
+		},
+		{
+			name: "unix socket service starts without backend",
+			services: []config.Service{
+				{Name: "service1", BackendAddr: "unix:///tmp/nonexistent.sock"},
+			},
+			expectedServices: 1,
 			expectError:      false,
 		},
 		{
-			name: "one backend unhealthy",
-			services: []config.Service{
-				{Name: "service1", BackendAddr: "localhost:9003"},
-				{Name: "service2", BackendAddr: "localhost:9999"}, // This won't have a listener
-			},
-			backendServers: []func() (net.Listener, error){
-				func() (net.Listener, error) { return net.Listen("tcp", "localhost:9003") },
-			},
-			expectedServices: 1,
-			expectError:      true, // Now we expect an error for partial failures
-		},
-		{
-			name: "all backends unhealthy",
-			services: []config.Service{
-				{Name: "service1", BackendAddr: "localhost:9997"},
-				{Name: "service2", BackendAddr: "localhost:9998"},
-			},
-			backendServers:   []func() (net.Listener, error){}, // No backend servers
+			name:             "no services configured",
+			services:         []config.Service{},
 			expectedServices: 0,
-			expectError:      true,
-		},
-		{
-			name: "unix socket backend",
-			services: []config.Service{
-				{Name: "service1", BackendAddr: "unix:///tmp/test.sock"},
-			},
-			backendServers: []func() (net.Listener, error){
-				func() (net.Listener, error) {
-					// Clean up previous socket if it exists
-					os.Remove("/tmp/test.sock")
-					return net.Listen("unix", "/tmp/test.sock")
-				},
-			},
-			expectedServices: 1,
-			expectError:      false,
+			expectError:      true, // Still error if no services configured
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			// Start mock backend servers
-			var listeners []net.Listener
-			for _, serverFunc := range tt.backendServers {
-				l, err := serverFunc()
-				if err != nil {
-					t.Fatalf("failed to create backend listener: %v", err)
-				}
-				listeners = append(listeners, l)
-
-				// Start a simple server to accept connections
-				go func(listener net.Listener) {
-					for {
-						conn, err := listener.Accept()
-						if err != nil {
-							return
-						}
-						_ = conn.Close()
-					}
-				}(l)
-			}
-
-			// Clean up listeners after test
-			defer func() {
-				for _, l := range listeners {
-					_ = l.Close()
-				}
-			}()
-
-			// Give servers a moment to start
-			time.Sleep(10 * time.Millisecond)
-
 			// Create test config
 			cfg := &config.Config{
 				Tailscale: config.Tailscale{
@@ -249,8 +188,6 @@ func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
 					ReadTimeout:     config.Duration{Duration: 30 * time.Second},
 					WriteTimeout:    config.Duration{Duration: 30 * time.Second},
 					IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      config.Duration{Duration: 100 * time.Millisecond},
 					ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
 				},
 				Services: tt.services,
@@ -278,16 +215,6 @@ func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
 				t.Errorf("unexpected error: %v", err)
 			}
 
-			// Special handling for partial failures
-			if err != nil {
-				if startupErr, ok := errors.AsServiceStartupError(err); ok {
-					// For partial failures, check that we got the expected number of services
-					if !startupErr.AllFailed() && len(registry.services) != tt.expectedServices {
-						t.Errorf("partial failure: expected %d services running, got %d", tt.expectedServices, len(registry.services))
-					}
-				}
-			}
-
 			if len(registry.services) != tt.expectedServices {
 				t.Errorf("expected %d services, got %d", tt.expectedServices, len(registry.services))
 			}
@@ -299,10 +226,7 @@ func TestServiceRegistryErrorTypes(t *testing.T) {
 	t.Run("no services started returns internal error", func(t *testing.T) {
 		// Create a minimal config with no services
 		cfg := &config.Config{
-			Global: config.Global{
-				RetryCount: 3,
-				RetryDelay: config.Duration{Duration: 100 * time.Millisecond},
-			},
+			Global:   config.Global{},
 			Services: []config.Service{}, // Empty services
 		}
 
@@ -322,212 +246,15 @@ func TestServiceRegistryErrorTypes(t *testing.T) {
 }
 
 func TestServiceStartupPartialFailures(t *testing.T) {
-	t.Run("all services fail returns ServiceStartupError", func(t *testing.T) {
-		// Create config with 3 services
-		cfg := &config.Config{
-			Global: config.Global{
-				RetryCount: 0, // No retries for faster tests
-				RetryDelay: config.Duration{Duration: 10 * time.Millisecond},
-			},
-			Services: []config.Service{
-				{Name: "service1", BackendAddr: "invalid-backend-1:80", TLSMode: "off"},
-				{Name: "service2", BackendAddr: "invalid-backend-2:80", TLSMode: "off"},
-				{Name: "service3", BackendAddr: "invalid-backend-3:80", TLSMode: "off"},
-			},
-		}
-
-		tsServer, err := testTailscaleServerFactory()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tsServer.Close()
-
-		registry := NewRegistry(cfg, tsServer)
-
-		err = registry.StartServices()
-		if err == nil {
-			t.Fatal("expected error when all services fail")
-		}
-
-		// Should be a ServiceStartupError
-		startupErr, ok := errors.AsServiceStartupError(err)
-		if !ok {
-			t.Errorf("expected ServiceStartupError, got %v", err)
-		}
-
-		// All services should have failed
-		if !startupErr.AllFailed() {
-			t.Error("expected AllFailed() to be true")
-		}
-		if startupErr.Total != 3 {
-			t.Errorf("expected 3 total services, got %d", startupErr.Total)
-		}
-		if startupErr.Failed != 3 {
-			t.Errorf("expected 3 failed services, got %d", startupErr.Failed)
-		}
-	})
-
-	t.Run("partial failure continues with working services", func(t *testing.T) {
-		// Start a test backend server
-		backend, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer backend.Close()
-
-		// Accept connections in background
-		go func() {
-			for {
-				conn, err := backend.Accept()
-				if err != nil {
-					return
-				}
-				conn.Close()
-			}
-		}()
-
-		// Create config with 3 services, 2 will fail
-		cfg := &config.Config{
-			Global: config.Global{
-				RetryCount: 0,
-				RetryDelay: config.Duration{Duration: 10 * time.Millisecond},
-			},
-			Services: []config.Service{
-				{Name: "service1", BackendAddr: "invalid-backend-1:80", TLSMode: "off"},
-				{Name: "service2", BackendAddr: backend.Addr().String(), TLSMode: "off"}, // This one works
-				{Name: "service3", BackendAddr: "invalid-backend-3:80", TLSMode: "off"},
-			},
-		}
-
-		tsServer, err := testTailscaleServerFactory()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tsServer.Close()
-
-		registry := NewRegistry(cfg, tsServer)
-
-		err = registry.StartServices()
-		if err == nil {
-			t.Fatal("expected error when some services fail")
-		}
-
-		// Should be a ServiceStartupError
-		startupErr, ok := errors.AsServiceStartupError(err)
-		if !ok {
-			t.Errorf("expected ServiceStartupError, got %v", err)
-		}
-
-		// Should be a partial failure
-		if startupErr.AllFailed() {
-			t.Error("expected AllFailed() to be false for partial failure")
-		}
-		if startupErr.Total != 3 {
-			t.Errorf("expected 3 total services, got %d", startupErr.Total)
-		}
-		if startupErr.Successful != 1 {
-			t.Errorf("expected 1 successful service, got %d", startupErr.Successful)
-		}
-		if startupErr.Failed != 2 {
-			t.Errorf("expected 2 failed services, got %d", startupErr.Failed)
-		}
-
-		// Check that service2 is running
-		if len(registry.services) != 1 {
-			t.Errorf("expected 1 running service, got %d", len(registry.services))
-		}
-		if registry.services[0].Config.Name != "service2" {
-			t.Errorf("expected service2 to be running, got %s", registry.services[0].Config.Name)
-		}
-	})
-
-	t.Run("all services succeed returns nil", func(t *testing.T) {
-		// Start test backend servers
-		backend1, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer backend1.Close()
-
-		backend2, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer backend2.Close()
-
-		// Accept connections in background
-		acceptConnections := func(ln net.Listener) {
-			go func() {
-				for {
-					conn, err := ln.Accept()
-					if err != nil {
-						return
-					}
-					conn.Close()
-				}
-			}()
-		}
-		acceptConnections(backend1)
-		acceptConnections(backend2)
-
-		// Create config with 2 services that will succeed
-		cfg := &config.Config{
-			Global: config.Global{
-				RetryCount: 0,
-				RetryDelay: config.Duration{Duration: 10 * time.Millisecond},
-			},
-			Services: []config.Service{
-				{Name: "service1", BackendAddr: backend1.Addr().String(), TLSMode: "off"},
-				{Name: "service2", BackendAddr: backend2.Addr().String(), TLSMode: "off"},
-			},
-		}
-
-		tsServer, err := testTailscaleServerFactory()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tsServer.Close()
-
-		registry := NewRegistry(cfg, tsServer)
-
-		err = registry.StartServices()
-		if err != nil {
-			t.Fatalf("expected no error when all services succeed, got %v", err)
-		}
-
-		// Check that both services are running
-		if len(registry.services) != 2 {
-			t.Errorf("expected 2 running services, got %d", len(registry.services))
-		}
-	})
+	// With lazy connections, all services now start successfully
+	// These tests are kept for listener creation failures which can still happen
 
 	t.Run("listener creation failure is tracked", func(t *testing.T) {
-		// Start a test backend that works
-		backend, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer backend.Close()
-
-		// Accept connections in background
-		go func() {
-			for {
-				conn, err := backend.Accept()
-				if err != nil {
-					return
-				}
-				conn.Close()
-			}
-		}()
-
 		cfg := &config.Config{
-			Global: config.Global{
-				RetryCount: 0,
-				RetryDelay: config.Duration{Duration: 10 * time.Millisecond},
-			},
+			Global: config.Global{},
 			Services: []config.Service{
-				{Name: "service1", BackendAddr: backend.Addr().String(), TLSMode: "off"},
-				{Name: "service2", BackendAddr: backend.Addr().String(), TLSMode: "off"},
+				{Name: "service1", BackendAddr: "localhost:8080", TLSMode: "off"},
+				{Name: "service2", BackendAddr: "localhost:8081", TLSMode: "off"},
 			},
 		}
 
@@ -927,8 +654,6 @@ func TestRegistry_Shutdown(t *testing.T) {
 			ReadTimeout:     config.Duration{Duration: 30 * 1000000000}, // 30s
 			WriteTimeout:    config.Duration{Duration: 30 * 1000000000},
 			IdleTimeout:     config.Duration{Duration: 120 * 1000000000},
-			RetryCount:      3,
-			RetryDelay:      config.Duration{Duration: 1 * 1000000000},
 			ShutdownTimeout: config.Duration{Duration: 10 * 1000000000},
 		},
 		Services: []config.Service{
@@ -1291,8 +1016,6 @@ func TestServiceWithRealProxy(t *testing.T) {
 			ReadTimeout:     config.Duration{Duration: 30 * time.Second},
 			WriteTimeout:    config.Duration{Duration: 30 * time.Second},
 			IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-			RetryCount:      3,
-			RetryDelay:      config.Duration{Duration: 1 * time.Second},
 			ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
 		},
 		Services: []config.Service{

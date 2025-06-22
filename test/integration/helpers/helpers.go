@@ -103,8 +103,6 @@ func CreateTestConfig(t *testing.T, serviceName string, backendAddr string) *con
 			WriteTimeout:    config.Duration{Duration: 30 * time.Second},
 			IdleTimeout:     config.Duration{Duration: 120 * time.Second},
 			ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
-			RetryCount:      3,
-			RetryDelay:      config.Duration{Duration: 100 * time.Millisecond},
 		},
 		Services: []config.Service{
 			{
@@ -133,8 +131,6 @@ func CreateMultiServiceConfig(t *testing.T, services map[string]string) *config.
 			WriteTimeout:    config.Duration{Duration: 30 * time.Second},
 			IdleTimeout:     config.Duration{Duration: 120 * time.Second},
 			ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
-			RetryCount:      3,
-			RetryDelay:      config.Duration{Duration: 100 * time.Millisecond},
 		},
 	}
 
@@ -314,17 +310,13 @@ read_timeout = "%s"
 write_timeout = "%s" 
 idle_timeout = "%s"
 shutdown_timeout = "%s"
-retry_count = %d
-retry_delay = "%s"
 
 `,
 		cfg.Global.MetricsAddr,
 		cfg.Global.ReadTimeout.Duration,
 		cfg.Global.WriteTimeout.Duration,
 		cfg.Global.IdleTimeout.Duration,
-		cfg.Global.ShutdownTimeout.Duration,
-		cfg.Global.RetryCount,
-		cfg.Global.RetryDelay.Duration)
+		cfg.Global.ShutdownTimeout.Duration)
 
 	// Add services
 	for _, svc := range cfg.Services {

@@ -32,8 +32,6 @@ func NewTestFixture(t *testing.T) *TestFixture {
 				WriteTimeout:    config.Duration{Duration: 30 * time.Second},
 				IdleTimeout:     config.Duration{Duration: 120 * time.Second},
 				ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
-				RetryCount:      3,
-				RetryDelay:      config.Duration{Duration: 100 * time.Millisecond},
 			},
 			Services: []config.Service{
 				{

@@ -201,7 +201,6 @@ func (p *Provider) parseGlobalConfig(container *types.Container, cfg *config.Con
 		WriteTimeout:             parser.getDuration("global.write_timeout"),
 		IdleTimeout:              parser.getDuration("global.idle_timeout"),
 		ShutdownTimeout:          parser.getDuration("global.shutdown_timeout"),
-		RetryDelay:               parser.getDuration("global.retry_delay"),
 		ResponseHeaderTimeout:    parser.getDuration("global.response_header_timeout"),
 		AccessLog:                parser.getBool("global.access_log"),
 		TrustedProxies:           parser.getStringSlice("global.trusted_proxies", ","),
@@ -211,11 +210,6 @@ func (p *Provider) parseGlobalConfig(container *types.Container, cfg *config.Con
 		TLSHandshakeTimeout:      parser.getDuration("global.tls_handshake_timeout"),
 		ExpectContinueTimeout:    parser.getDuration("global.expect_continue_timeout"),
 		MetricsReadHeaderTimeout: parser.getDuration("global.metrics_read_header_timeout"),
-	}
-
-	// Parse retry count (non-pointer int)
-	if retryCount := parser.getInt("global.retry_count"); retryCount != nil {
-		cfg.Global.RetryCount = *retryCount
 	}
 
 	return nil
@@ -280,8 +274,6 @@ func (p *Provider) parseServiceConfig(container types.Container) (*config.Servic
 	svc.WriteTimeout = parser.getDuration("service.write_timeout")
 	svc.IdleTimeout = parser.getDuration("service.idle_timeout")
 	svc.ResponseHeaderTimeout = parser.getDuration("service.response_header_timeout")
-	svc.RetryDelay = parser.getDuration("service.retry_delay")
-	svc.RetryCount = parser.getInt("service.retry_count")
 	svc.UpstreamHeaders = parser.getHeaders("service.upstream_headers")
 	svc.DownstreamHeaders = parser.getHeaders("service.downstream_headers")
 	svc.RemoveUpstream = parser.getStringSlice("service.remove_upstream", ",")

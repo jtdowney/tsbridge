@@ -75,7 +75,7 @@ The response will include any Tailscale identity headers that were injected:
 The `tsbridge.toml` file demonstrates:
 
 - OAuth credential configuration via environment variables
-- Global timeout and retry settings
+- Global timeout settings
 - Multiple service configurations
 - Per-service timeout overrides
 - Whois header injection (enabled/disabled per service)

@@ -141,9 +141,6 @@ Configuration for connecting to backend services:
 
 ```toml
 [global]
-retry_count = 5          # Number of connection attempts at startup
-retry_delay = "5s"       # Delay between retry attempts
-
 # HTTP Transport timeouts (all optional with defaults)
 dial_timeout = "30s"              # Maximum time to establish connection (default: 30s)
 keep_alive_timeout = "30s"        # Keep-alive probe interval (default: 30s)
@@ -286,10 +283,6 @@ read_timeout = "60s"
 write_timeout = "60s"
 idle_timeout = "300s"
 
-# Override retry settings
-retry_count = 3
-retry_delay = "10s"
-
 # Override logging
 access_log = false
 ```
@@ -359,9 +352,6 @@ write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "30s"
 
-# Retry configuration
-retry_count = 10
-retry_delay = "5s"
 
 # Security - trust load balancer and internal network
 trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12"]
@@ -414,8 +404,6 @@ oauth_tags = ["tag:dev", "tag:proxy"]
 # Shorter timeouts for development
 read_timeout = "5s"
 write_timeout = "5s"
-retry_count = 3
-retry_delay = "1s"
 metrics_addr = ":9090"
 
 [[services]]
@@ -458,7 +446,6 @@ backend_addr = "external-api.example.com:443"
 whois_enabled = false
 read_timeout = "60s"
 write_timeout = "60s"
-retry_count = 10
 
 # Internal admin panel
 [[services]]

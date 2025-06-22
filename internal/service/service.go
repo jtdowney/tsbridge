@@ -11,7 +11,6 @@ import (
 
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
-	"github.com/jtdowney/tsbridge/internal/dialer"
 	tserrors "github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/middleware"
@@ -93,19 +92,6 @@ func (r *Registry) StartServices() error {
 
 // startService starts a single service
 func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
-	// Check backend health before creating listener
-	ctx, cancel := context.WithTimeout(context.Background(), constants.BackendHealthCheckTimeout)
-	defer cancel()
-
-	retryCount := r.config.Global.RetryCount
-	retryDelay := r.config.Global.RetryDelay.Duration
-
-	conn, err := dialer.DialBackend(ctx, svcCfg.BackendAddr, retryCount, retryDelay, nil)
-	if err != nil {
-		// The error from DialBackend is already a network error with retry info
-		return nil, err
-	}
-	_ = conn.Close() // Close the test connection
 
 	// Create listener for this service
 	listener, err := r.tsServer.ListenWithService(svcCfg, svcCfg.TLSMode, svcCfg.FunnelEnabled != nil && *svcCfg.FunnelEnabled)

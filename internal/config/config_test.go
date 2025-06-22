@@ -130,8 +130,6 @@ backend_addr = "localhost:8080"
 		assert.Equal(t, 30*time.Second, cfg.Global.ReadTimeout.Duration)
 		assert.Equal(t, 30*time.Second, cfg.Global.WriteTimeout.Duration)
 		assert.Equal(t, 120*time.Second, cfg.Global.IdleTimeout.Duration)
-		assert.Equal(t, 3, cfg.Global.RetryCount)
-		assert.Equal(t, 1*time.Second, cfg.Global.RetryDelay.Duration)
 		assert.Equal(t, 30*time.Second, cfg.Global.ShutdownTimeout.Duration)
 
 		// Service defaults
@@ -636,8 +634,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -659,8 +655,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -683,8 +677,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{},
@@ -702,8 +694,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -730,8 +720,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -754,8 +742,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -778,8 +764,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -792,29 +776,6 @@ func TestValidate(t *testing.T) {
 			wantErr: "invalid backend address",
 		},
 		{
-			name: "negative retry count",
-			config: &Config{
-				Tailscale: Tailscale{
-					OAuthClientID:     "test-id",
-					OAuthClientSecret: "test-secret",
-				},
-				Global: Global{
-					ReadTimeout:  Duration{5 * time.Second},
-					WriteTimeout: Duration{10 * time.Second},
-					IdleTimeout:  Duration{120 * time.Second},
-					RetryCount:   -1,
-					RetryDelay:   Duration{1 * time.Second},
-				},
-				Services: []Service{
-					{
-						Name:        "api",
-						BackendAddr: "127.0.0.1:8080",
-					},
-				},
-			},
-			wantErr: "retry_count must be non-negative",
-		},
-		{
 			name: "zero durations",
 			config: &Config{
 				Tailscale: Tailscale{
@@ -825,8 +786,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:  Duration{0},
 					WriteTimeout: Duration{10 * time.Second},
 					IdleTimeout:  Duration{120 * time.Second},
-					RetryCount:   3,
-					RetryDelay:   Duration{1 * time.Second},
 				},
 				Services: []Service{
 					{
@@ -848,8 +807,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -873,8 +830,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 					MetricsAddr:     "not-a-valid-addr",
 				},
@@ -898,8 +853,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 					TrustedProxies:  []string{"invalid-ip"},
 				},
@@ -923,8 +876,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 					TrustedProxies:  []string{"10.0.0.0/33"},
 				},
@@ -948,8 +899,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 					TrustedProxies:  []string{"192.168.1.1", "10.0.0.0/8", "172.16.0.0/12"},
 				},
@@ -974,8 +923,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -997,8 +944,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -1022,8 +967,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -1047,8 +990,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -1072,8 +1013,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -1097,8 +1036,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -1121,8 +1058,6 @@ func TestValidate(t *testing.T) {
 					ReadTimeout:     Duration{5 * time.Second},
 					WriteTimeout:    Duration{10 * time.Second},
 					IdleTimeout:     Duration{120 * time.Second},
-					RetryCount:      3,
-					RetryDelay:      Duration{1 * time.Second},
 					ShutdownTimeout: Duration{15 * time.Second},
 				},
 				Services: []Service{
@@ -1507,8 +1442,6 @@ func TestConfigString(t *testing.T) {
 			ReadTimeout:     Duration{5 * time.Second},
 			WriteTimeout:    Duration{10 * time.Second},
 			IdleTimeout:     Duration{120 * time.Second},
-			RetryCount:      3,
-			RetryDelay:      Duration{1 * time.Second},
 			ShutdownTimeout: Duration{15 * time.Second},
 			MetricsAddr:     ":9090",
 		},
