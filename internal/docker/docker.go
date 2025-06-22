@@ -12,11 +12,20 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/events"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/errors"
 )
+
+// DockerClient defines the methods required from a Docker client to be used by the provider
+type DockerClient interface {
+	ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error)
+	Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error)
+	Ping(ctx context.Context) (types.Ping, error)
+	Close() error
+}
 
 const (
 	// DefaultLabelPrefix is the default label prefix for tsbridge configuration
@@ -24,14 +33,11 @@ const (
 
 	// DefaultDockerEndpoint is the default Docker socket endpoint
 	DefaultDockerEndpoint = "unix:///var/run/docker.sock"
-
-	// watchInterval is the interval for polling Docker for changes
-	watchInterval = 5 * time.Second
 )
 
 // Provider implements config.Provider for Docker label-based configuration
 type Provider struct {
-	client      *client.Client
+	client      DockerClient
 	labelPrefix string
 	socketPath  string
 	mu          sync.RWMutex
@@ -165,50 +171,139 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 		cfg.Services = append(cfg.Services, *svc)
 	}
 
-	// Apply standard configuration processing
-	if err := config.ProcessLoadedConfigWithProvider(cfg, "docker"); err != nil {
-		return nil, err
+	// Apply standard configuration processing but skip full validation if no services
+	// For Docker provider, services can be added dynamically via container events
+	if len(cfg.Services) == 0 {
+		// Just validate OAuth credentials and apply defaults
+		if err := config.ProcessLoadedConfigWithProvider(cfg, "docker"); err != nil {
+			// If error is about missing services, ignore it for Docker provider
+			if !strings.Contains(err.Error(), "at least one service must be defined") {
+				return nil, err
+			}
+		}
+	} else {
+		// Full validation when services exist
+		if err := config.ProcessLoadedConfigWithProvider(cfg, "docker"); err != nil {
+			return nil, err
+		}
 	}
 
 	p.lastConfig = cfg
 	return cfg, nil
 }
 
-// Watch monitors Docker for configuration changes
+// Watch monitors Docker events for container configuration changes
 func (p *Provider) Watch(ctx context.Context) (<-chan *config.Config, error) {
 	configCh := make(chan *config.Config)
+	eventOptions := p.createEventOptions()
 
 	go func() {
 		defer close(configCh)
-
-		ticker := time.NewTicker(watchInterval)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				newConfig, err := p.Load(ctx)
-				if err != nil {
-					slog.Error("failed to reload configuration from Docker", "error", err)
-					continue
-				}
-
-				// Check if configuration has changed
-				if !p.configEqual(p.getLastConfig(), newConfig) {
-					slog.Info("Docker configuration changed, reloading")
-					select {
-					case configCh <- newConfig:
-					case <-ctx.Done():
-						return
-					}
-				}
-			}
-		}
+		p.watchLoop(ctx, configCh, eventOptions)
 	}()
 
 	return configCh, nil
+}
+
+// createEventOptions creates the event filter options for Docker events
+func (p *Provider) createEventOptions() events.ListOptions {
+	eventFilters := filters.NewArgs()
+	eventFilters.Add("type", "container")
+	eventFilters.Add("event", "start")
+	eventFilters.Add("event", "stop")
+	eventFilters.Add("event", "die")
+	eventFilters.Add("event", "pause")
+	eventFilters.Add("event", "unpause")
+	eventFilters.Add("label", p.labelPrefix+".enabled=true")
+
+	return events.ListOptions{
+		Filters: eventFilters,
+	}
+}
+
+// watchLoop runs the main event watching loop with reconnection
+func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if p.processEventStream(ctx, configCh, eventOptions) {
+				return // Context cancelled
+			}
+
+			// Event stream closed, wait before reconnecting
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(time.Second):
+				slog.Debug("Reconnecting to Docker events stream")
+			}
+		}
+	}
+}
+
+// processEventStream processes a single event stream connection
+func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) bool {
+	events, errs := p.client.Events(ctx, eventOptions)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return true
+		case err := <-errs:
+			if err != nil {
+				slog.Error("Docker events stream error", "error", err)
+				return false // Return to restart event stream
+			}
+		case event := <-events:
+			if p.handleContainerEvent(ctx, configCh, event) {
+				return true // Context cancelled
+			}
+		}
+	}
+}
+
+// handleContainerEvent processes a single container event
+func (p *Provider) handleContainerEvent(ctx context.Context, configCh chan<- *config.Config, event events.Message) bool {
+	if event.Type != "container" {
+		return false
+	}
+
+	containerID := event.Actor.ID
+	if len(containerID) > 12 {
+		containerID = containerID[:12]
+	}
+
+	slog.Debug("Docker container event received",
+		"action", event.Action,
+		"container_name", event.Actor.Attributes["name"],
+		"container_id", containerID)
+
+	// Save the old config before loading new one
+	oldConfig := p.getLastConfig()
+
+	// Load new configuration when container event occurs
+	newConfig, err := p.Load(ctx)
+	if err != nil {
+		slog.Error("failed to reload configuration after Docker event", "error", err)
+		return false
+	}
+
+	// Check if configuration has changed
+	if !p.configEqual(oldConfig, newConfig) {
+		slog.Info("Docker configuration changed due to container event",
+			"action", event.Action,
+			"container_name", event.Actor.Attributes["name"])
+
+		select {
+		case configCh <- newConfig:
+		case <-ctx.Done():
+			return true
+		}
+	}
+
+	return false
 }
 
 // Name returns the provider name
