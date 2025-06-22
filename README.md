@@ -13,10 +13,7 @@ A lightweight proxy manager built on Tailscale's tsnet library that enables mult
 - **Observability**: Built-in Prometheus metrics and structured logging
 - **Graceful Shutdown**: Zero-downtime deployments with configurable timeouts
 - **Per-Service Config**: Override global settings for individual services
-
-## Planned Features
-
-- **Docker Label Config**: Allow for dynamic configuration from Docker labels similar to Traefik. This would make tsbridge a general-purpose Tailscale Docker sidecar.
+- **Docker Label Config**: Dynamic configuration from Docker labels (similar to Traefik)
 
 ## Quick Start
 
@@ -204,6 +201,8 @@ See [deployments/systemd/](deployments/systemd/) for systemd service files and i
 
 ### Docker
 
+#### With TOML Configuration
+
 ```bash
 docker run -v /path/to/config:/config \
   -e TS_OAUTH_CLIENT_ID=your-id \
@@ -211,6 +210,31 @@ docker run -v /path/to/config:/config \
   ghcr.io/jtdowney/tsbridge:latest \
   -config /config/tsbridge.toml
 ```
+
+#### With Docker Labels (Dynamic Configuration)
+
+```yaml
+version: '3.8'
+services:
+  tsbridge:
+    image: ghcr.io/jtdowney/tsbridge:latest
+    command: ["--provider", "docker"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
+      - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
+      - "tsbridge.global.metrics_addr=:9090"
+
+  myapp:
+    image: myapp:latest
+    labels:
+      - "tsbridge.enabled=true"
+      - "tsbridge.service.name=myapp"
+      - "tsbridge.service.port=8080"
+```
+
+See [docs/docker-labels.md](docs/docker-labels.md) for complete Docker label configuration reference.
 
 ## Monitoring
 

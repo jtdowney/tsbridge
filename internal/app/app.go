@@ -19,17 +19,21 @@ import (
 // App encapsulates the tsbridge application lifecycle
 type App struct {
 	cfg           *config.Config
+	provider      config.Provider
 	tsServer      *tailscale.Server
 	registry      *service.Registry
 	metricsServer *metrics.Server
 	startOnce     sync.Once
 	stopOnce      sync.Once
+	configWatcher context.CancelFunc
+	mu            sync.RWMutex
 }
 
 // Options allows customizing App creation for testing
 type Options struct {
 	TSServer *tailscale.Server
 	Registry *service.Registry
+	Provider config.Provider
 }
 
 // NewApp creates a new App instance with the given configuration
@@ -39,6 +43,16 @@ func NewApp(cfg *config.Config) (*App, error) {
 
 // NewAppWithOptions creates a new App instance with custom options
 func NewAppWithOptions(cfg *config.Config, opts Options) (*App, error) {
+	// If a provider is given, use it to load config
+	if opts.Provider != nil {
+		ctx := context.Background()
+		loadedCfg, err := opts.Provider.Load(ctx)
+		if err != nil {
+			return nil, tserrors.WrapConfig(err, "failed to load config from provider")
+		}
+		cfg = loadedCfg
+	}
+
 	if cfg == nil {
 		return nil, tserrors.NewValidationError("config cannot be nil")
 	}
@@ -75,6 +89,7 @@ func NewAppWithOptions(cfg *config.Config, opts Options) (*App, error) {
 
 	app := &App{
 		cfg:      cfg,
+		provider: opts.Provider,
 		tsServer: tsServer,
 		registry: registry,
 	}
@@ -120,6 +135,19 @@ func (a *App) setupMetrics() error {
 func (a *App) Start(ctx context.Context) error {
 	var startErr error
 	a.startOnce.Do(func() {
+		// Start watching for configuration changes if provider supports it
+		if a.provider != nil {
+			watchCtx, cancel := context.WithCancel(ctx)
+			a.configWatcher = cancel
+
+			configCh, err := a.provider.Watch(watchCtx)
+			if err != nil {
+				slog.Warn("failed to start config watcher", "error", err)
+			} else if configCh != nil {
+				go a.watchConfigChanges(watchCtx, configCh)
+			}
+		}
+
 		// Start metrics server if configured
 		if a.metricsServer != nil {
 			slog.Debug("starting metrics server", "address", a.cfg.Global.MetricsAddr)
@@ -176,6 +204,11 @@ func (a *App) Shutdown(ctx context.Context) error {
 func (a *App) performShutdown(ctx context.Context) error {
 	var errs []error
 
+	// Stop config watcher if running
+	if a.configWatcher != nil {
+		a.configWatcher()
+	}
+
 	// Shutdown services
 	if err := a.registry.Shutdown(ctx); err != nil {
 		// The error from Shutdown is already typed
@@ -201,6 +234,43 @@ func (a *App) performShutdown(ctx context.Context) error {
 
 	// Combine all errors using errors.Join
 	return errors.Join(errs...)
+}
+
+// watchConfigChanges monitors for configuration changes from the provider
+func (a *App) watchConfigChanges(ctx context.Context, configCh <-chan *config.Config) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case newCfg, ok := <-configCh:
+			if !ok {
+				return
+			}
+
+			slog.Info("configuration changed, reloading services")
+			if err := a.reloadConfig(newCfg); err != nil {
+				slog.Error("failed to reload configuration", "error", err)
+			}
+		}
+	}
+}
+
+// reloadConfig reloads the configuration and restarts affected services
+func (a *App) reloadConfig(newCfg *config.Config) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// For now, we just log the change. Full reload implementation would:
+	// 1. Compare old and new configs to find changes
+	// 2. Stop removed services
+	// 3. Start new services
+	// 4. Restart modified services
+	slog.Info("configuration reload requested", "services", len(newCfg.Services))
+
+	// Update the config
+	a.cfg = newCfg
+
+	return nil
 }
 
 // MetricsAddr returns the actual address the metrics server is listening on.

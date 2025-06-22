@@ -3,8 +3,45 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/jtdowney/tsbridge/internal/errors"
 )
+
+// validateFilePath validates that a file path is safe to use and doesn't contain
+// directory traversal attempts or other security issues
+func validateFilePath(path string) error {
+	if path == "" {
+		return errors.NewValidationError("empty file path")
+	}
+
+	// Path must be absolute
+	if !filepath.IsAbs(path) {
+		return errors.NewValidationError("file path must be absolute")
+	}
+
+	// Check for null bytes
+	if strings.Contains(path, "\x00") {
+		return errors.NewValidationError("invalid file path: contains null bytes")
+	}
+
+	// Check for directory traversal attempts BEFORE cleaning
+	// This is important because filepath.Clean would resolve .. components
+	if strings.Contains(path, "..") {
+		return errors.NewValidationError("invalid file path: contains directory traversal")
+	}
+
+	// Additional safety: ensure no path components are . or ..
+	parts := strings.Split(path, string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".." || part == "." {
+			return errors.NewValidationError("invalid file path: contains directory traversal")
+		}
+	}
+
+	return nil
+}
 
 // ResolveSecret resolves a secret value from either an environment variable or file.
 // It supports values in the format:
@@ -24,6 +61,11 @@ func ResolveSecret(value, envVar, filePath string) (string, error) {
 
 	// Priority 3: File
 	if filePath != "" {
+		// Validate the file path for security
+		if err := validateFilePath(filePath); err != nil {
+			return "", err
+		}
+
 		data, err := os.ReadFile(filePath)
 		if err != nil {
 			return "", fmt.Errorf("reading secret file: %w", err)
@@ -79,6 +121,11 @@ func ValidateSecret(value, envVar, filePath string) error {
 
 	// Priority 3: File
 	if filePath != "" {
+		// Validate the file path for security
+		if err := validateFilePath(filePath); err != nil {
+			return fmt.Errorf("invalid file path: %w", err)
+		}
+
 		info, err := os.Stat(filePath)
 		if err != nil {
 			if os.IsNotExist(err) {

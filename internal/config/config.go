@@ -104,17 +104,22 @@ func (d *Duration) UnmarshalText(text []byte) error {
 // - TOML file parsing
 // - Environment variable overrides
 // - Secret resolution from env vars and files
+// LoadWithProvider reads and parses the configuration with provider context.
+// It includes:
+// - Loading the base config from a TOML file
+// - Environment variable overrides
+// - Secret resolution from env vars and files
 // - Validation, defaults and normalization
-func Load(path string) (*Config, error) {
+func LoadWithProvider(path string, provider string) (*Config, error) {
 	if path == "" {
-		return nil, errors.NewValidationError("config path cannot be empty")
+		return nil, errors.NewProviderError(provider, errors.ErrTypeValidation, "config path cannot be empty")
 	}
 
 	k := koanf.New(".")
 
 	// Load TOML config file
 	if err := k.Load(file.Provider(path), toml.Parser()); err != nil {
-		return nil, errors.WrapConfig(err, "loading config file")
+		return nil, errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "loading config file")
 	}
 
 	// Load environment variables with TSBRIDGE_ prefix
@@ -130,7 +135,7 @@ func Load(path string) (*Config, error) {
 		}
 		return s
 	}), nil); err != nil {
-		return nil, errors.WrapConfig(err, "loading environment variables")
+		return nil, errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "loading environment variables")
 	}
 
 	// Unmarshal into our config struct with proper decoding
@@ -147,31 +152,25 @@ func Load(path string) (*Config, error) {
 
 	decoder, err := mapstructure.NewDecoder(decoderConfig)
 	if err != nil {
-		return nil, errors.WrapConfig(err, "creating decoder")
+		return nil, errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "creating decoder")
 	}
 
 	// Use koanf's Raw() to get the data in the right format for mapstructure
 	if err := decoder.Decode(k.Raw()); err != nil {
-		return nil, errors.WrapConfig(err, "unmarshaling config")
+		return nil, errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "unmarshaling config")
 	}
 
-	// Resolve secrets after basic unmarshaling
-	if err := resolveSecrets(&cfg); err != nil {
-		return nil, errors.WrapConfig(err, "resolving secrets")
-	}
-
-	// Set defaults
-	cfg.SetDefaults()
-
-	// Normalize configuration (copy global values to services)
-	cfg.Normalize()
-
-	// Validate the configuration
-	if err := cfg.Validate(); err != nil {
+	// Apply standard configuration processing
+	if err := ProcessLoadedConfigWithProvider(&cfg, provider); err != nil {
 		return nil, err
 	}
 
 	return &cfg, nil
+}
+
+// - Validation, defaults and normalization
+func Load(path string) (*Config, error) {
+	return LoadWithProvider(path, "file")
 }
 
 // durationDecodeHook creates a decode hook for the Duration type
@@ -222,6 +221,8 @@ func resolveSecrets(cfg *Config) error {
 		fileVar     string
 		fallbackEnv string
 		fieldName   string
+		clearEnv    *string
+		clearFile   *string
 	}
 
 	secrets := []secretConfig{
@@ -231,6 +232,8 @@ func resolveSecrets(cfg *Config) error {
 			fileVar:     cfg.Tailscale.OAuthClientIDFile,
 			fallbackEnv: "TS_OAUTH_CLIENT_ID",
 			fieldName:   "OAuth client ID",
+			clearEnv:    &cfg.Tailscale.OAuthClientIDEnv,
+			clearFile:   &cfg.Tailscale.OAuthClientIDFile,
 		},
 		{
 			value:       &cfg.Tailscale.OAuthClientSecret,
@@ -238,6 +241,8 @@ func resolveSecrets(cfg *Config) error {
 			fileVar:     cfg.Tailscale.OAuthClientSecretFile,
 			fallbackEnv: "TS_OAUTH_CLIENT_SECRET",
 			fieldName:   "OAuth client secret",
+			clearEnv:    &cfg.Tailscale.OAuthClientSecretEnv,
+			clearFile:   &cfg.Tailscale.OAuthClientSecretFile,
 		},
 		{
 			value:       &cfg.Tailscale.AuthKey,
@@ -245,6 +250,8 @@ func resolveSecrets(cfg *Config) error {
 			fileVar:     cfg.Tailscale.AuthKeyFile,
 			fallbackEnv: "TS_AUTHKEY",
 			fieldName:   "auth key",
+			clearEnv:    &cfg.Tailscale.AuthKeyEnv,
+			clearFile:   &cfg.Tailscale.AuthKeyFile,
 		},
 	}
 
@@ -264,12 +271,49 @@ func resolveSecrets(cfg *Config) error {
 				return fmt.Errorf("resolving %s: %w", secret.fieldName, err)
 			}
 			*secret.value = resolved
+
+			// Clear the env/file fields after resolution
+			if secret.clearEnv != nil {
+				*secret.clearEnv = ""
+			}
+			if secret.clearFile != nil {
+				*secret.clearFile = ""
+			}
 		} else if *secret.value == "" {
 			// If no secrets are configured at all, check fallback env var
 			if val := os.Getenv(secret.fallbackEnv); val != "" {
 				*secret.value = val
 			}
 		}
+	}
+
+	return nil
+}
+
+// ProcessLoadedConfig applies the standard configuration processing pipeline:
+// resolves secrets, sets defaults, normalizes, and validates the configuration.
+// This function encapsulates the common pattern used by different configuration providers.
+func ProcessLoadedConfig(cfg *Config) error {
+	return ProcessLoadedConfigWithProvider(cfg, "unknown")
+}
+
+// ProcessLoadedConfigWithProvider applies the standard configuration processing pipeline
+// with provider context for better error messages.
+func ProcessLoadedConfigWithProvider(cfg *Config, provider string) error {
+	// Resolve secrets
+	if err := resolveSecrets(cfg); err != nil {
+		return errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "resolving secrets")
+	}
+
+	// Set defaults
+	cfg.SetDefaults()
+
+	// Normalize configuration (copy global values to services)
+	cfg.Normalize()
+
+	// Validate the configuration
+	if err := cfg.Validate(); err != nil {
+		return errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "validating config")
 	}
 
 	return nil

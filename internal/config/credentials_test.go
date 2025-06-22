@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveSecret(t *testing.T) {
@@ -447,6 +449,123 @@ func TestValidateSecretWithFallback(t *testing.T) {
 			// Check error message if expected
 			if err != nil && tt.wantMsg != "" && !strings.Contains(err.Error(), tt.wantMsg) {
 				t.Errorf("ValidateSecretWithFallback() error = %v, want error containing %v", err, tt.wantMsg)
+			}
+		})
+	}
+}
+
+// TestDirectoryTraversalVulnerability tests for directory traversal security issues
+func TestDirectoryTraversalVulnerability(t *testing.T) {
+	// Create a test file in a temporary directory
+	tmpDir := t.TempDir()
+	secretFile := filepath.Join(tmpDir, "secret.txt")
+	secretContent := "test-secret-value"
+	require.NoError(t, os.WriteFile(secretFile, []byte(secretContent), 0600))
+
+	// Create a sensitive file that should not be accessible
+	sensitiveFile := filepath.Join(tmpDir, "sensitive.txt")
+	sensitiveContent := "sensitive-data"
+	require.NoError(t, os.WriteFile(sensitiveFile, []byte(sensitiveContent), 0600))
+
+	tests := []struct {
+		name        string
+		filePath    string
+		shouldFail  bool
+		expectError string
+	}{
+		{
+			name:        "directory traversal with ..",
+			filePath:    tmpDir + "/subdir/../sensitive.txt",
+			shouldFail:  true,
+			expectError: "invalid file path",
+		},
+		{
+			name:        "directory traversal with multiple ..",
+			filePath:    tmpDir + "/a/b/../../sensitive.txt",
+			shouldFail:  true,
+			expectError: "invalid file path",
+		},
+		{
+			name:        "path with .. in the middle",
+			filePath:    tmpDir + "/subdir/../sensitive.txt",
+			shouldFail:  true,
+			expectError: "invalid file path",
+		},
+		{
+			name:       "valid absolute path",
+			filePath:   secretFile,
+			shouldFail: false,
+		},
+		{
+			name:        "relative path",
+			filePath:    "secret.txt",
+			shouldFail:  true,
+			expectError: "must be absolute",
+		},
+		{
+			name:       "empty path",
+			filePath:   "",
+			shouldFail: false, // Empty path is valid - it means no file configured
+		},
+		{
+			name:        "path with null bytes",
+			filePath:    "/tmp/secret\x00.txt",
+			shouldFail:  true,
+			expectError: "invalid file path",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ResolveSecret("", "", tt.filePath)
+
+			if tt.shouldFail {
+				if err == nil {
+					t.Errorf("Expected error for path %q but got none, result: %q", tt.filePath, result)
+				} else if tt.expectError != "" && !strings.Contains(err.Error(), tt.expectError) {
+					t.Errorf("Expected error containing %q but got %q", tt.expectError, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Unexpected error for path %q: %v", tt.filePath, err)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateFilePath tests the file path validation function
+func TestValidateFilePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		isValid bool
+	}{
+		// Valid paths
+		{"/absolute/path/to/file", "/absolute/path/to/file", true},
+		{"/var/lib/tsbridge/secret.txt", "/var/lib/tsbridge/secret.txt", true},
+		{"/etc/tsbridge/config.toml", "/etc/tsbridge/config.toml", true},
+
+		// Invalid paths
+		{"relative path", "relative/path", false},
+		{"path with ..", "/path/../etc/passwd", false},
+		{"path with .. at start", "../etc/passwd", false},
+		{"path with .. in middle", "/var/lib/../../../etc/passwd", false},
+		{"empty path", "", false},
+		{"path with null byte", "/path/to\x00/file", false},
+		{"just ..", "..", false},
+		{"just .", ".", false},
+		{"path ending with ..", "/path/to/..", false},
+		{"complex traversal", "/var/lib/tsbridge/../../../../../../etc/passwd", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateFilePath(tt.path)
+			if tt.isValid && err != nil {
+				t.Errorf("Expected valid path %q but got error: %v", tt.path, err)
+			} else if !tt.isValid && err == nil {
+				t.Errorf("Expected invalid path %q but no error returned", tt.path)
 			}
 		})
 	}

@@ -637,3 +637,121 @@ func TestServiceStartupError(t *testing.T) {
 		}
 	})
 }
+
+func TestProviderErrorWrapping(t *testing.T) {
+	tests := []struct {
+		name         string
+		provider     string
+		operation    string
+		baseErr      error
+		wrapFunc     func(error, string, string) error
+		wantType     ErrorType
+		wantContains []string
+	}{
+		{
+			name:      "file provider config error",
+			provider:  "file",
+			operation: "loading config",
+			baseErr:   errors.New("file not found"),
+			wrapFunc: func(err error, provider, operation string) error {
+				return WrapProviderError(err, provider, ErrTypeConfig, operation)
+			},
+			wantType:     ErrTypeConfig,
+			wantContains: []string{"file provider", "loading config", "file not found"},
+		},
+		{
+			name:      "docker provider resource error",
+			provider:  "docker",
+			operation: "connecting to Docker",
+			baseErr:   errors.New("connection refused"),
+			wrapFunc: func(err error, provider, operation string) error {
+				return WrapProviderError(err, provider, ErrTypeResource, operation)
+			},
+			wantType:     ErrTypeResource,
+			wantContains: []string{"docker provider", "connecting to Docker", "connection refused"},
+		},
+		{
+			name:      "validation error with provider context",
+			provider:  "docker",
+			operation: "parsing service config",
+			baseErr:   errors.New("invalid backend address"),
+			wrapFunc: func(err error, provider, operation string) error {
+				return WrapProviderError(err, provider, ErrTypeValidation, operation)
+			},
+			wantType:     ErrTypeValidation,
+			wantContains: []string{"docker provider", "parsing service config", "invalid backend address"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.wrapFunc(tt.baseErr, tt.provider, tt.operation)
+
+			// Check error type
+			if gotType := GetType(err); gotType != tt.wantType {
+				t.Errorf("GetType() = %v, want %v", gotType, tt.wantType)
+			}
+
+			// Check error message contains expected strings
+			errMsg := err.Error()
+			for _, want := range tt.wantContains {
+				if !contains(errMsg, want) {
+					t.Errorf("error message %q does not contain %q", errMsg, want)
+				}
+			}
+		})
+	}
+}
+
+func TestNewProviderError(t *testing.T) {
+	tests := []struct {
+		name      string
+		provider  string
+		errType   ErrorType
+		message   string
+		wantError string
+	}{
+		{
+			name:      "file provider config error",
+			provider:  "file",
+			errType:   ErrTypeConfig,
+			message:   "invalid TOML syntax",
+			wantError: "configuration error: : file provider: invalid TOML syntax",
+		},
+		{
+			name:      "docker provider validation error",
+			provider:  "docker",
+			errType:   ErrTypeValidation,
+			message:   "missing required label",
+			wantError: "validation error: : docker provider: missing required label",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewProviderError(tt.provider, tt.errType, tt.message)
+
+			if err.Error() != tt.wantError {
+				t.Errorf("error = %q, want %q", err.Error(), tt.wantError)
+			}
+
+			if GetType(err) != tt.errType {
+				t.Errorf("GetType() = %v, want %v", GetType(err), tt.errType)
+			}
+		})
+	}
+}
+
+// Helper function for string contains check
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsSubstring(s, substr))
+}
+
+func containsSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/jtdowney/tsbridge/internal/app"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
+	"github.com/jtdowney/tsbridge/internal/docker"
 	"log/slog"
 )
 
@@ -20,12 +21,29 @@ var version = "dev"
 // exitFunc allows tests to override os.Exit
 var exitFunc = os.Exit
 
+// registerProviders explicitly registers all available providers
+func registerProviders() {
+	// Register file provider
+	config.DefaultRegistry.Register("file", config.FileProviderFactory)
+
+	// Register docker provider
+	config.DefaultRegistry.Register("docker", config.DockerProviderFactory(func(opts config.DockerProviderOptions) (config.Provider, error) {
+		return docker.NewProvider(docker.Options{
+			DockerEndpoint: opts.DockerEndpoint,
+			LabelPrefix:    opts.LabelPrefix,
+		})
+	}))
+}
+
 func main() {
 	var (
-		configPath  = flag.String("config", "", "Path to TOML configuration file (required)")
-		verbose     = flag.Bool("verbose", false, "Enable debug logging")
-		help        = flag.Bool("help", false, "Show usage information")
-		versionFlag = flag.Bool("version", false, "Show version information")
+		configPath     = flag.String("config", "", "Path to TOML configuration file (required for file provider)")
+		provider       = flag.String("provider", "file", "Configuration provider (file or docker)")
+		dockerEndpoint = flag.String("docker-socket", "", "Docker socket endpoint (default: unix:///var/run/docker.sock)")
+		labelPrefix    = flag.String("docker-label-prefix", "tsbridge", "Docker label prefix for configuration")
+		verbose        = flag.Bool("verbose", false, "Enable debug logging")
+		help           = flag.Bool("help", false, "Show usage information")
+		versionFlag    = flag.Bool("version", false, "Show version information")
 	)
 
 	// Override flag.Usage to output to stdout instead of stderr
@@ -35,6 +53,9 @@ func main() {
 	}
 
 	flag.Parse()
+
+	// Register all available providers
+	registerProviders()
 
 	if *help {
 		flag.Usage()
@@ -57,29 +78,33 @@ func main() {
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
 
-	if *configPath == "" {
-		slog.Error("-config flag is required")
+	// Validate provider-specific flags
+	if *provider == "file" && *configPath == "" {
+		slog.Error("-config flag is required for file provider")
 		exitFunc(1)
 	}
 
-	slog.Debug("starting tsbridge", "version", version)
+	slog.Debug("starting tsbridge", "version", version, "provider", *provider)
 
-	// Load configuration
-	slog.Debug("loading config", "path", *configPath)
-	cfg, err := config.Load(*configPath)
+	// Create configuration provider
+	dockerOpts := config.DockerProviderOptions{
+		DockerEndpoint: *dockerEndpoint,
+		LabelPrefix:    *labelPrefix,
+	}
+
+	configProvider, err := config.NewProvider(*provider, *configPath, dockerOpts)
 	if err != nil {
-		slog.Error("failed to load config", "error", err)
+		slog.Error("failed to create configuration provider", "error", err)
 		exitFunc(1)
 	}
 
-	if *verbose {
-		// Print parsed config for debugging (with secrets redacted)
-		slog.Debug("parsed config", "config", cfg.String())
-	}
+	slog.Debug("loading configuration", "provider", configProvider.Name())
 
-	// Create the application
+	// Create the application with the provider
 	slog.Debug("creating application")
-	application, err := app.NewApp(cfg)
+	application, err := app.NewAppWithOptions(nil, app.Options{
+		Provider: configProvider,
+	})
 	if err != nil {
 		slog.Error("failed to create application", "error", err)
 		exitFunc(1)

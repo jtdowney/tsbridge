@@ -1,0 +1,114 @@
+services:
+  # tsbridge proxy with Docker label configuration
+  tsbridge:
+    image: ghcr.io/jtdowney/tsbridge:latest
+    command: 
+      - "--provider"
+      - "docker"
+      - "--verbose"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - tsbridge-state:/var/lib/tsbridge
+    networks:
+      - tsbridge-demo
+    labels:
+      # Tailscale OAuth configuration
+      - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
+      - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
+      - "tsbridge.tailscale.oauth_tags=tag:server,tag:proxy"
+      - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+      
+      # Global configuration
+      - "tsbridge.global.metrics_addr=:9090"
+      - "tsbridge.global.read_timeout=30s"
+      - "tsbridge.global.write_timeout=30s"
+      - "tsbridge.global.idle_timeout=120s"
+      - "tsbridge.global.retry_count=5"
+      - "tsbridge.global.retry_delay=5s"
+      - "tsbridge.global.access_log=true"
+    environment:
+      # Replace with your actual OAuth credentials
+      # You can get these from: https://login.tailscale.com/admin/settings/oauth
+      - TS_OAUTH_CLIENT_ID=${TS_OAUTH_CLIENT_ID}
+      - TS_OAUTH_CLIENT_SECRET=${TS_OAUTH_CLIENT_SECRET}
+    ports:
+      - "9090:9090"  # Metrics port
+
+  # Backend API service with tsbridge labels
+  api-backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    networks:
+      - tsbridge-demo
+    environment:
+      - SERVICE_NAME=api
+      - PORT=8080
+    labels:
+      # Enable tsbridge for this container
+      - "tsbridge.enabled=true"
+      - "tsbridge.service.name=api"
+      - "tsbridge.service.port=8080"
+      - "tsbridge.service.whois_enabled=true"
+      - "tsbridge.service.whois_timeout=1s"
+      # Add custom headers
+      - "tsbridge.service.upstream_headers.X-Service-Type=api"
+      - "tsbridge.service.downstream_headers.X-Frame-Options=DENY"
+    expose:
+      - "8080"
+
+  # Backend Web service with tsbridge labels
+  web-backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    networks:
+      - tsbridge-demo
+    environment:
+      - SERVICE_NAME=web
+      - PORT=8081
+    labels:
+      # Enable tsbridge for this container
+      - "tsbridge.enabled=true"
+      - "tsbridge.service.name=web"
+      - "tsbridge.service.backend_addr=web-backend:8081"
+      - "tsbridge.service.whois_enabled=true"
+      # Custom timeouts for this service
+      - "tsbridge.service.read_timeout=60s"
+      - "tsbridge.service.write_timeout=60s"
+      # Disable access logging for this service
+      - "tsbridge.service.access_log=false"
+      # Security headers
+      - "tsbridge.service.downstream_headers.Strict-Transport-Security=max-age=31536000; includeSubDomains"
+      - "tsbridge.service.downstream_headers.X-Content-Type-Options=nosniff"
+      - "tsbridge.service.remove_downstream=Server,X-Powered-By"
+
+  # Admin service with Tailscale Funnel enabled
+  admin-backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    networks:
+      - tsbridge-demo
+    environment:
+      - SERVICE_NAME=admin
+      - PORT=9000
+    labels:
+      # Enable tsbridge for this container
+      - "tsbridge.enabled=true"
+      - "tsbridge.service.name=admin"
+      - "tsbridge.service.port=9000"
+      - "tsbridge.service.whois_enabled=true"
+      #- "tsbridge.service.funnel_enabled=true"  # Expose via Tailscale Funnel
+      - "tsbridge.service.ephemeral=false"
+      # Retry configuration
+      - "tsbridge.service.retry_count=3"
+      - "tsbridge.service.retry_delay=2s"
+
+volumes:
+  tsbridge-state:
+    driver: local
+
+networks:
+  tsbridge-demo:
+    driver: bridge

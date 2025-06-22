@@ -1908,3 +1908,72 @@ backend_addr = "localhost:8080"
 		testutil.AssertFalse(t, cfg.Services[0].Ephemeral) // Should default to false
 	})
 }
+
+func TestProcessLoadedConfig(t *testing.T) {
+	t.Run("success - processes config through all stages", func(t *testing.T) {
+		cfg := &Config{
+			Tailscale: Tailscale{
+				AuthKeyFile: filepath.Join(t.TempDir(), "authkey"),
+			},
+			Global: Global{
+				// No need to set anything - defaults will be applied
+			},
+			Services: []Service{
+				{
+					Name:        "test",
+					BackendAddr: "localhost:8080", // Provide a valid backend
+				},
+			},
+		}
+
+		// Write auth key file
+		testutil.AssertNoError(t, os.WriteFile(cfg.Tailscale.AuthKeyFile, []byte("test-auth-key"), 0600))
+
+		err := ProcessLoadedConfig(cfg)
+		testutil.AssertNoError(t, err)
+
+		// Verify secrets were resolved
+		if cfg.Tailscale.AuthKey != "test-auth-key" {
+			t.Errorf("expected AuthKey to be resolved to 'test-auth-key', got %q", cfg.Tailscale.AuthKey)
+		}
+		if cfg.Tailscale.AuthKeyFile != "" {
+			t.Errorf("expected AuthKeyFile to be cleared, got %q", cfg.Tailscale.AuthKeyFile)
+		}
+
+		// Verify defaults were set (ReadTimeout should have a default)
+		if cfg.Global.ReadTimeout.Duration == 0 {
+			t.Error("expected Global.ReadTimeout to have default value")
+		}
+	})
+
+	t.Run("error - secret resolution fails", func(t *testing.T) {
+		cfg := &Config{
+			Tailscale: Tailscale{
+				AuthKeyFile: "/nonexistent/file",
+			},
+		}
+
+		err := ProcessLoadedConfig(cfg)
+		testutil.AssertError(t, err)
+		if !strings.Contains(err.Error(), "resolving secrets") {
+			t.Errorf("expected error to contain 'resolving secrets', got %v", err)
+		}
+	})
+
+	t.Run("error - validation fails", func(t *testing.T) {
+		cfg := &Config{
+			Services: []Service{
+				{
+					Name:        "test",
+					BackendAddr: "", // No backend specified and no global default - will fail validation
+				},
+			},
+		}
+
+		err := ProcessLoadedConfig(cfg)
+		testutil.AssertError(t, err)
+		if !strings.Contains(err.Error(), "validating config") {
+			t.Errorf("expected error to contain 'validating config', got %v", err)
+		}
+	})
+}

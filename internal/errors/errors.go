@@ -320,3 +320,53 @@ func AsServiceStartupError(err error) (*ServiceStartupError, bool) {
 	}
 	return nil, false
 }
+
+// ProviderError represents an error from a configuration provider.
+// It includes the provider name for context in error messages.
+type ProviderError struct {
+	Provider string
+	Type     ErrorType
+	Message  string
+	Cause    error
+}
+
+// Error implements the error interface
+func (e *ProviderError) Error() string {
+	if e.Cause != nil {
+		return e.Provider + " provider: " + e.Message + ": " + e.Cause.Error()
+	}
+	return e.Provider + " provider: " + e.Message
+}
+
+// Unwrap returns the underlying error
+func (e *ProviderError) Unwrap() error {
+	return e.Cause
+}
+
+// NewProviderError creates a new provider error without a cause
+func NewProviderError(provider string, errType ErrorType, message string) error {
+	return &Error{
+		Type: errType,
+		Err: &ProviderError{
+			Provider: provider,
+			Type:     errType,
+			Message:  message,
+		},
+	}
+}
+
+// WrapProviderError wraps an error with provider context
+func WrapProviderError(err error, provider string, errType ErrorType, operation string) error {
+	if err == nil {
+		return nil
+	}
+	return &Error{
+		Type: errType,
+		Err: &ProviderError{
+			Provider: provider,
+			Type:     errType,
+			Message:  operation,
+			Cause:    err,
+		},
+	}
+}
