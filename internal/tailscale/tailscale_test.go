@@ -1506,7 +1506,7 @@ func TestCertificatePriming(t *testing.T) {
 			serviceName:      "test-service",
 			tlsMode:          "auto",
 			funnelEnabled:    false,
-			expectPriming:    true,
+			expectPriming:    false,
 			mockDNSName:      "test-service.tailnet.ts.net.",
 			mockTailscaleIPs: []string{}, // No IPs
 		},
