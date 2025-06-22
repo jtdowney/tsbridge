@@ -172,11 +172,17 @@ func TestRegisterProviders(t *testing.T) {
 	testutil.AssertNotNil(t, fileProvider)
 	testutil.AssertEqual(t, "file", fileProvider.Name())
 
-	// Verify docker provider factory is registered (we can't test actual creation without Docker)
-	_, err = testRegistry.Get("docker", config.DockerProviderOptions{})
-	// Should get an error about Docker connection, not about provider not being registered
-	testutil.AssertNotNil(t, err)
+	// Verify docker provider factory is registered
+	provider, err := testRegistry.Get("docker", config.DockerProviderOptions{})
+
+	// The important thing is that the provider is registered, not whether it succeeds
+	// In CI environments, Docker might be available and creation could succeed
 	if err != nil {
+		// If there's an error, it should NOT be about the provider not being registered
 		testutil.AssertNotContains(t, err.Error(), "provider not registered")
+	} else {
+		// If it succeeds, verify we got a valid provider
+		testutil.AssertNotNil(t, provider)
+		testutil.AssertEqual(t, "docker", provider.Name())
 	}
 }
