@@ -955,6 +955,13 @@ func TestProvider_Load(t *testing.T) {
 	})
 
 	t.Run("self container not found", func(t *testing.T) {
+		// Mock readFile to simulate hostname reading failure
+		oldReadFile := readFile
+		readFile = func(name string) ([]byte, error) {
+			return nil, fmt.Errorf("file not found")
+		}
+		defer func() { readFile = oldReadFile }()
+
 		mockClient := newMockDockerClient()
 		// No tsbridge container in list - only service containers
 		mockClient.containers = []types.Container{
