@@ -298,6 +298,10 @@ func (p *Provider) handleContainerEvent(ctx context.Context, configCh chan<- *co
 
 		select {
 		case configCh <- newConfig:
+			// Update lastConfig after successfully sending the new config
+			p.mu.Lock()
+			p.lastConfig = newConfig
+			p.mu.Unlock()
 		case <-ctx.Done():
 			return true
 		}

@@ -1339,6 +1339,80 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			// Good, no unnecessary update sent
 		}
 	})
+
+	t.Run("lastConfig is updated after config change notification", func(t *testing.T) {
+		mockClient := newMockDockerClient()
+
+		// Initial state: only tsbridge container
+		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
+		mockClient.containers = []types.Container{tsbridgeContainer}
+
+		provider := &Provider{
+			client:      mockClient,
+			labelPrefix: "tsbridge",
+		}
+
+		// Load initial config
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		initialCfg, err := provider.Load(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, initialCfg)
+		assert.Len(t, initialCfg.Services, 0)
+
+		// Verify lastConfig is set to initial config
+		lastCfg := provider.getLastConfig()
+		assert.Equal(t, initialCfg, lastCfg)
+
+		configCh, err := provider.Watch(ctx)
+		require.NoError(t, err)
+
+		// Wait for watch goroutine to start
+		time.Sleep(50 * time.Millisecond)
+
+		// Add a new service container
+		newService := createServiceContainer("svc1", "api", "localhost:8080")
+		mockClient.mu.Lock()
+		mockClient.containers = append(mockClient.containers, newService)
+		mockClient.mu.Unlock()
+
+		// Send container start event
+		startEvent := events.Message{
+			Type:   "container",
+			Action: "start",
+			Actor: events.Actor{
+				ID: "svc1",
+				Attributes: map[string]string{
+					"name": "api",
+				},
+			},
+		}
+
+		// Get lastConfig before sending event
+		configBeforeEvent := provider.getLastConfig()
+		assert.Len(t, configBeforeEvent.Services, 0)
+
+		// Send event
+		mockClient.sendEvent(startEvent)
+
+		// Should receive new configuration
+		select {
+		case newCfg := <-configCh:
+			require.NotNil(t, newCfg)
+			assert.Len(t, newCfg.Services, 1)
+			assert.Equal(t, "api", newCfg.Services[0].Name)
+
+			// Verify lastConfig was updated after sending the config
+			time.Sleep(10 * time.Millisecond) // Small delay to ensure update happens
+			updatedLastCfg := provider.getLastConfig()
+			assert.Equal(t, newCfg, updatedLastCfg)
+			assert.Len(t, updatedLastCfg.Services, 1)
+			assert.NotEqual(t, configBeforeEvent, updatedLastCfg)
+		case <-time.After(100 * time.Millisecond):
+			t.Fatal("Expected configuration update after container start event")
+		}
+	})
 }
 
 func TestProvider_SimpleMethods(t *testing.T) {
