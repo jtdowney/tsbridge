@@ -7,7 +7,7 @@ toolchain go1.24.4
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/docker/docker v27.4.1+incompatible
-	github.com/go-viper/mapstructure/v2 v2.2.1
+	github.com/go-viper/mapstructure/v2 v2.3.0
 	github.com/google/uuid v1.6.0
 	github.com/knadh/koanf/parsers/toml v0.1.0
 	github.com/knadh/koanf/providers/env v1.1.0
