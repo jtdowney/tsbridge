@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/errors"
 )
@@ -176,7 +176,7 @@ func (p *labelParser) getHeaders(key string) map[string]string {
 }
 
 // parseGlobalConfig parses global configuration from container labels
-func (p *Provider) parseGlobalConfig(container *types.Container, cfg *config.Config) error {
+func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.Config) error {
 	parser := newLabelParser(container.Labels, p.labelPrefix)
 
 	// Parse Tailscale configuration
@@ -216,7 +216,7 @@ func (p *Provider) parseGlobalConfig(container *types.Container, cfg *config.Con
 }
 
 // parseServiceConfig parses service configuration from container labels
-func (p *Provider) parseServiceConfig(container types.Container) (*config.Service, error) {
+func (p *Provider) parseServiceConfig(container container.Summary) (*config.Service, error) {
 	parser := newLabelParser(container.Labels, p.labelPrefix)
 	svc := &config.Service{}
 
@@ -288,7 +288,7 @@ func (p *Provider) parseServiceConfig(container types.Container) (*config.Servic
 }
 
 // getContainerAddress returns the address to reach the container
-func (p *Provider) getContainerAddress(container types.Container) string {
+func (p *Provider) getContainerAddress(container container.Summary) string {
 	// If container is on the same network, use container name
 	// This works in Docker networks where containers can reach each other by name
 	if len(container.Names) > 0 {

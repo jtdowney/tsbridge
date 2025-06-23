@@ -21,7 +21,7 @@ import (
 
 // DockerClient defines the methods required from a Docker client to be used by the provider
 type DockerClient interface {
-	ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error)
+	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
 	Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error)
 	Ping(ctx context.Context) (types.Ping, error)
 	Close() error
@@ -331,7 +331,7 @@ func (p *Provider) getLastConfig() *config.Config {
 }
 
 // findSelfContainer finds the tsbridge container itself
-func (p *Provider) findSelfContainer(ctx context.Context) (*types.Container, error) {
+func (p *Provider) findSelfContainer(ctx context.Context) (*container.Summary, error) {
 	// First try to find by hostname (which is the container ID in Docker)
 	hostname, err := p.getHostname()
 	if err == nil {
@@ -362,7 +362,7 @@ func (p *Provider) findSelfContainer(ctx context.Context) (*types.Container, err
 }
 
 // findServiceContainers finds all containers with tsbridge.enabled=true
-func (p *Provider) findServiceContainers(ctx context.Context) ([]types.Container, error) {
+func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summary, error) {
 	opts := container.ListOptions{
 		Filters: filters.NewArgs(
 			filters.Arg("label", fmt.Sprintf("%s.enabled=true", p.labelPrefix)),
@@ -374,7 +374,7 @@ func (p *Provider) findServiceContainers(ctx context.Context) ([]types.Container
 }
 
 // getContainerByID gets a container by ID
-func (p *Provider) getContainerByID(ctx context.Context, id string) (*types.Container, error) {
+func (p *Provider) getContainerByID(ctx context.Context, id string) (*container.Summary, error) {
 	opts := container.ListOptions{
 		Filters: filters.NewArgs(
 			filters.Arg("id", id),

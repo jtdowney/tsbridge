@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/container"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -528,7 +528,7 @@ func TestParseServiceConfigBackendValidation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			container := types.Container{
+			container := container.Summary{
 				Names:  []string{"/test-container"},
 				Labels: tt.labels,
 			}

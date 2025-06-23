@@ -55,13 +55,13 @@ func TestParseServiceConfig(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		container types.Container
+		container container.Summary
 		wantErr   bool
 		validate  func(t *testing.T, svc *config.Service)
 	}{
 		{
 			name: "basic service",
-			container: types.Container{
+			container: container.Summary{
 				Names: []string{"/test-api"},
 				Labels: map[string]string{
 					"tsbridge.enabled":              "true",
@@ -76,7 +76,7 @@ func TestParseServiceConfig(t *testing.T) {
 		},
 		{
 			name: "service with all options",
-			container: types.Container{
+			container: container.Summary{
 				Names: []string{"/test-web"},
 				Labels: map[string]string{
 					"tsbridge.enabled":                           "true",
@@ -107,13 +107,13 @@ func TestParseServiceConfig(t *testing.T) {
 		},
 		{
 			name: "service with port inference",
-			container: types.Container{
+			container: container.Summary{
 				Names: []string{"/test-app"},
 				Labels: map[string]string{
 					"tsbridge.enabled":      "true",
 					"tsbridge.service.port": "3000",
 				},
-				Ports: []types.Port{
+				Ports: []container.Port{
 					{PrivatePort: 3000, PublicPort: 0},
 				},
 			},
@@ -124,7 +124,7 @@ func TestParseServiceConfig(t *testing.T) {
 		},
 		{
 			name: "service without backend address",
-			container: types.Container{
+			container: container.Summary{
 				Names: []string{"/test-fail"},
 				Labels: map[string]string{
 					"tsbridge.enabled":      "true",
@@ -159,7 +159,7 @@ func TestParseGlobalConfig(t *testing.T) {
 		t.Setenv("TS_OAUTH_CLIENT_ID", "test-client-id")
 		t.Setenv("TS_OAUTH_CLIENT_SECRET", "test-client-secret")
 
-		container := &types.Container{
+		container := &container.Summary{
 			Labels: map[string]string{
 				"tsbridge.tailscale.oauth_client_id_env":     "TS_OAUTH_CLIENT_ID",
 				"tsbridge.tailscale.oauth_client_secret_env": "TS_OAUTH_CLIENT_SECRET",
@@ -200,7 +200,7 @@ func TestParseGlobalConfig(t *testing.T) {
 		t.Setenv("TS_OAUTH_CLIENT_ID", "fallback-client-id")
 		t.Setenv("TS_OAUTH_CLIENT_SECRET", "fallback-client-secret")
 
-		container := &types.Container{
+		container := &container.Summary{
 			Labels: map[string]string{
 				// No oauth env labels - should fallback to standard env vars
 				"tsbridge.tailscale.state_dir": "/var/lib/tsbridge",
@@ -304,12 +304,12 @@ func TestGetContainerAddress(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		container types.Container
+		container container.Summary
 		want      string
 	}{
 		{
 			name: "with names",
-			container: types.Container{
+			container: container.Summary{
 				Names: []string{"/my-container"},
 				ID:    "abc123def456",
 			},
@@ -317,7 +317,7 @@ func TestGetContainerAddress(t *testing.T) {
 		},
 		{
 			name: "without names",
-			container: types.Container{
+			container: container.Summary{
 				ID: "abc123def456789",
 			},
 			want: "abc123def456",
@@ -375,14 +375,14 @@ func TestDockerProviderErrorHandling(t *testing.T) {
 func TestDockerLabelParsingErrors(t *testing.T) {
 	tests := []struct {
 		name         string
-		container    types.Container
+		container    container.Summary
 		wantErr      bool
 		wantErrType  errors.ErrorType
 		wantContains []string
 	}{
 		{
 			name: "missing service name",
-			container: types.Container{
+			container: container.Summary{
 				ID:    "test-container",
 				Names: []string{},
 				Labels: map[string]string{
@@ -396,7 +396,7 @@ func TestDockerLabelParsingErrors(t *testing.T) {
 		},
 		{
 			name: "missing backend address",
-			container: types.Container{
+			container: container.Summary{
 				ID:    "test-container",
 				Names: []string{"/test-service"},
 				Labels: map[string]string{
@@ -734,7 +734,7 @@ func (m *mockFileInfo) Sys() interface{}   { return nil }
 
 // mockDockerClient is a mock implementation of DockerClient for testing
 type mockDockerClient struct {
-	containers       []types.Container
+	containers       []container.Summary
 	eventsChan       chan events.Message
 	errsChan         chan error
 	listError        error
@@ -754,7 +754,7 @@ func newMockDockerClient() *mockDockerClient {
 	}
 }
 
-func (m *mockDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]types.Container, error) {
+func (m *mockDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
 	if m.listError != nil {
 		return nil, m.listError
 	}
@@ -762,7 +762,7 @@ func (m *mockDockerClient) ContainerList(ctx context.Context, options container.
 	defer m.mu.Unlock()
 
 	// Apply filters if any
-	var result []types.Container
+	var result []container.Summary
 
 	// Get filters
 	labelFilters := options.Filters.Get("label")
@@ -884,11 +884,11 @@ func (m *mockDockerClient) sendError(err error) {
 }
 
 // Helper function to create test containers
-func createTestContainer(id, name string, labels map[string]string) types.Container {
+func createTestContainer(id, name string, labels map[string]string) container.Summary {
 	if labels == nil {
 		labels = make(map[string]string)
 	}
-	return types.Container{
+	return container.Summary{
 		ID:     id,
 		Names:  []string{"/" + name},
 		Labels: labels,
@@ -897,7 +897,7 @@ func createTestContainer(id, name string, labels map[string]string) types.Contai
 }
 
 // Helper function to create tsbridge self container
-func createTsbridgeContainer(id string) types.Container {
+func createTsbridgeContainer(id string) container.Summary {
 	// Note: tsbridge self container should NOT have tsbridge.enabled=true
 	// as it's not a service container
 	labels := map[string]string{
@@ -905,7 +905,7 @@ func createTsbridgeContainer(id string) types.Container {
 		"tsbridge.tailscale.oauth_client_secret": "secret-456",
 		"tsbridge.tailscale.hostname":            "test-bridge",
 	}
-	return types.Container{
+	return container.Summary{
 		ID:     id,
 		Names:  []string{"/" + "tsbridge"},
 		Labels: labels,
@@ -914,7 +914,7 @@ func createTsbridgeContainer(id string) types.Container {
 }
 
 // Helper function to create service container
-func createServiceContainer(id, name, backendAddr string) types.Container {
+func createServiceContainer(id, name, backendAddr string) container.Summary {
 	return createTestContainer(id, name, map[string]string{
 		"tsbridge.enabled":              "true",
 		"tsbridge.service.name":         name,
@@ -931,7 +931,7 @@ func TestProvider_Load(t *testing.T) {
 		service1 := createServiceContainer("svc1", "api", "localhost:8080")
 		service2 := createServiceContainer("svc2", "web", "localhost:3000")
 
-		mockClient.containers = []types.Container{tsbridgeContainer, service1, service2}
+		mockClient.containers = []container.Summary{tsbridgeContainer, service1, service2}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -964,7 +964,7 @@ func TestProvider_Load(t *testing.T) {
 
 		mockClient := newMockDockerClient()
 		// No tsbridge container in list - only service containers
-		mockClient.containers = []types.Container{
+		mockClient.containers = []container.Summary{
 			createServiceContainer("svc1", "api", "localhost:8080"),
 		}
 
@@ -1002,7 +1002,7 @@ func TestProvider_Load(t *testing.T) {
 
 		// Only tsbridge container, no services
 		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
-		mockClient.containers = []types.Container{tsbridgeContainer}
+		mockClient.containers = []container.Summary{tsbridgeContainer}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1028,7 +1028,7 @@ func TestProvider_Load(t *testing.T) {
 			"tsbridge.service.name": "disabled",
 		})
 
-		mockClient.containers = []types.Container{tsbridgeContainer, enabledService, disabledService}
+		mockClient.containers = []container.Summary{tsbridgeContainer, enabledService, disabledService}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1054,7 +1054,7 @@ func TestProvider_Load(t *testing.T) {
 		})
 		goodService := createServiceContainer("svc2", "good", "localhost:8080")
 
-		mockClient.containers = []types.Container{tsbridgeContainer, badService, goodService}
+		mockClient.containers = []container.Summary{tsbridgeContainer, badService, goodService}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1078,7 +1078,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 
 		// Initial state: only tsbridge container
 		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
-		mockClient.containers = []types.Container{tsbridgeContainer}
+		mockClient.containers = []container.Summary{tsbridgeContainer}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1137,7 +1137,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 		// Initial state: tsbridge + service container
 		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
 		serviceContainer := createServiceContainer("svc1", "api", "localhost:8080")
-		mockClient.containers = []types.Container{tsbridgeContainer, serviceContainer}
+		mockClient.containers = []container.Summary{tsbridgeContainer, serviceContainer}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1159,7 +1159,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 
 		// Remove service container and send stop event
 		mockClient.mu.Lock()
-		mockClient.containers = []types.Container{tsbridgeContainer}
+		mockClient.containers = []container.Summary{tsbridgeContainer}
 		mockClient.mu.Unlock()
 
 		stopEvent := events.Message{
@@ -1189,7 +1189,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 
 	t.Run("events stream error handling", func(t *testing.T) {
 		mockClient := newMockDockerClient()
-		mockClient.containers = []types.Container{createTsbridgeContainer("tsbridge123")}
+		mockClient.containers = []container.Summary{createTsbridgeContainer("tsbridge123")}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1228,7 +1228,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 
 	t.Run("context cancellation closes channel", func(t *testing.T) {
 		mockClient := newMockDockerClient()
-		mockClient.containers = []types.Container{createTsbridgeContainer("tsbridge123")}
+		mockClient.containers = []container.Summary{createTsbridgeContainer("tsbridge123")}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1259,7 +1259,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 
 	t.Run("non-container events are ignored", func(t *testing.T) {
 		mockClient := newMockDockerClient()
-		mockClient.containers = []types.Container{createTsbridgeContainer("tsbridge123")}
+		mockClient.containers = []container.Summary{createTsbridgeContainer("tsbridge123")}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1297,7 +1297,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 
 		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
 		serviceContainer := createServiceContainer("svc1", "api", "localhost:8080")
-		mockClient.containers = []types.Container{tsbridgeContainer, serviceContainer}
+		mockClient.containers = []container.Summary{tsbridgeContainer, serviceContainer}
 
 		provider := &Provider{
 			client:      mockClient,
@@ -1345,7 +1345,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 
 		// Initial state: only tsbridge container
 		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
-		mockClient.containers = []types.Container{tsbridgeContainer}
+		mockClient.containers = []container.Summary{tsbridgeContainer}
 
 		provider := &Provider{
 			client:      mockClient,
