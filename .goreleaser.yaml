@@ -31,8 +31,8 @@ archives:
 
 dockers:
   - image_templates:
-      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}"
-      - "ghcr.io/jtdowney/tsbridge:latest"
+      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-amd64"
+      - "ghcr.io/jtdowney/tsbridge:latest-amd64"
     dockerfile: Dockerfile
     goos: linux
     goarch: amd64
@@ -47,6 +47,33 @@ dockers:
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.licenses=MIT"
+  - image_templates:
+      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-arm64"
+      - "ghcr.io/jtdowney/tsbridge:latest-arm64"
+    dockerfile: Dockerfile
+    goos: linux
+    goarch: arm64
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Tailscale-based reverse proxy manager"
+      - "--label=org.opencontainers.image.url=https://github.com/jtdowney/tsbridge"
+      - "--label=org.opencontainers.image.source=https://github.com/jtdowney/tsbridge"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "ghcr.io/jtdowney/tsbridge:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-amd64"
+      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/jtdowney/tsbridge:latest"
+    image_templates:
+      - "ghcr.io/jtdowney/tsbridge:latest-amd64"
+      - "ghcr.io/jtdowney/tsbridge:latest-arm64"
 
 checksum:
   name_template: 'checksums.txt'
