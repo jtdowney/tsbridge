@@ -8,48 +8,71 @@ import (
 	"time"
 
 	"log/slog"
+
+	"github.com/hashicorp/golang-lru/v2/expirable"
 	"tailscale.com/client/tailscale/apitype"
 )
 
-// WhoisClient is an interface for performing Tailscale WhoIs lookups
 type WhoisClient interface {
 	WhoIs(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error)
 }
 
-// Whois returns a middleware that performs Tailscale identity lookups
-// and adds headers with user information when enabled
-func Whois(client WhoisClient, enabled bool, timeout time.Duration) func(http.Handler) http.Handler {
+type WhoisCache struct {
+	cache *expirable.LRU[string, *apitype.WhoIsResponse]
+}
+
+func NewWhoisCache(size int, ttl time.Duration) *WhoisCache {
+	cache := expirable.NewLRU[string, *apitype.WhoIsResponse](size, nil, ttl)
+	return &WhoisCache{cache: cache}
+}
+
+func Whois(client WhoisClient, enabled bool, timeout time.Duration, cache *WhoisCache) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// If whois is disabled, skip to next handler
 			if !enabled {
 				next.ServeHTTP(w, r)
 				return
 			}
 
-			// Perform lookup and add headers
-			performWhoisLookup(client, timeout, r)
+			performWhoisLookup(client, timeout, r, cache)
 
-			// Continue to next handler
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
-// performWhoisLookup performs the whois lookup and adds headers to the request
-func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Request) {
-	// Create context with timeout for whois lookup
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	defer cancel()
+func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Request, cache *WhoisCache) {
+	var resp *apitype.WhoIsResponse
+	var err error
 
-	// Perform whois lookup
-	resp, err := client.WhoIs(ctx, r.RemoteAddr)
-	if err != nil {
-		logWhoisError(err, r.RemoteAddr, timeout)
-		return
+	if cache != nil {
+		if cached, ok := cache.cache.Get(r.RemoteAddr); ok {
+			resp = cached
+		} else {
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+
+			resp, err = client.WhoIs(ctx, r.RemoteAddr)
+			if err != nil {
+				logWhoisError(err, r.RemoteAddr, timeout)
+				return
+			}
+
+			if resp != nil {
+				cache.cache.Add(r.RemoteAddr, resp)
+			}
+		}
+	} else {
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+
+		resp, err = client.WhoIs(ctx, r.RemoteAddr)
+		if err != nil {
+			logWhoisError(err, r.RemoteAddr, timeout)
+			return
+		}
 	}
 
-	// Add headers if we got a response
 	if resp != nil {
 		addUserHeaders(r, resp)
 		addAddressHeaders(r, resp)

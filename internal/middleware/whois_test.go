@@ -131,7 +131,7 @@ func TestWhoisMiddleware(t *testing.T) {
 			})
 
 			// Create middleware
-			middleware := Whois(whoisClient, tt.enabled, tt.timeout)
+			middleware := Whois(whoisClient, tt.enabled, tt.timeout, nil)
 			handler := middleware(nextHandler)
 
 			// Create test request
@@ -162,5 +162,58 @@ func TestWhoisMiddleware(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestWhoisCaching(t *testing.T) {
+	lookupCount := 0
+	whoisFunc := func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+		lookupCount++
+		return &apitype.WhoIsResponse{
+			UserProfile: &tailcfg.UserProfile{
+				LoginName:   "user@example.com",
+				DisplayName: "Test User",
+			},
+		}, nil
+	}
+
+	whoisClient := &MockWhoisClient{
+		WhoIsFunc: whoisFunc,
+	}
+
+	cache := NewWhoisCache(100, 5*time.Minute)
+	middleware := Whois(whoisClient, true, 100*time.Millisecond, cache)
+
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := middleware(nextHandler)
+
+	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req1.RemoteAddr = "100.64.1.2:12345"
+	w1 := httptest.NewRecorder()
+	handler.ServeHTTP(w1, req1)
+
+	if lookupCount != 1 {
+		t.Errorf("First request: lookupCount = %d, want 1", lookupCount)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2.RemoteAddr = "100.64.1.2:12345"
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req2)
+
+	if lookupCount != 1 {
+		t.Errorf("Second request: lookupCount = %d, want 1 (should use cache)", lookupCount)
+	}
+
+	req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req3.RemoteAddr = "100.64.1.3:12345"
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, req3)
+
+	if lookupCount != 2 {
+		t.Errorf("Third request: lookupCount = %d, want 2", lookupCount)
 	}
 }

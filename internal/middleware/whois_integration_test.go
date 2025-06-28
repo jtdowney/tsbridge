@@ -46,7 +46,7 @@ func TestWhois_PreservesAllHeaders(t *testing.T) {
 	}
 
 	// Create middleware
-	m := middleware.Whois(client, true, 0)
+	m := middleware.Whois(client, true, 0, nil)
 
 	// Create a test handler that captures the headers
 	var capturedHeaders http.Header
@@ -128,7 +128,7 @@ func TestWhois_HandlesPartialResponse(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			client := &mockWhoisClient{response: tc.response}
-			m := middleware.Whois(client, true, 0)
+			m := middleware.Whois(client, true, 0, nil)
 
 			var capturedHeaders http.Header
 			handler := m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

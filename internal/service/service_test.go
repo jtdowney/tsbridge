@@ -576,7 +576,7 @@ func TestServiceWithWhoisMiddleware(t *testing.T) {
 			// If whois is enabled, wrap with middleware
 			if tt.whoisEnabled {
 				whoisAdapter := &MockWhoisAdapter{server: mockTsnetServer}
-				handler = middleware.Whois(whoisAdapter, true, 100*time.Millisecond)(handler)
+				handler = middleware.Whois(whoisAdapter, true, 100*time.Millisecond, nil)(handler)
 			}
 
 			// Create test request

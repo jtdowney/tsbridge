@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
@@ -25,6 +26,7 @@ type Registry struct {
 	tsServer         *tailscale.Server
 	services         []*Service
 	metricsCollector *metrics.Collector
+	whoisCache       *middleware.WhoisCache
 	mu               sync.Mutex
 }
 
@@ -36,15 +38,17 @@ type Service struct {
 	server           *http.Server
 	tsServer         *tailscale.Server // Reference to Tailscale server for WhoIs
 	metricsCollector *metrics.Collector
+	whoisCache       *middleware.WhoisCache
 	handler          http.Handler // Pre-created handler to catch config errors early
 }
 
 // NewRegistry creates a new service registry
 func NewRegistry(cfg *config.Config, tsServer *tailscale.Server) *Registry {
 	return &Registry{
-		config:   cfg,
-		tsServer: tsServer,
-		services: make([]*Service, 0, len(cfg.Services)),
+		config:     cfg,
+		tsServer:   tsServer,
+		services:   make([]*Service, 0, len(cfg.Services)),
+		whoisCache: middleware.NewWhoisCache(1000, 5*time.Minute),
 	}
 }
 
@@ -106,6 +110,7 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 		listener:         listener,
 		tsServer:         r.tsServer,
 		metricsCollector: r.metricsCollector,
+		whoisCache:       r.whoisCache,
 	}
 
 	// Create handler early to catch configuration errors
@@ -192,7 +197,8 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 			}
 			// Create a whois client adapter for the tsnet server
 			whoisClient := tailscale.NewWhoisClientAdapter(serviceServer)
-			handler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout)(handler)
+			// Use the whois middleware with cache
+			httpHandler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, s.whoisCache)(httpHandler)
 		}
 	}
 
