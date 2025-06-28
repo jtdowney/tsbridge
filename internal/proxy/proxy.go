@@ -279,6 +279,8 @@ func createProxyTransport(backendAddr string, config *TransportConfig) *http.Tra
 		},
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          100,
+		MaxConnsPerHost:       50,
+		MaxIdleConnsPerHost:   10,
 		IdleConnTimeout:       config.IdleConnTimeout,
 		TLSHandshakeTimeout:   config.TLSHandshakeTimeout,
 		ExpectContinueTimeout: config.ExpectContinueTimeout,

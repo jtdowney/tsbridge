@@ -899,6 +899,31 @@ func TestImprovedTimeoutDetection(t *testing.T) {
 	}
 }
 
+func TestTransportConnectionPoolLimits(t *testing.T) {
+	// Create a test backend server
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer backend.Close()
+
+	// Create proxy handler
+	handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+	require.NoError(t, err)
+
+	// Get the httpHandler to access the transport
+	h := handler.(*httpHandler)
+	transport := h.proxy.Transport.(*http.Transport)
+
+	// Verify connection pool limits are set
+	assert.Equal(t, 50, transport.MaxConnsPerHost, "MaxConnsPerHost should be limited to 50")
+	assert.Equal(t, 10, transport.MaxIdleConnsPerHost, "MaxIdleConnsPerHost should be limited to 10")
+
+	// Verify other transport settings are still configured
+	assert.Equal(t, 100, transport.MaxIdleConns, "MaxIdleConns should remain at 100")
+	assert.NotNil(t, transport.DialContext, "DialContext should be configured")
+}
+
 func TestNewHandlerWithHeaders(t *testing.T) {
 	tests := []struct {
 		name                string
