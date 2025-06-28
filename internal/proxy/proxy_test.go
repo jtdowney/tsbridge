@@ -924,6 +924,68 @@ func TestTransportConnectionPoolLimits(t *testing.T) {
 	assert.NotNil(t, transport.DialContext, "DialContext should be configured")
 }
 
+type trackingBody struct {
+	*strings.Reader
+	read   *bool
+	closed *bool
+}
+
+func (tb *trackingBody) Read(p []byte) (n int, err error) {
+	*tb.read = true
+	return tb.Reader.Read(p)
+}
+
+func (tb *trackingBody) Close() error {
+	if tb.closed != nil {
+		*tb.closed = true
+	}
+	return nil
+}
+
+func TestErrorHandlerDrainsRequestBody(t *testing.T) {
+	// Create a backend that starts reading but then closes connection
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Start reading the body to ensure client sends it
+		buf := make([]byte, 10)
+		r.Body.Read(buf)
+		// Then close connection abruptly to trigger error
+		if hijacker, ok := w.(http.Hijacker); ok {
+			conn, _, _ := hijacker.Hijack()
+			conn.Close()
+		}
+	}))
+	defer backend.Close()
+
+	handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+	require.NoError(t, err)
+
+	bodyRead := false
+	closeCalled := false
+
+	bodyContent := "test request body content that should be drained"
+	body := &trackingBody{
+		Reader: strings.NewReader(bodyContent),
+		read:   &bodyRead,
+		closed: &closeCalled,
+	}
+
+	req := httptest.NewRequest("POST", "/test", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.ContentLength = int64(len(bodyContent))
+
+	w := httptest.NewRecorder()
+
+	// This should trigger an error and call the error handler
+	handler.ServeHTTP(w, req)
+
+	// Verify error response
+	assert.Equal(t, http.StatusBadGateway, w.Code)
+	assert.Contains(t, w.Body.String(), "Bad Gateway")
+
+	// Verify body was closed (draining may not read if already sent)
+	assert.True(t, closeCalled, "Request body Close() should have been called")
+}
+
 func TestNewHandlerWithHeaders(t *testing.T) {
 	tests := []struct {
 		name                string

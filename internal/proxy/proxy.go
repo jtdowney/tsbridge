@@ -4,6 +4,7 @@ package proxy
 import (
 	"context"
 	goerrors "errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -105,6 +106,12 @@ func NewHandlerWithHeaders(
 
 	// Configure error handler
 	h.proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		// Drain request body to free resources
+		if r.Body != nil {
+			_, _ = io.Copy(io.Discard, r.Body)
+			r.Body.Close()
+		}
+
 		// Wrap as network error for internal use
 		networkErr := errors.WrapNetwork(err, "proxy request failed")
 
