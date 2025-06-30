@@ -257,6 +257,9 @@ When `metrics_addr` is configured, tsbridge exposes metrics at `/metrics`:
 - `tsbridge_active_connections` - Currently active connections
 - `tsbridge_backend_connections_total` - Backend connection attempts
 - `tsbridge_whois_duration_seconds` - Whois lookup latency
+- `tsbridge_connection_pool_active` - Active requests per service (tracks in-flight requests to backends)
+- `tsbridge_connection_pool_idle` - Idle connections (always 0, reserved for future use)
+- `tsbridge_connection_pool_wait` - Requests waiting for connection (always 0, reserved for future use)
 
 ### Logging
 

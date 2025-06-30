@@ -169,21 +169,40 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 		transportConfig.ExpectContinueTimeout = s.globalConfig.Global.ExpectContinueTimeout.Duration
 	}
 
-	handler, err := proxy.NewHandlerWithHeaders(
-		s.Config.BackendAddr,
-		transportConfig,
-		trustedProxies,
-		s.Config.UpstreamHeaders,
-		s.Config.DownstreamHeaders,
-		s.Config.RemoveUpstream,
-		s.Config.RemoveDownstream,
-	)
+	var handler proxy.Handler
+	var err error
+	if s.metricsCollector != nil {
+		handler, err = proxy.NewHandlerWithMetrics(
+			s.Config.BackendAddr,
+			transportConfig,
+			trustedProxies,
+			s.metricsCollector,
+			s.Config.Name,
+			s.Config.UpstreamHeaders,
+			s.Config.DownstreamHeaders,
+			s.Config.RemoveUpstream,
+			s.Config.RemoveDownstream,
+		)
+	} else {
+		handler, err = proxy.NewHandlerWithHeaders(
+			s.Config.BackendAddr,
+			transportConfig,
+			trustedProxies,
+			s.Config.UpstreamHeaders,
+			s.Config.DownstreamHeaders,
+			s.Config.RemoveUpstream,
+			s.Config.RemoveDownstream,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
 
+	// Wrap with middleware - convert to http.Handler for middleware chaining
+	var httpHandler http.Handler = handler
+
 	// Wrap with request ID middleware - this should be early in the chain
-	handler = middleware.RequestID(handler)
+	httpHandler = middleware.RequestID(httpHandler)
 
 	// Wrap with whois middleware if enabled
 	whoisEnabled := s.Config.WhoisEnabled != nil && *s.Config.WhoisEnabled
@@ -204,15 +223,15 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 
 	// Wrap with metrics middleware if collector is available
 	if s.metricsCollector != nil {
-		handler = s.metricsCollector.Middleware(s.Config.Name, handler)
+		httpHandler = s.metricsCollector.Middleware(s.Config.Name, httpHandler)
 	}
 
 	// Wrap with access logging middleware if enabled
 	if s.isAccessLogEnabled() {
-		handler = middleware.AccessLog(slog.Default(), s.Config.Name)(handler)
+		httpHandler = middleware.AccessLog(slog.Default(), s.Config.Name)(httpHandler)
 	}
 
-	return handler, nil
+	return httpHandler, nil
 }
 
 // isAccessLogEnabled returns whether access logging is enabled for this service

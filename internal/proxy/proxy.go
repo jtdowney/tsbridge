@@ -10,10 +10,12 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/middleware"
 )
 
@@ -30,6 +32,7 @@ type TransportConfig struct {
 // Handler is the interface for all proxy handlers
 type Handler interface {
 	http.Handler
+	Close() error
 }
 
 // HTTPHandler implements HTTP reverse proxy
@@ -42,12 +45,47 @@ type httpHandler struct {
 	downstreamHeaders map[string]string
 	removeUpstream    []string
 	removeDownstream  []string
+	// Metrics
+	metricsCollector *metrics.Collector
+	serviceName      string
+	transport        *http.Transport
+	stopMetrics      chan struct{}
+	// Request tracking for metrics
+	activeRequests int64
 }
 
 // NewHandler creates a new HTTP reverse proxy handler with custom timeout and trusted proxy configuration
 func NewHandler(backendAddr string, transportConfig *TransportConfig, trustedProxies []string) (Handler, error) {
 	// Use NewHandlerWithHeaders with nil header configurations
 	return NewHandlerWithHeaders(backendAddr, transportConfig, trustedProxies, nil, nil, nil, nil)
+}
+
+// NewHandlerWithMetrics creates a new HTTP reverse proxy handler with metrics collection
+func NewHandlerWithMetrics(
+	backendAddr string,
+	transportConfig *TransportConfig,
+	trustedProxies []string,
+	metricsCollector *metrics.Collector,
+	serviceName string,
+	upstreamHeaders map[string]string,
+	downstreamHeaders map[string]string,
+	removeUpstream []string,
+	removeDownstream []string,
+) (Handler, error) {
+	h, err := NewHandlerWithHeaders(backendAddr, transportConfig, trustedProxies, upstreamHeaders, downstreamHeaders, removeUpstream, removeDownstream)
+	if err != nil {
+		return nil, err
+	}
+
+	httpHandler := h.(*httpHandler)
+	httpHandler.metricsCollector = metricsCollector
+	httpHandler.serviceName = serviceName
+
+	if metricsCollector != nil {
+		httpHandler.startMetricsCollection()
+	}
+
+	return httpHandler, nil
 }
 
 // NewHandlerWithHeaders creates a new proxy handler with header manipulation support
@@ -87,7 +125,8 @@ func NewHandlerWithHeaders(
 	h.proxy.Director = createProxyDirector(h, originalDirector)
 
 	// Configure transport
-	h.proxy.Transport = createProxyTransport(backendAddr, transportConfig)
+	h.transport = createProxyTransport(backendAddr, transportConfig)
+	h.proxy.Transport = h.transport
 
 	// Configure ModifyResponse to handle downstream headers
 	h.proxy.ModifyResponse = func(resp *http.Response) error {
@@ -136,6 +175,10 @@ func NewHandlerWithHeaders(
 }
 
 func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Track active requests for metrics
+	atomic.AddInt64(&h.activeRequests, 1)
+	defer atomic.AddInt64(&h.activeRequests, -1)
+
 	h.proxy.ServeHTTP(w, r)
 }
 
@@ -333,4 +376,44 @@ func parseBackendURL(addr string) (*url.URL, error) {
 	}
 
 	return parsedURL, nil
+}
+
+// startMetricsCollection starts a goroutine to periodically collect connection pool metrics
+func (h *httpHandler) startMetricsCollection() {
+	h.stopMetrics = make(chan struct{})
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		// Collect initial metrics immediately
+		h.collectMetrics()
+
+		for {
+			select {
+			case <-ticker.C:
+				h.collectMetrics()
+			case <-h.stopMetrics:
+				return
+			}
+		}
+	}()
+}
+
+// collectMetrics collects current connection pool stats from the transport
+func (h *httpHandler) collectMetrics() {
+	if h.transport == nil || h.metricsCollector == nil {
+		return
+	}
+
+	active := int(atomic.LoadInt64(&h.activeRequests))
+	h.metricsCollector.UpdateConnectionPoolMetrics(h.serviceName, active, 0, 0)
+}
+
+// Close stops metrics collection and cleans up resources
+func (h *httpHandler) Close() error {
+	if h.stopMetrics != nil {
+		close(h.stopMetrics)
+	}
+	return nil
 }

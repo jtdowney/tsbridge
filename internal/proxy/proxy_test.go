@@ -9,16 +9,30 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/metrics"
 )
+
+// simpleHandler wraps an http.HandlerFunc to implement the Handler interface
+type simpleHandler struct {
+	http.HandlerFunc
+}
+
+func (h *simpleHandler) Close() error {
+	return nil
+}
 
 // defaultTestTransportConfig returns a TransportConfig with reasonable test defaults
 func defaultTestTransportConfig() *TransportConfig {
@@ -341,10 +355,12 @@ func TestProxyErrorHandling(t *testing.T) {
 			// Create proxy handler
 			handler, err := NewHandler(tt.backendAddr, defaultTestTransportConfig(), nil)
 			if tt.backendAddr == "not-a-valid-url" && err != nil {
-				// Expected error for invalid URL
-				handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					http.Error(w, "Bad Gateway", http.StatusBadGateway)
-				})
+				// Expected error for invalid URL, create a simple handler that implements our interface
+				handler = &simpleHandler{
+					HandlerFunc: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						http.Error(w, "Bad Gateway", http.StatusBadGateway)
+					}),
+				}
 			} else if err != nil {
 				t.Fatalf("Failed to create handler: %v", err)
 			}
@@ -1152,4 +1168,132 @@ func TestNewHandlerWithHeaders(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConnectionPoolMetricsCollection(t *testing.T) {
+	t.Run("proxy handler collects connection pool metrics", func(t *testing.T) {
+		// Create a test backend server
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		}))
+		defer backend.Close()
+
+		// Create metrics collector and registry
+		registry := prometheus.NewRegistry()
+		collector := metrics.NewCollector()
+		err := collector.Register(registry)
+		require.NoError(t, err)
+
+		// Create proxy handler with metrics
+		transportConfig := &TransportConfig{
+			DialTimeout:           5 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			KeepAliveTimeout:      30 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+
+		handler, err := NewHandlerWithMetrics(backend.URL, transportConfig, nil, collector, "test-service", nil, nil, nil, nil)
+		require.NoError(t, err)
+		defer handler.Close()
+
+		// Make some requests to establish connections
+		for i := 0; i < 5; i++ {
+			req := httptest.NewRequest("GET", "http://example.com/", nil)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusOK, w.Code)
+		}
+
+		// Give time for metrics to be collected
+		time.Sleep(100 * time.Millisecond)
+
+		// Check that connection pool metrics are being collected
+		// We just verify the metric exists and can be read
+		activeMetric := testutil.ToFloat64(collector.ConnectionPoolActive.WithLabelValues("test-service"))
+		idleMetric := testutil.ToFloat64(collector.ConnectionPoolIdle.WithLabelValues("test-service"))
+		waitMetric := testutil.ToFloat64(collector.ConnectionPoolWait.WithLabelValues("test-service"))
+
+		// Metrics should exist (active should be 0 since requests completed)
+		assert.GreaterOrEqual(t, activeMetric, 0.0)
+		assert.Equal(t, 0.0, idleMetric) // We don't track idle
+		assert.Equal(t, 0.0, waitMetric) // We don't track wait
+	})
+
+	t.Run("metrics collector runs periodically", func(t *testing.T) {
+		// Create a test backend server that holds connections longer
+		requestCount := int64(0)
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			atomic.AddInt64(&requestCount, 1)
+			time.Sleep(100 * time.Millisecond) // Hold connection to ensure we can observe active requests
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer backend.Close()
+
+		// Create metrics collector
+		collector := metrics.NewCollector()
+		registry := prometheus.NewRegistry()
+		err := collector.Register(registry)
+		require.NoError(t, err)
+
+		// Create proxy handler with metrics collection
+		transportConfig := &TransportConfig{
+			DialTimeout:           5 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			KeepAliveTimeout:      30 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		}
+
+		handler, err := NewHandlerWithMetrics(backend.URL, transportConfig, nil, collector, "test-service", nil, nil, nil, nil)
+		require.NoError(t, err)
+		defer handler.Close()
+
+		// Make concurrent requests to create active connections
+		const numWorkers = 5
+		var wg sync.WaitGroup
+		wg.Add(numWorkers)
+
+		// Use a channel to coordinate request timing
+		startRequests := make(chan struct{})
+
+		for i := 0; i < numWorkers; i++ {
+			go func() {
+				defer wg.Done()
+				<-startRequests // Wait for signal to start
+				req := httptest.NewRequest("GET", "http://example.com/", nil)
+				w := httptest.NewRecorder()
+				handler.ServeHTTP(w, req)
+			}()
+		}
+
+		// Start all requests at the same time
+		close(startRequests)
+
+		// Wait a bit for requests to be in flight
+		time.Sleep(50 * time.Millisecond)
+
+		// Force a metrics collection while requests are active
+		handler.(*httpHandler).collectMetrics()
+
+		// Check metrics - should show active requests
+		activeMetric := testutil.ToFloat64(collector.ConnectionPoolActive.WithLabelValues("test-service"))
+		assert.Greater(t, activeMetric, 0.0, "Expected to see active requests")
+
+		// Wait for all requests to complete
+		wg.Wait()
+
+		// Verify all requests were processed
+		assert.Equal(t, int64(numWorkers), atomic.LoadInt64(&requestCount))
+
+		// Force another metrics collection after requests complete
+		handler.(*httpHandler).collectMetrics()
+
+		// Check metrics again - should be back to zero
+		finalMetric := testutil.ToFloat64(collector.ConnectionPoolActive.WithLabelValues("test-service"))
+		assert.Equal(t, 0.0, finalMetric, "Expected no active requests after completion")
+	})
 }
