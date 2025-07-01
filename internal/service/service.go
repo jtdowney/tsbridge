@@ -42,6 +42,20 @@ type Service struct {
 	handler          http.Handler // Pre-created handler to catch config errors early
 }
 
+// handlerWithClose wraps an http.Handler and preserves the Close method from the underlying proxy.Handler
+type handlerWithClose struct {
+	http.Handler
+	closeHandler proxy.Handler
+}
+
+// Close delegates to the underlying proxy handler's Close method
+func (h *handlerWithClose) Close() error {
+	if h.closeHandler != nil {
+		return h.closeHandler.Close()
+	}
+	return nil
+}
+
 // NewRegistry creates a new service registry
 func NewRegistry(cfg *config.Config, tsServer *tailscale.Server) *Registry {
 	return &Registry{
@@ -217,7 +231,7 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 			// Create a whois client adapter for the tsnet server
 			whoisClient := tailscale.NewWhoisClientAdapter(serviceServer)
 			// Use the whois middleware with cache
-			handler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, s.whoisCache)(handler)
+			httpHandler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, s.whoisCache)(httpHandler)
 		}
 	}
 
@@ -231,7 +245,11 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 		httpHandler = middleware.AccessLog(slog.Default(), s.Config.Name)(httpHandler)
 	}
 
-	return httpHandler, nil
+	// Create a wrapper that preserves the Close method from the original handler
+	return &handlerWithClose{
+		Handler:      httpHandler,
+		closeHandler: handler,
+	}, nil
 }
 
 // isAccessLogEnabled returns whether access logging is enabled for this service
