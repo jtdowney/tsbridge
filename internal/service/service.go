@@ -198,7 +198,7 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 			// Create a whois client adapter for the tsnet server
 			whoisClient := tailscale.NewWhoisClientAdapter(serviceServer)
 			// Use the whois middleware with cache
-			httpHandler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, s.whoisCache)(httpHandler)
+			handler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, s.whoisCache)(handler)
 		}
 	}
 
