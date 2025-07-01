@@ -197,7 +197,7 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 	// Parse global configuration
 	cfg.Global = config.Global{
 		MetricsAddr:              parser.getString("global.metrics_addr"),
-		ReadTimeout:              parser.getDuration("global.read_timeout"),
+		ReadHeaderTimeout:        parser.getDuration("global.read_header_timeout"),
 		WriteTimeout:             parser.getDuration("global.write_timeout"),
 		IdleTimeout:              parser.getDuration("global.idle_timeout"),
 		ShutdownTimeout:          parser.getDuration("global.shutdown_timeout"),
@@ -270,7 +270,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.FunnelEnabled = parser.getBool("service.funnel_enabled")
 	svc.TLSMode = parser.getString("service.tls_mode")
 	svc.WhoisTimeout = parser.getDuration("service.whois_timeout")
-	svc.ReadTimeout = parser.getDuration("service.read_timeout")
+	svc.ReadHeaderTimeout = parser.getDuration("service.read_header_timeout")
 	svc.WriteTimeout = parser.getDuration("service.write_timeout")
 	svc.IdleTimeout = parser.getDuration("service.idle_timeout")
 	svc.ResponseHeaderTimeout = parser.getDuration("service.response_header_timeout")

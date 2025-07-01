@@ -55,7 +55,7 @@ oauth_client_id = "prod-client-id"
 oauth_client_secret = "prod-client-secret"
 
 [global]
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "30s"
@@ -70,7 +70,7 @@ backend_addr = "localhost:8080"
 whois_enabled = true
 whois_timeout = "5s"
 tls_mode = "off"
-read_timeout = "60s"
+read_header_timeout = "60s"
 write_timeout = "60s"
 access_log = false
 funnel_enabled = true
@@ -91,7 +91,7 @@ whois_enabled = false
 					OAuthClientSecret: "prod-client-secret",
 				},
 				Global: Global{
-					ReadTimeout:           Duration{30 * time.Second},
+					ReadHeaderTimeout:     Duration{30 * time.Second},
 					WriteTimeout:          Duration{30 * time.Second},
 					IdleTimeout:           Duration{120 * time.Second},
 					ShutdownTimeout:       Duration{30 * time.Second},
@@ -102,16 +102,16 @@ whois_enabled = false
 				},
 				Services: []Service{
 					{
-						Name:          "api",
-						BackendAddr:   "localhost:8080",
-						WhoisEnabled:  boolPtr(true),
-						WhoisTimeout:  Duration{5 * time.Second},
-						TLSMode:       "off",
-						ReadTimeout:   Duration{60 * time.Second},
-						WriteTimeout:  Duration{60 * time.Second},
-						AccessLog:     boolPtr(false),
-						FunnelEnabled: boolPtr(true),
-						Ephemeral:     false,
+						Name:              "api",
+						BackendAddr:       "localhost:8080",
+						WhoisEnabled:      boolPtr(true),
+						WhoisTimeout:      Duration{5 * time.Second},
+						TLSMode:           "off",
+						ReadHeaderTimeout: Duration{60 * time.Second},
+						WriteTimeout:      Duration{60 * time.Second},
+						AccessLog:         boolPtr(false),
+						FunnelEnabled:     boolPtr(true),
+						Ephemeral:         false,
 						UpstreamHeaders: map[string]string{
 							"X-Custom-Header": "custom-value",
 						},

@@ -64,7 +64,7 @@ state_dir = "%s"
 
 [global]
 metrics_addr = "localhost:0"
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "5s"
@@ -199,7 +199,7 @@ state_dir = "%s"
 
 [global]
 metrics_addr = "localhost:19200"
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "5s"
@@ -336,7 +336,7 @@ state_dir = "%s"
 
 [global]
 metrics_addr = "localhost:19201"
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "10s"

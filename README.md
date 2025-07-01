@@ -42,7 +42,7 @@ state_dir = "/var/lib/tsbridge"
 
 # Global defaults for all services
 [global]
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 metrics_addr = ":9090"
 
@@ -155,7 +155,7 @@ oauth_tags = ["tag:proxy", "tag:production"]
 ```toml
 [global]
 # Timeouts (Go duration format)
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "15s"
@@ -181,7 +181,7 @@ whois_enabled = true                 # Inject Tailscale identity headers
 whois_timeout = "500ms"              # Override global whois timeout
 
 # Override global settings for this service
-read_timeout = "60s"
+read_header_timeout = "60s"
 write_timeout = "60s"
 access_log = false
 

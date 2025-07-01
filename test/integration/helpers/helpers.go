@@ -98,11 +98,11 @@ func CreateTestConfig(t *testing.T, serviceName string, backendAddr string) *con
 			StateDir: t.TempDir(),
 		},
 		Global: config.Global{
-			MetricsAddr:     "localhost:0",
-			ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-			WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-			IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-			ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
+			MetricsAddr:       "localhost:0",
+			ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+			WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+			IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+			ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
 		},
 		Services: []config.Service{
 			{
@@ -126,11 +126,11 @@ func CreateMultiServiceConfig(t *testing.T, services map[string]string) *config.
 			StateDir: t.TempDir(),
 		},
 		Global: config.Global{
-			MetricsAddr:     "localhost:0",
-			ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-			WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-			IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-			ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
+			MetricsAddr:       "localhost:0",
+			ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+			WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+			IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+			ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
 		},
 	}
 
@@ -306,14 +306,14 @@ oauth_tags = [`
 
 [global]
 metrics_addr = "%s"
-read_timeout = "%s"
+read_header_timeout = "%s"
 write_timeout = "%s" 
 idle_timeout = "%s"
 shutdown_timeout = "%s"
 
 `,
 		cfg.Global.MetricsAddr,
-		cfg.Global.ReadTimeout.Duration,
+		cfg.Global.ReadHeaderTimeout.Duration,
 		cfg.Global.WriteTimeout.Duration,
 		cfg.Global.IdleTimeout.Duration,
 		cfg.Global.ShutdownTimeout.Duration)

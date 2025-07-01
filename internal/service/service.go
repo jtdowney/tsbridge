@@ -137,10 +137,10 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 
 	// Create HTTP server with timeouts
 	svc.server = &http.Server{
-		Handler:      svc.handler,
-		ReadTimeout:  svcCfg.ReadTimeout.Duration,
-		WriteTimeout: svcCfg.WriteTimeout.Duration,
-		IdleTimeout:  svcCfg.IdleTimeout.Duration,
+		Handler:           svc.handler,
+		ReadHeaderTimeout: svcCfg.ReadHeaderTimeout.Duration,
+		WriteTimeout:      svcCfg.WriteTimeout.Duration,
+		IdleTimeout:       svcCfg.IdleTimeout.Duration,
 	}
 
 	// Start serving in background

@@ -12,8 +12,8 @@ func TestTimeoutConstants(t *testing.T) {
 		expected time.Duration
 	}{
 		{
-			name:     "DefaultReadTimeout",
-			constant: DefaultReadTimeout,
+			name:     "DefaultReadHeaderTimeout",
+			constant: DefaultReadHeaderTimeout,
 			expected: 30 * time.Second,
 		},
 		{

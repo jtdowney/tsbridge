@@ -43,7 +43,7 @@ type Tailscale struct {
 
 // Global contains global default settings
 type Global struct {
-	ReadTimeout           Duration `mapstructure:"read_timeout"`
+	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`
 	WriteTimeout          Duration `mapstructure:"write_timeout"`
 	IdleTimeout           Duration `mapstructure:"idle_timeout"`
 	ShutdownTimeout       Duration `mapstructure:"shutdown_timeout"`
@@ -68,7 +68,7 @@ type Service struct {
 	WhoisTimeout Duration `mapstructure:"whois_timeout"`
 	TLSMode      string   `mapstructure:"tls_mode"` // "auto" (default), "off"
 	// Optional overrides
-	ReadTimeout           Duration `mapstructure:"read_timeout"`
+	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`
 	WriteTimeout          Duration `mapstructure:"write_timeout"`
 	IdleTimeout           Duration `mapstructure:"idle_timeout"`
 	ResponseHeaderTimeout Duration `mapstructure:"response_header_timeout"`
@@ -318,8 +318,8 @@ func ProcessLoadedConfigWithProvider(cfg *Config, provider string) error {
 // SetDefaults sets default values for any unspecified configuration
 func (c *Config) SetDefaults() {
 	// Set global defaults if not specified
-	if c.Global.ReadTimeout.Duration == 0 {
-		c.Global.ReadTimeout.Duration = constants.DefaultReadTimeout
+	if c.Global.ReadHeaderTimeout.Duration == 0 {
+		c.Global.ReadHeaderTimeout.Duration = constants.DefaultReadHeaderTimeout
 	}
 	if c.Global.WriteTimeout.Duration == 0 {
 		c.Global.WriteTimeout.Duration = constants.DefaultWriteTimeout
@@ -388,8 +388,8 @@ func (c *Config) Normalize() {
 		svc := &c.Services[i]
 
 		// Only copy if the service value is zero (not set)
-		if svc.ReadTimeout.Duration == 0 {
-			svc.ReadTimeout = c.Global.ReadTimeout
+		if svc.ReadHeaderTimeout.Duration == 0 {
+			svc.ReadHeaderTimeout = c.Global.ReadHeaderTimeout
 		}
 		if svc.WriteTimeout.Duration == 0 {
 			svc.WriteTimeout = c.Global.WriteTimeout
@@ -501,8 +501,8 @@ func (c *Config) validateOAuth() error {
 }
 
 func (c *Config) validateGlobal() error {
-	if c.Global.ReadTimeout.Duration <= 0 {
-		return errors.NewValidationError("read_timeout must be positive")
+	if c.Global.ReadHeaderTimeout.Duration <= 0 {
+		return errors.NewValidationError("read_header_timeout must be positive")
 	}
 	if c.Global.WriteTimeout.Duration <= 0 {
 		return errors.NewValidationError("write_timeout must be positive")
@@ -577,8 +577,8 @@ func (c *Config) validateService(svc *Service) error {
 	}
 
 	// Validate service-level overrides if provided
-	if svc.ReadTimeout.Duration < 0 {
-		return errors.NewValidationError("read_timeout must be non-negative")
+	if svc.ReadHeaderTimeout.Duration < 0 {
+		return errors.NewValidationError("read_header_timeout must be non-negative")
 	}
 	if svc.WriteTimeout.Duration < 0 {
 		return errors.NewValidationError("write_timeout must be non-negative")
@@ -636,7 +636,7 @@ func (c *Config) String() string {
 
 	// Global section
 	b.WriteString("\nGlobal:\n")
-	b.WriteString(fmt.Sprintf("  ReadTimeout: %s\n", c.Global.ReadTimeout.Duration))
+	b.WriteString(fmt.Sprintf("  ReadHeaderTimeout: %s\n", c.Global.ReadHeaderTimeout.Duration))
 	b.WriteString(fmt.Sprintf("  WriteTimeout: %s\n", c.Global.WriteTimeout.Duration))
 	b.WriteString(fmt.Sprintf("  IdleTimeout: %s\n", c.Global.IdleTimeout.Duration))
 	b.WriteString(fmt.Sprintf("  ResponseHeaderTimeout: %s\n", c.Global.ResponseHeaderTimeout.Duration))
@@ -662,8 +662,8 @@ func (c *Config) String() string {
 			b.WriteString(fmt.Sprintf("    TLSMode: %s\n", svc.TLSMode))
 		}
 		// Add service-level overrides if set
-		if svc.ReadTimeout.Duration > 0 {
-			b.WriteString(fmt.Sprintf("    ReadTimeout: %s\n", svc.ReadTimeout.Duration))
+		if svc.ReadHeaderTimeout.Duration > 0 {
+			b.WriteString(fmt.Sprintf("    ReadHeaderTimeout: %s\n", svc.ReadHeaderTimeout.Duration))
 		}
 		if svc.WriteTimeout.Duration > 0 {
 			b.WriteString(fmt.Sprintf("    WriteTimeout: %s\n", svc.WriteTimeout.Duration))

@@ -176,10 +176,10 @@ func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
 					AuthKey: "test-auth-key",
 				},
 				Global: config.Global{
-					ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-					WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-					IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-					ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
+					ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+					WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+					IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+					ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
 				},
 				Services: tt.services,
 			}
@@ -642,10 +642,10 @@ func TestRegistry_Shutdown(t *testing.T) {
 			AuthKey: "test-auth-key",
 		},
 		Global: config.Global{
-			ReadTimeout:     config.Duration{Duration: 30 * 1000000000}, // 30s
-			WriteTimeout:    config.Duration{Duration: 30 * 1000000000},
-			IdleTimeout:     config.Duration{Duration: 120 * 1000000000},
-			ShutdownTimeout: config.Duration{Duration: 10 * 1000000000},
+			ReadHeaderTimeout: config.Duration{Duration: 30 * 1000000000}, // 30s
+			WriteTimeout:      config.Duration{Duration: 30 * 1000000000},
+			IdleTimeout:       config.Duration{Duration: 120 * 1000000000},
+			ShutdownTimeout:   config.Duration{Duration: 10 * 1000000000},
 		},
 		Services: []config.Service{
 			{
@@ -743,9 +743,9 @@ func TestShutdownWithInflightRequests(t *testing.T) {
 
 			// Create an HTTP server
 			server := &http.Server{
-				Handler:      handler,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 30 * time.Second,
+				Handler:           handler,
+				ReadHeaderTimeout: 30 * time.Second,
+				WriteTimeout:      30 * time.Second,
 			}
 
 			// Start server on a random port
@@ -1004,10 +1004,10 @@ func TestServiceWithRealProxy(t *testing.T) {
 	// Create config
 	cfg := &config.Config{
 		Global: config.Global{
-			ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-			WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-			IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-			ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
+			ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+			WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+			IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+			ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
 		},
 		Services: []config.Service{
 			{

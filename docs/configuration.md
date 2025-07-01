@@ -129,10 +129,10 @@ All timeouts use Go duration format (e.g., "30s", "1m", "1h30m"):
 
 ```toml
 [global]
-read_timeout = "30s"      # Maximum time to read request headers and body
-write_timeout = "30s"     # Maximum time to write response
-idle_timeout = "120s"     # Maximum time to wait for next request on keep-alive connection
-shutdown_timeout = "15s"  # Maximum time to wait for graceful shutdown
+read_header_timeout = "30s"  # Maximum time to read request headers
+write_timeout = "30s"        # Maximum time to write response
+idle_timeout = "120s"        # Maximum time to wait for next request on keep-alive connection
+shutdown_timeout = "15s"     # Maximum time to wait for graceful shutdown
 ```
 
 ### Backend Connection
@@ -279,7 +279,7 @@ name = "slow-api"
 backend_addr = "localhost:8080"
 
 # Override timeouts for this service
-read_timeout = "60s"
+read_header_timeout = "60s"
 write_timeout = "60s"
 idle_timeout = "300s"
 
@@ -347,7 +347,7 @@ oauth_tags = ["tag:server", "tag:proxy", "tag:prod"]
 
 [global]
 # Conservative timeouts
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 idle_timeout = "120s"
 shutdown_timeout = "30s"
@@ -387,7 +387,7 @@ name = "admin"
 backend_addr = "127.0.0.1:9000"
 whois_enabled = true
 # Longer timeouts for admin operations
-read_timeout = "5m"
+read_header_timeout = "5m"
 write_timeout = "5m"
 ```
 
@@ -402,7 +402,7 @@ oauth_tags = ["tag:dev", "tag:proxy"]
 
 [global]
 # Shorter timeouts for development
-read_timeout = "5s"
+read_header_timeout = "5s"
 write_timeout = "5s"
 metrics_addr = ":9090"
 
@@ -423,7 +423,7 @@ oauth_tags = ["tag:server", "tag:proxy"]
 state_dir = "/opt/tsbridge/state"
 
 [global]
-read_timeout = "30s"
+read_header_timeout = "30s"
 write_timeout = "30s"
 metrics_addr = ":9090"
 
@@ -444,7 +444,7 @@ whois_enabled = true
 name = "external"
 backend_addr = "external-api.example.com:443"
 whois_enabled = false
-read_timeout = "60s"
+read_header_timeout = "60s"
 write_timeout = "60s"
 
 # Internal admin panel

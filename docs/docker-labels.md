@@ -80,7 +80,7 @@ labels:
 ```yaml
 labels:
   # Timeouts
-  - "tsbridge.global.read_timeout=30s"
+  - "tsbridge.global.read_header_timeout=30s"
   - "tsbridge.global.write_timeout=30s"
   - "tsbridge.global.idle_timeout=120s"
   - "tsbridge.global.shutdown_timeout=15s"
@@ -137,7 +137,7 @@ labels:
   - "tsbridge.service.tls_mode=auto" # or "off"
 
   # Service-specific timeouts (override global)
-  - "tsbridge.service.read_timeout=60s"
+  - "tsbridge.service.read_header_timeout=60s"
   - "tsbridge.service.write_timeout=60s"
   - "tsbridge.service.idle_timeout=300s"
   - "tsbridge.service.response_header_timeout=30s"
@@ -242,7 +242,7 @@ services:
 
       # Global defaults
       - "tsbridge.global.metrics_addr=:9090"
-      - "tsbridge.global.read_timeout=30s"
+      - "tsbridge.global.read_header_timeout=30s"
       - "tsbridge.global.access_log=true"
     environment:
       - TS_OAUTH_CLIENT_ID=${TS_OAUTH_CLIENT_ID}
@@ -273,7 +273,7 @@ services:
       - "tsbridge.enabled=true"
       - "tsbridge.service.name=web"
       - "tsbridge.service.backend_addr=web:3000"
-      - "tsbridge.service.read_timeout=60s"
+      - "tsbridge.service.read_header_timeout=60s"
       - "tsbridge.service.access_log=false"
       - "tsbridge.service.downstream_headers.Cache-Control=no-cache"
       - "tsbridge.service.remove_downstream=Server"

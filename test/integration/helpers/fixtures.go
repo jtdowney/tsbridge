@@ -27,11 +27,11 @@ func NewTestFixture(t *testing.T) *TestFixture {
 				StateDir: t.TempDir(),
 			},
 			Global: config.Global{
-				MetricsAddr:     "localhost:0",
-				ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-				ShutdownTimeout: config.Duration{Duration: 10 * time.Second},
+				MetricsAddr:       "localhost:0",
+				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+				ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
 			},
 			Services: []config.Service{
 				{
@@ -79,7 +79,7 @@ func (f *TestFixture) WithTimeout(name string, duration time.Duration) *TestFixt
 	d := config.Duration{Duration: duration}
 	switch name {
 	case "read":
-		f.cfg.Global.ReadTimeout = d
+		f.cfg.Global.ReadHeaderTimeout = d
 	case "write":
 		f.cfg.Global.WriteTimeout = d
 	case "idle":

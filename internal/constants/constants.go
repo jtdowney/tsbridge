@@ -5,9 +5,9 @@ import "time"
 
 // Timeout constants define the default timeout values used across the application.
 const (
-	// DefaultReadTimeout is the default maximum duration for reading the entire request, including the body.
+	// DefaultReadHeaderTimeout is the default maximum duration for reading the request headers.
 	// A zero or negative value means no timeout.
-	DefaultReadTimeout = 30 * time.Second
+	DefaultReadHeaderTimeout = 30 * time.Second
 
 	// DefaultWriteTimeout is the default timeout for writing the response.
 	// This includes the time from the end of the request reading to the end of the response write.

@@ -166,7 +166,7 @@ func TestParseGlobalConfig(t *testing.T) {
 				"tsbridge.tailscale.oauth_tags":              "tag:proxy, tag:server",
 				"tsbridge.tailscale.state_dir":               "/var/lib/tsbridge",
 				"tsbridge.global.metrics_addr":               ":9090",
-				"tsbridge.global.read_timeout":               "30s",
+				"tsbridge.global.read_header_timeout":        "30s",
 				"tsbridge.global.write_timeout":              "30s",
 				"tsbridge.global.idle_timeout":               "120s",
 				"tsbridge.global.access_log":                 "true",
@@ -188,7 +188,7 @@ func TestParseGlobalConfig(t *testing.T) {
 
 		// Verify global config
 		assert.Equal(t, ":9090", cfg.Global.MetricsAddr)
-		assert.Equal(t, 30*time.Second, cfg.Global.ReadTimeout.Duration)
+		assert.Equal(t, 30*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
 		assert.Equal(t, 30*time.Second, cfg.Global.WriteTimeout.Duration)
 		assert.Equal(t, 120*time.Second, cfg.Global.IdleTimeout.Duration)
 		assert.True(t, *cfg.Global.AccessLog)

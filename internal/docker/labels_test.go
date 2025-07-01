@@ -207,10 +207,10 @@ func TestParseStringSlice(t *testing.T) {
 
 func TestLabelParser(t *testing.T) {
 	labels := map[string]string{
-		"tsbridge.service.name":            "test-service",
-		"tsbridge.service.whois_enabled":   "true",
-		"tsbridge.service.read_timeout":    "30s",
-		"tsbridge.service.remove_upstream": "X-Forwarded-For,X-Real-IP",
+		"tsbridge.service.name":                "test-service",
+		"tsbridge.service.whois_enabled":       "true",
+		"tsbridge.service.read_header_timeout": "30s",
+		"tsbridge.service.remove_upstream":     "X-Forwarded-For,X-Real-IP",
 	}
 
 	parser := &labelParser{
@@ -239,7 +239,7 @@ func TestLabelParser(t *testing.T) {
 	})
 
 	t.Run("getDuration", func(t *testing.T) {
-		result := parser.getDuration("service.read_timeout")
+		result := parser.getDuration("service.read_header_timeout")
 		assert.Equal(t, 30*time.Second, result.Duration)
 
 		result = parser.getDuration("nonexistent")

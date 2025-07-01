@@ -62,7 +62,7 @@ func createTestConfig(t *testing.T) *config.Config {
 		},
 		Global: config.Global{
 			ShutdownTimeout:       config.Duration{Duration: 5 * time.Second},
-			ReadTimeout:           config.Duration{Duration: 30 * time.Second},
+			ReadHeaderTimeout:     config.Duration{Duration: 30 * time.Second},
 			WriteTimeout:          config.Duration{Duration: 30 * time.Second},
 			IdleTimeout:           config.Duration{Duration: 120 * time.Second},
 			ResponseHeaderTimeout: config.Duration{Duration: 10 * time.Second},
@@ -497,10 +497,10 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with 3 services, 2 will fail
 		cfg := &config.Config{
 			Global: config.Global{
-				ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
-				ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:     config.Duration{Duration: 120 * time.Second},
+				ShutdownTimeout:   config.Duration{Duration: 5 * time.Second},
+				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
 			},
 			Services: []config.Service{
 				{Name: "service1", BackendAddr: "127.0.0.1:9999", TLSMode: "off"},
@@ -561,10 +561,10 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with 2 services that have unreachable backends
 		cfg := &config.Config{
 			Global: config.Global{
-				ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
-				ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:     config.Duration{Duration: 120 * time.Second},
+				ShutdownTimeout:   config.Duration{Duration: 5 * time.Second},
+				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
 			},
 			Services: []config.Service{
 				{Name: "service1", BackendAddr: "127.0.0.1:9999", TLSMode: "off"},
@@ -627,11 +627,11 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with metrics and mixed services
 		cfg := &config.Config{
 			Global: config.Global{
-				ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
-				ReadTimeout:     config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:    config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:     config.Duration{Duration: 120 * time.Second},
-				MetricsAddr:     "127.0.0.1:0", // Random port
+				ShutdownTimeout:   config.Duration{Duration: 5 * time.Second},
+				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
+				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
+				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+				MetricsAddr:       "127.0.0.1:0", // Random port
 			},
 			Services: []config.Service{
 				{Name: "service1", BackendAddr: "127.0.0.1:9999", TLSMode: "off"},
