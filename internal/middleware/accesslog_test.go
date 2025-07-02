@@ -192,3 +192,99 @@ func TestAccessLogResponseWriter(t *testing.T) {
 	rw.WriteHeader(http.StatusNotFound)
 	assert.Equal(t, http.StatusNotFound, rw.statusCode)
 }
+
+func TestAccessLogWebSocketSupport(t *testing.T) {
+	// Test that access log middleware supports WebSocket hijacking
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	// Create a handler that requires hijacking
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") == "websocket" {
+			hijacker, ok := w.(http.Hijacker)
+			assert.True(t, ok, "ResponseWriter should implement http.Hijacker for WebSocket support")
+
+			conn, bufrw, err := hijacker.Hijack()
+			assert.NoError(t, err)
+			defer conn.Close()
+
+			// Write WebSocket upgrade response
+			response := "HTTP/1.1 101 Switching Protocols\r\n" +
+				"Upgrade: websocket\r\n" +
+				"Connection: Upgrade\r\n" +
+				"\r\n"
+			bufrw.WriteString(response)
+			bufrw.Flush()
+		} else {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		}
+	})
+
+	// Wrap with access log middleware
+	wrapped := AccessLog(logger, "websocket-test")(handler)
+
+	t.Run("regular HTTP request", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rec := httptest.NewRecorder()
+		wrapped.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+		assert.Equal(t, "OK", rec.Body.String())
+	})
+
+	t.Run("WebSocket upgrade request", func(t *testing.T) {
+		server := httptest.NewServer(wrapped)
+		defer server.Close()
+
+		// Create WebSocket upgrade request
+		req, err := http.NewRequest("GET", server.URL, nil)
+		assert.NoError(t, err)
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Sec-WebSocket-Version", "13")
+		req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+
+		// Make the request
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		assert.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should get 101 Switching Protocols
+		assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+		assert.Equal(t, "websocket", resp.Header.Get("Upgrade"))
+	})
+}
+
+func TestAccessLogFlushSupport(t *testing.T) {
+	// Test that access log middleware supports http.Flusher for streaming
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	// Create a handler that uses flushing
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		assert.True(t, ok, "ResponseWriter should implement http.Flusher for streaming support")
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "chunk1")
+		flusher.Flush()
+		fmt.Fprint(w, "chunk2")
+		flusher.Flush()
+	})
+
+	// Wrap with access log middleware
+	wrapped := AccessLog(logger, "streaming-test")(handler)
+
+	// Test streaming response
+	req := httptest.NewRequest("GET", "/stream", nil)
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "chunk1chunk2", rec.Body.String())
+}

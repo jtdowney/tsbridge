@@ -754,3 +754,99 @@ func TestMetricsServerGracefulShutdown(t *testing.T) {
 	_, err = http.Get(metricsURL)
 	assert.Error(t, err)
 }
+
+func TestMiddlewareWebSocketSupport(t *testing.T) {
+	// Create a test handler that implements hijacking for WebSocket
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Upgrade") == "websocket" {
+			hijacker, ok := w.(http.Hijacker)
+			require.True(t, ok, "ResponseWriter should implement http.Hijacker for WebSocket support")
+
+			conn, bufrw, err := hijacker.Hijack()
+			require.NoError(t, err)
+			defer conn.Close()
+
+			// Write a simple WebSocket upgrade response
+			response := "HTTP/1.1 101 Switching Protocols\r\n" +
+				"Upgrade: websocket\r\n" +
+				"Connection: Upgrade\r\n" +
+				"\r\n"
+			bufrw.WriteString(response)
+			bufrw.Flush()
+		} else {
+			w.WriteHeader(http.StatusOK)
+		}
+	})
+
+	// Create metrics collector
+	collector := NewCollector()
+	reg := prometheus.NewRegistry()
+	err := collector.Register(reg)
+	require.NoError(t, err)
+
+	// Wrap handler with metrics middleware
+	handler := collector.Middleware("websocket-test", testHandler)
+
+	// Test regular HTTP request
+	t.Run("regular HTTP request", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	// Test WebSocket upgrade request
+	t.Run("WebSocket upgrade request", func(t *testing.T) {
+		server := httptest.NewServer(handler)
+		defer server.Close()
+
+		// Create WebSocket upgrade request
+		req, err := http.NewRequest("GET", server.URL, nil)
+		require.NoError(t, err)
+		req.Header.Set("Upgrade", "websocket")
+		req.Header.Set("Connection", "Upgrade")
+		req.Header.Set("Sec-WebSocket-Version", "13")
+		req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+
+		// Make the request
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		require.NoError(t, err)
+		defer resp.Body.Close()
+
+		// Should get 101 Switching Protocols
+		assert.Equal(t, http.StatusSwitchingProtocols, resp.StatusCode)
+		assert.Equal(t, "websocket", resp.Header.Get("Upgrade"))
+	})
+}
+
+func TestMiddlewareFlushSupport(t *testing.T) {
+	// Create a test handler that uses http.Flusher for streaming
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok, "ResponseWriter should implement http.Flusher for streaming support")
+
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "chunk1")
+		flusher.Flush()
+		fmt.Fprint(w, "chunk2")
+		flusher.Flush()
+	})
+
+	// Create metrics collector
+	collector := NewCollector()
+	reg := prometheus.NewRegistry()
+	err := collector.Register(reg)
+	require.NoError(t, err)
+
+	// Wrap handler with metrics middleware
+	handler := collector.Middleware("streaming-test", testHandler)
+
+	// Test streaming response
+	req := httptest.NewRequest("GET", "/stream", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "chunk1chunk2", rec.Body.String())
+}
