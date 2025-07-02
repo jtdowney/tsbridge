@@ -29,6 +29,22 @@ type TransportConfig struct {
 	ExpectContinueTimeout time.Duration
 }
 
+// HandlerConfig holds all configuration options for creating a proxy handler
+type HandlerConfig struct {
+	BackendAddr       string
+	TransportConfig   *TransportConfig
+	TrustedProxies    []string
+	MetricsCollector  *metrics.Collector
+	ServiceName       string
+	UpstreamHeaders   map[string]string
+	DownstreamHeaders map[string]string
+	RemoveUpstream    []string
+	RemoveDownstream  []string
+	// FlushInterval specifies the duration between flushes to the client.
+	// If nil, defaults to 0 (standard buffering). Negative values cause immediate flushing.
+	FlushInterval *time.Duration
+}
+
 // Handler is the interface for all proxy handlers
 type Handler interface {
 	http.Handler
@@ -52,67 +68,31 @@ type httpHandler struct {
 	stopMetrics      chan struct{}
 	// Request tracking for metrics
 	activeRequests int64
+	// Streaming support
+	flushInterval *time.Duration
 }
 
-// NewHandler creates a new HTTP reverse proxy handler with custom timeout and trusted proxy configuration
-func NewHandler(backendAddr string, transportConfig *TransportConfig, trustedProxies []string) (Handler, error) {
-	// Use NewHandlerWithHeaders with nil header configurations
-	return NewHandlerWithHeaders(backendAddr, transportConfig, trustedProxies, nil, nil, nil, nil)
-}
-
-// NewHandlerWithMetrics creates a new HTTP reverse proxy handler with metrics collection
-func NewHandlerWithMetrics(
-	backendAddr string,
-	transportConfig *TransportConfig,
-	trustedProxies []string,
-	metricsCollector *metrics.Collector,
-	serviceName string,
-	upstreamHeaders map[string]string,
-	downstreamHeaders map[string]string,
-	removeUpstream []string,
-	removeDownstream []string,
-) (Handler, error) {
-	h, err := NewHandlerWithHeaders(backendAddr, transportConfig, trustedProxies, upstreamHeaders, downstreamHeaders, removeUpstream, removeDownstream)
-	if err != nil {
-		return nil, err
-	}
-
-	httpHandler := h.(*httpHandler)
-	httpHandler.metricsCollector = metricsCollector
-	httpHandler.serviceName = serviceName
-
-	if metricsCollector != nil {
-		httpHandler.startMetricsCollection()
-	}
-
-	return httpHandler, nil
-}
-
-// NewHandlerWithHeaders creates a new proxy handler with header manipulation support
-func NewHandlerWithHeaders(
-	backendAddr string,
-	transportConfig *TransportConfig,
-	trustedProxies []string,
-	upstreamHeaders map[string]string,
-	downstreamHeaders map[string]string,
-	removeUpstream []string,
-	removeDownstream []string,
-) (Handler, error) {
+// NewHandler creates a new HTTP reverse proxy handler with the provided configuration
+func NewHandler(cfg *HandlerConfig) (Handler, error) {
 	h := &httpHandler{
-		backendAddr:       backendAddr,
-		upstreamHeaders:   upstreamHeaders,
-		downstreamHeaders: downstreamHeaders,
-		removeUpstream:    removeUpstream,
-		removeDownstream:  removeDownstream,
+		backendAddr:       cfg.BackendAddr,
+		trustedProxies:    make([]*net.IPNet, 0),
+		upstreamHeaders:   cfg.UpstreamHeaders,
+		downstreamHeaders: cfg.DownstreamHeaders,
+		removeUpstream:    cfg.RemoveUpstream,
+		removeDownstream:  cfg.RemoveDownstream,
+		metricsCollector:  cfg.MetricsCollector,
+		serviceName:       cfg.ServiceName,
+		flushInterval:     cfg.FlushInterval,
 	}
 
 	// Parse trusted proxies
-	if err := configureTrustedProxies(h, trustedProxies); err != nil {
+	if err := configureTrustedProxies(h, cfg.TrustedProxies); err != nil {
 		return nil, err
 	}
 
 	// Parse backend URL
-	target, err := parseBackendURL(backendAddr)
+	target, err := parseBackendURL(cfg.BackendAddr)
 	if err != nil {
 		return nil, errors.WrapConfig(err, "invalid backend address")
 	}
@@ -120,12 +100,20 @@ func NewHandlerWithHeaders(
 	// Create reverse proxy using NewSingleHostReverseProxy for simplicity
 	h.proxy = httputil.NewSingleHostReverseProxy(target)
 
+	// Apply flush interval if specified
+	if cfg.FlushInterval != nil {
+		h.proxy.FlushInterval = *cfg.FlushInterval
+	} else {
+		// Set to 0 for standard buffering behavior (not immediate flushing)
+		h.proxy.FlushInterval = 0
+	}
+
 	// Configure director
 	originalDirector := h.proxy.Director
 	h.proxy.Director = createProxyDirector(h, originalDirector)
 
 	// Configure transport
-	h.transport = createProxyTransport(backendAddr, transportConfig)
+	h.transport = createProxyTransport(cfg.BackendAddr, cfg.TransportConfig)
 	h.proxy.Transport = h.transport
 
 	// Configure ModifyResponse to handle downstream headers
@@ -156,7 +144,7 @@ func NewHandlerWithHeaders(
 
 		// Log with request ID from context
 		logger := middleware.LogWithRequestID(r.Context())
-		logger.Error("proxy error", "backend", backendAddr, "path", r.URL.Path, "error", networkErr)
+		logger.Error("proxy error", "backend", cfg.BackendAddr, "path", r.URL.Path, "error", networkErr)
 
 		// Determine status code and message
 		status := http.StatusBadGateway
@@ -169,6 +157,11 @@ func NewHandlerWithHeaders(
 		}
 
 		http.Error(w, message, status)
+	}
+
+	// Start metrics collection if collector is provided
+	if cfg.MetricsCollector != nil {
+		h.startMetricsCollection()
 	}
 
 	return h, nil

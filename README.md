@@ -73,6 +73,44 @@ Your services will be available at:
 - `https://api.<your-tailnet-name>.ts.net`
 - `https://web.<your-tailnet-name>.ts.net`
 
+## Streaming Services
+
+tsbridge supports long-lived streaming connections such as media streaming, Server-Sent Events (SSE), and real-time data feeds. Proper configuration is essential for these services to work correctly.
+
+### Key Configuration Options
+
+- **`flush_interval`**: Controls response buffering
+  - `-1ms`: Immediate flushing (no buffering) - recommended for streaming
+  - `100ms`: Flush every 100ms - good for periodic updates
+  - Not set: Default buffering for performance
+  
+- **`write_timeout`**: Controls connection lifetime
+  - `0s`: No timeout - allows indefinite streaming
+  - `30s` (default): Connections terminate after 30 seconds
+  
+### Example: Media Streaming Service
+
+```toml
+[[services]]
+name = "jellyfin"
+backend_addr = "localhost:8096"
+write_timeout = "0s"      # Allow indefinite streaming
+flush_interval = "-1ms"   # Immediate flushing for smooth playback
+idle_timeout = "300s"     # Keep connections alive for 5 minutes
+```
+
+### Example: Server-Sent Events (SSE)
+
+```toml
+[[services]]
+name = "events"
+backend_addr = "localhost:3000"
+write_timeout = "0s"      # SSE connections stay open
+flush_interval = "-1ms"   # Real-time event delivery
+```
+
+For detailed streaming configuration and troubleshooting, see [docs/configuration.md#streaming-services-configuration](docs/configuration.md#streaming-services-configuration).
+
 ## Architecture
 
 ```mermaid

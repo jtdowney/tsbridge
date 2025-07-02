@@ -8,6 +8,7 @@ This document provides a comprehensive guide to configuring tsbridge using TOML 
 - [Tailscale Section](#tailscale-section)
 - [Global Section](#global-section)
 - [Services Section](#services-section)
+- [Streaming Services Configuration](#streaming-services-configuration)
 - [Environment Variables](#environment-variables)
 - [Configuration Precedence](#configuration-precedence)
 - [Examples](#examples)
@@ -148,6 +149,9 @@ idle_conn_timeout = "90s"         # Maximum time idle connections are kept open 
 tls_handshake_timeout = "10s"     # Maximum time for TLS handshake (default: 10s)
 expect_continue_timeout = "1s"    # Maximum time to wait for server's first response headers after "Expect: 100-continue" (default: 1s)
 response_header_timeout = "0s"    # Maximum time to wait for response headers after request is sent (default: 0s = no timeout)
+
+# Response streaming
+flush_interval = "0s"             # Time between response flushes (default: 0s = default buffering; -1ms = immediate flush)
 ```
 
 ### Whois Configuration
@@ -454,6 +458,128 @@ backend_addr = "localhost:8888"
 whois_enabled = true
 access_log = false  # Disable access logs for admin
 ```
+
+## Streaming Services Configuration
+
+tsbridge supports long-lived streaming connections such as media streaming, Server-Sent Events (SSE), and real-time data feeds. Proper configuration is critical for these services to work correctly.
+
+### Understanding Flush Interval
+
+The `flush_interval` setting controls how often buffered response data is flushed to the client:
+
+- **Default behavior**: Without setting `flush_interval`, responses are buffered for performance
+- **`-1ms`**: Disables buffering entirely - data is sent immediately as it arrives from the backend
+- **Positive duration** (e.g., `100ms`): Flushes buffered data at the specified interval
+- **`0s` or unset**: Uses default buffering behavior
+
+### Common Streaming Scenarios
+
+#### Media Streaming (e.g., Jellyfin, Plex)
+
+For media streaming services that send large video/audio files:
+
+```toml
+[[services]]
+name = "jellyfin"
+backend_addr = "localhost:8096"
+write_timeout = "0s"              # Disable write timeout for long streams
+flush_interval = "-1ms"           # Immediate flushing for smooth playback
+response_header_timeout = "0s"    # No timeout waiting for backend headers
+idle_timeout = "300s"             # Keep connections alive for 5 minutes
+```
+
+#### Server-Sent Events (SSE)
+
+For real-time event streams that stay open indefinitely:
+
+```toml
+[[services]]
+name = "sse-endpoint"
+backend_addr = "localhost:3000"
+write_timeout = "0s"              # SSE connections stay open indefinitely
+flush_interval = "-1ms"           # Immediate flushing for real-time events
+read_header_timeout = "10s"       # Still enforce header read timeout
+```
+
+#### Regular API (Default Buffering)
+
+For standard REST APIs where buffering improves performance:
+
+```toml
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+# flush_interval not set - uses default buffering for performance
+# write_timeout uses global default (30s)
+```
+
+#### Metrics Endpoint (Periodic Flushing)
+
+For endpoints that benefit from controlled flushing:
+
+```toml
+[[services]]
+name = "prometheus"
+backend_addr = "localhost:9090"
+flush_interval = "100ms"          # Flush every 100ms for timely metrics
+write_timeout = "30s"             # Standard timeout for metrics scraping
+```
+
+### Important Considerations
+
+#### Write Timeout Impact
+
+The `write_timeout` setting has a critical impact on streaming services:
+
+- **`write_timeout = "30s"`** (default): Connections will be terminated after 30 seconds, breaking streams
+- **`write_timeout = "0s"`**: Disables write timeout entirely, allowing indefinite streaming
+- **Choose carefully**: Only disable write timeout for services that truly need long-lived connections
+
+⚠️ **Warning**: Setting `write_timeout = "0s"` can lead to resource exhaustion if clients don't properly close connections. Only use this for trusted streaming services.
+
+#### Global vs Service-Level Configuration
+
+You can set `flush_interval` globally or per-service:
+
+```toml
+[global]
+# Default for all services
+flush_interval = "1s"
+
+[[services]]
+name = "streaming"
+backend_addr = "localhost:8080"
+# Override for this specific service
+flush_interval = "-1ms"
+```
+
+### Debugging Streaming Issues
+
+Common symptoms and solutions:
+
+1. **Stream appears frozen or data arrives in bursts**
+   - **Cause**: Default response buffering
+   - **Solution**: Set `flush_interval = "-1ms"`
+
+2. **Stream disconnects after 30 seconds**
+   - **Cause**: Default write timeout
+   - **Solution**: Set `write_timeout = "0s"`
+
+3. **High latency in real-time applications**
+   - **Cause**: Buffering delays
+   - **Solution**: Set `flush_interval = "-1ms"` for immediate flushing
+
+4. **Poor performance with many small requests**
+   - **Cause**: Immediate flushing overhead
+   - **Solution**: Use default buffering or set a small positive `flush_interval`
+
+### Best Practices
+
+1. **Be selective**: Only configure streaming settings for services that need them
+2. **Monitor resources**: Streaming connections consume more resources than regular requests
+3. **Set appropriate timeouts**: Don't disable all timeouts - keep `read_header_timeout` for security
+4. **Test thoroughly**: Verify streaming behavior under load before production deployment
+5. **Document your choices**: Comment why specific timeout/flush settings were chosen
 
 ## Error Messages
 

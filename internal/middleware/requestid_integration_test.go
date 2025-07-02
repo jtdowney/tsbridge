@@ -30,7 +30,11 @@ func TestRequestIDIntegration(t *testing.T) {
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-	proxyHandler, err := proxy.NewHandler(backend.URL, transportConfig, nil)
+	proxyHandler, err := proxy.NewHandler(&proxy.HandlerConfig{
+		BackendAddr:     backend.URL,
+		TransportConfig: transportConfig,
+		TrustedProxies:  nil,
+	})
 	if err != nil {
 		t.Fatalf("Failed to create proxy handler: %v", err)
 	}

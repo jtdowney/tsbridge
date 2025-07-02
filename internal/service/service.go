@@ -183,31 +183,19 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 		transportConfig.ExpectContinueTimeout = s.globalConfig.Global.ExpectContinueTimeout.Duration
 	}
 
-	var handler proxy.Handler
-	var err error
-	if s.metricsCollector != nil {
-		handler, err = proxy.NewHandlerWithMetrics(
-			s.Config.BackendAddr,
-			transportConfig,
-			trustedProxies,
-			s.metricsCollector,
-			s.Config.Name,
-			s.Config.UpstreamHeaders,
-			s.Config.DownstreamHeaders,
-			s.Config.RemoveUpstream,
-			s.Config.RemoveDownstream,
-		)
-	} else {
-		handler, err = proxy.NewHandlerWithHeaders(
-			s.Config.BackendAddr,
-			transportConfig,
-			trustedProxies,
-			s.Config.UpstreamHeaders,
-			s.Config.DownstreamHeaders,
-			s.Config.RemoveUpstream,
-			s.Config.RemoveDownstream,
-		)
-	}
+	// Create proxy handler with unified configuration
+	handler, err := proxy.NewHandler(&proxy.HandlerConfig{
+		BackendAddr:       s.Config.BackendAddr,
+		TransportConfig:   transportConfig,
+		TrustedProxies:    trustedProxies,
+		MetricsCollector:  s.metricsCollector,
+		ServiceName:       s.Config.Name,
+		UpstreamHeaders:   s.Config.UpstreamHeaders,
+		DownstreamHeaders: s.Config.DownstreamHeaders,
+		RemoveUpstream:    s.Config.RemoveUpstream,
+		RemoveDownstream:  s.Config.RemoveDownstream,
+		FlushInterval:     &s.Config.FlushInterval.Duration,
+	})
 	if err != nil {
 		return nil, err
 	}

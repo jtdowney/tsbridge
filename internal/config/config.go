@@ -51,6 +51,7 @@ type Global struct {
 	MetricsAddr           string   `mapstructure:"metrics_addr"`
 	AccessLog             *bool    `mapstructure:"access_log"`      // Enable access logging (default: true)
 	TrustedProxies        []string `mapstructure:"trusted_proxies"` // List of trusted proxy IPs or CIDR ranges
+	FlushInterval         Duration `mapstructure:"flush_interval"`  // Time between flushes (-1ms for immediate)
 	// Transport timeouts
 	DialTimeout              Duration `mapstructure:"dial_timeout"`
 	KeepAliveTimeout         Duration `mapstructure:"keep_alive_timeout"`
@@ -75,6 +76,7 @@ type Service struct {
 	AccessLog             *bool    `mapstructure:"access_log"`     // Override global access_log setting
 	FunnelEnabled         *bool    `mapstructure:"funnel_enabled"` // Expose service via Tailscale Funnel
 	Ephemeral             bool     `mapstructure:"ephemeral"`      // Create ephemeral nodes
+	FlushInterval         Duration `mapstructure:"flush_interval"` // Time between flushes (-1ms for immediate)
 	// Header manipulation
 	UpstreamHeaders   map[string]string `mapstructure:"upstream_headers"`   // Headers to add to upstream requests
 	DownstreamHeaders map[string]string `mapstructure:"downstream_headers"` // Headers to add to downstream responses
@@ -404,6 +406,11 @@ func (c *Config) Normalize() {
 		// Copy access log setting if not set
 		if svc.AccessLog == nil {
 			svc.AccessLog = c.Global.AccessLog
+		}
+
+		// Copy flush interval if not set
+		if svc.FlushInterval.Duration == 0 {
+			svc.FlushInterval = c.Global.FlushInterval
 		}
 	}
 }

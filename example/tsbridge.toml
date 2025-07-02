@@ -45,3 +45,12 @@ backend_addr = "api-backend:8080"
 whois_enabled = false
 read_header_timeout = "60s"
 write_timeout = "60s"
+
+# Example of a streaming service (e.g., SSE, media streaming)
+[[services]]
+name = "demo-stream"
+backend_addr = "api-backend:8080"
+whois_enabled = true
+write_timeout = "0s"      # Disable write timeout for long-lived streams
+flush_interval = "-1ms"   # Immediate flushing for real-time streaming
+idle_timeout = "300s"     # Keep connections alive for 5 minutes

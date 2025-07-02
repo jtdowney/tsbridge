@@ -46,6 +46,15 @@ func defaultTestTransportConfig() *TransportConfig {
 	}
 }
 
+// newTestHandler is a test helper that creates a handler with basic configuration
+func newTestHandler(backendAddr string, transportConfig *TransportConfig, trustedProxies []string) (Handler, error) {
+	return NewHandler(&HandlerConfig{
+		BackendAddr:     backendAddr,
+		TransportConfig: transportConfig,
+		TrustedProxies:  trustedProxies,
+	})
+}
+
 func TestHTTPProxy(t *testing.T) {
 	// Create a test backend server
 	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +143,7 @@ func TestHTTPProxy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy handler
-			handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
 			if err != nil {
 				t.Fatalf("Failed to create handler: %v", err)
 			}
@@ -232,7 +241,7 @@ func TestUnixSocketProxy(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy handler for unix socket
-			handler, err := NewHandler("unix://"+socketPath, defaultTestTransportConfig(), nil)
+			handler, err := newTestHandler("unix://"+socketPath, defaultTestTransportConfig(), nil)
 			if err != nil {
 				t.Fatalf("Failed to create handler: %v", err)
 			}
@@ -299,7 +308,7 @@ func TestProxyWithTimeouts(t *testing.T) {
 			// Create proxy with timeout
 			transportConfig := defaultTestTransportConfig()
 			transportConfig.ResponseHeaderTimeout = tt.timeout
-			handler, err := NewHandler(backend.URL, transportConfig, nil)
+			handler, err := newTestHandler(backend.URL, transportConfig, nil)
 			if err != nil {
 				t.Fatalf("Failed to create handler: %v", err)
 			}
@@ -353,7 +362,7 @@ func TestProxyErrorHandling(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy handler
-			handler, err := NewHandler(tt.backendAddr, defaultTestTransportConfig(), nil)
+			handler, err := newTestHandler(tt.backendAddr, defaultTestTransportConfig(), nil)
 			if tt.backendAddr == "not-a-valid-url" && err != nil {
 				// Expected error for invalid URL, create a simple handler that implements our interface
 				handler = &simpleHandler{
@@ -404,7 +413,7 @@ func TestProxyHeaderHandling(t *testing.T) {
 	defer backend.Close()
 
 	// Create proxy
-	handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+	handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
 	if err != nil {
 		t.Fatalf("Failed to create handler: %v", err)
 	}
@@ -480,7 +489,7 @@ func TestXForwardedForSecurity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy
-			handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
 			if err != nil {
 				t.Fatalf("Failed to create handler: %v", err)
 			}
@@ -589,7 +598,7 @@ func TestXForwardedForWithTrustedProxies(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy with trusted proxies
-			handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), tt.trustedProxies)
+			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), tt.trustedProxies)
 			if err != nil {
 				t.Fatalf("Failed to create handler: %v", err)
 			}
@@ -669,7 +678,7 @@ func TestNewHandlerWithErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler, err := NewHandler(tt.backendAddr, defaultTestTransportConfig(), tt.trustedProxies)
+			handler, err := newTestHandler(tt.backendAddr, defaultTestTransportConfig(), tt.trustedProxies)
 
 			if tt.wantErr {
 				if err == nil {
@@ -711,7 +720,7 @@ func TestProxyErrorTypes(t *testing.T) {
 
 				transportConfig := defaultTestTransportConfig()
 				transportConfig.ResponseHeaderTimeout = 100 * time.Millisecond
-				handler, err := NewHandler(backend.URL, transportConfig, nil)
+				handler, err := newTestHandler(backend.URL, transportConfig, nil)
 				if err != nil {
 					t.Fatalf("Failed to create handler: %v", err)
 				}
@@ -723,7 +732,7 @@ func TestProxyErrorTypes(t *testing.T) {
 			name: "connection refused returns bad gateway",
 			setupProxy: func() http.Handler {
 				// Use an invalid address that will refuse connection
-				handler, err := NewHandler("http://127.0.0.1:99999", defaultTestTransportConfig(), nil)
+				handler, err := newTestHandler("http://127.0.0.1:99999", defaultTestTransportConfig(), nil)
 				if err != nil {
 					t.Fatalf("Failed to create handler: %v", err)
 				}
@@ -893,7 +902,7 @@ func TestImprovedTimeoutDetection(t *testing.T) {
 			defer backend.Close()
 
 			// Create proxy handler
-			handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
 			if err != nil {
 				t.Fatalf("Failed to create handler: %v", err)
 			}
@@ -924,7 +933,7 @@ func TestTransportConnectionPoolLimits(t *testing.T) {
 	defer backend.Close()
 
 	// Create proxy handler
-	handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+	handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
 	require.NoError(t, err)
 
 	// Get the httpHandler to access the transport
@@ -972,7 +981,7 @@ func TestErrorHandlerDrainsRequestBody(t *testing.T) {
 	}))
 	defer backend.Close()
 
-	handler, err := NewHandler(backend.URL, defaultTestTransportConfig(), nil)
+	handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
 	require.NoError(t, err)
 
 	bodyRead := false
@@ -1136,15 +1145,15 @@ func TestNewHandlerWithHeaders(t *testing.T) {
 			defer backend.Close()
 
 			// Create handler with header configuration
-			handler, err := NewHandlerWithHeaders(
-				backend.URL,
-				defaultTestTransportConfig(),
-				nil, // no trusted proxies for this test
-				tt.upstreamHeaders,
-				tt.downstreamHeaders,
-				tt.removeUpstream,
-				tt.removeDownstream,
-			)
+			handler, err := NewHandler(&HandlerConfig{
+				BackendAddr:       backend.URL,
+				TransportConfig:   defaultTestTransportConfig(),
+				TrustedProxies:    nil,
+				UpstreamHeaders:   tt.upstreamHeaders,
+				DownstreamHeaders: tt.downstreamHeaders,
+				RemoveUpstream:    tt.removeUpstream,
+				RemoveDownstream:  tt.removeDownstream,
+			})
 			require.NoError(t, err)
 
 			// Create test request
@@ -1195,7 +1204,13 @@ func TestConnectionPoolMetricsCollection(t *testing.T) {
 			ExpectContinueTimeout: 1 * time.Second,
 		}
 
-		handler, err := NewHandlerWithMetrics(backend.URL, transportConfig, nil, collector, "test-service", nil, nil, nil, nil)
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:      backend.URL,
+			TransportConfig:  transportConfig,
+			TrustedProxies:   nil,
+			MetricsCollector: collector,
+			ServiceName:      "test-service",
+		})
 		require.NoError(t, err)
 		defer handler.Close()
 
@@ -1248,7 +1263,13 @@ func TestConnectionPoolMetricsCollection(t *testing.T) {
 			ExpectContinueTimeout: 1 * time.Second,
 		}
 
-		handler, err := NewHandlerWithMetrics(backend.URL, transportConfig, nil, collector, "test-service", nil, nil, nil, nil)
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:      backend.URL,
+			TransportConfig:  transportConfig,
+			TrustedProxies:   nil,
+			MetricsCollector: collector,
+			ServiceName:      "test-service",
+		})
 		require.NoError(t, err)
 		defer handler.Close()
 
@@ -1295,5 +1316,78 @@ func TestConnectionPoolMetricsCollection(t *testing.T) {
 		// Check metrics again - should be back to zero
 		finalMetric := testutil.ToFloat64(collector.ConnectionPoolActive.WithLabelValues("test-service"))
 		assert.Equal(t, 0.0, finalMetric, "Expected no active requests after completion")
+	})
+}
+
+func TestFlushIntervalConfiguration(t *testing.T) {
+	t.Run("default no flush interval", func(t *testing.T) {
+		// Create a backend that sends streaming data
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("data"))
+		}))
+		defer backend.Close()
+
+		// Create handler without flush interval
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:     backend.URL,
+			TransportConfig: defaultTestTransportConfig(),
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		// The reverse proxy should have default behavior (FlushInterval set to 0)
+		httpHandler := handler.(*httpHandler)
+		assert.NotNil(t, httpHandler.proxy)
+		assert.Nil(t, httpHandler.flushInterval)
+		assert.Equal(t, time.Duration(0), httpHandler.proxy.FlushInterval)
+	})
+
+	t.Run("with flush interval", func(t *testing.T) {
+		// Create a backend that sends streaming data
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("data"))
+		}))
+		defer backend.Close()
+
+		// Create handler with flush interval
+		flushInterval := 100 * time.Millisecond
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:     backend.URL,
+			TransportConfig: defaultTestTransportConfig(),
+			FlushInterval:   &flushInterval,
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		// Verify handler was created successfully
+		httpHandler := handler.(*httpHandler)
+		assert.NotNil(t, httpHandler.proxy)
+		assert.Equal(t, &flushInterval, httpHandler.flushInterval)
+	})
+
+	t.Run("negative flush interval for immediate flushing", func(t *testing.T) {
+		// Create a backend that sends streaming data
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("data"))
+		}))
+		defer backend.Close()
+
+		// Create handler with negative flush interval (immediate flushing)
+		flushInterval := -1 * time.Millisecond
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:     backend.URL,
+			TransportConfig: defaultTestTransportConfig(),
+			FlushInterval:   &flushInterval,
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		// Verify handler was created successfully
+		httpHandler := handler.(*httpHandler)
+		assert.NotNil(t, httpHandler.proxy)
+		assert.Equal(t, &flushInterval, httpHandler.flushInterval)
 	})
 }

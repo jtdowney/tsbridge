@@ -1967,3 +1967,174 @@ func TestProcessLoadedConfig(t *testing.T) {
 		}
 	})
 }
+
+func TestFlushIntervalConfiguration(t *testing.T) {
+	tests := []struct {
+		name           string
+		configContent  string
+		checkGlobal    bool
+		checkService   bool
+		expectedGlobal time.Duration
+		expectedSvc    time.Duration
+		wantErr        bool
+	}{
+		{
+			name: "global flush interval",
+			configContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+flush_interval = "100ms"
+
+[[services]]
+name = "test"
+backend_addr = "localhost:8080"
+`,
+			checkGlobal:    true,
+			expectedGlobal: 100 * time.Millisecond,
+		},
+		{
+			name: "service-specific flush interval",
+			configContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[[services]]
+name = "test"
+backend_addr = "localhost:8080"
+flush_interval = "200ms"
+`,
+			checkService: true,
+			expectedSvc:  200 * time.Millisecond,
+		},
+		{
+			name: "service inherits global flush interval",
+			configContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+flush_interval = "300ms"
+
+[[services]]
+name = "test"
+backend_addr = "localhost:8080"
+`,
+			checkService: true,
+			expectedSvc:  300 * time.Millisecond,
+		},
+		{
+			name: "service overrides global flush interval",
+			configContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+flush_interval = "300ms"
+
+[[services]]
+name = "test"
+backend_addr = "localhost:8080"
+flush_interval = "50ms"
+`,
+			checkGlobal:    true,
+			checkService:   true,
+			expectedGlobal: 300 * time.Millisecond,
+			expectedSvc:    50 * time.Millisecond,
+		},
+		{
+			name: "negative flush interval for immediate flushing",
+			configContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[[services]]
+name = "streaming"
+backend_addr = "localhost:8080"
+flush_interval = "-1ms"
+`,
+			checkService: true,
+			expectedSvc:  -1 * time.Millisecond,
+		},
+		{
+			name: "zero flush interval",
+			configContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[[services]]
+name = "test"
+backend_addr = "localhost:8080"
+flush_interval = "0s"
+`,
+			checkService: true,
+			expectedSvc:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp file with config
+			tmpFile := filepath.Join(t.TempDir(), "config.toml")
+			err := os.WriteFile(tmpFile, []byte(tt.configContent), 0644)
+			require.NoError(t, err)
+
+			// Load config
+			cfg, err := Load(tmpFile)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			// Check global flush interval
+			if tt.checkGlobal {
+				assert.Equal(t, tt.expectedGlobal, cfg.Global.FlushInterval.Duration,
+					"global flush interval mismatch")
+			}
+
+			// Check service flush interval
+			if tt.checkService && len(cfg.Services) > 0 {
+				assert.Equal(t, tt.expectedSvc, cfg.Services[0].FlushInterval.Duration,
+					"service flush interval mismatch")
+			}
+		})
+	}
+}
+
+func TestFlushIntervalNormalization(t *testing.T) {
+	cfg := &Config{
+		Global: Global{
+			FlushInterval: Duration{Duration: 100 * time.Millisecond},
+		},
+		Services: []Service{
+			{
+				Name:          "with-override",
+				BackendAddr:   "localhost:8080",
+				FlushInterval: Duration{Duration: 50 * time.Millisecond},
+			},
+			{
+				Name:        "without-override",
+				BackendAddr: "localhost:8081",
+				// FlushInterval not set, should inherit from global
+			},
+		},
+	}
+
+	// Apply defaults and normalization
+	cfg.SetDefaults()
+	cfg.Normalize()
+
+	// Service with override should keep its value
+	assert.Equal(t, 50*time.Millisecond, cfg.Services[0].FlushInterval.Duration)
+
+	// Service without override should inherit global value
+	assert.Equal(t, 100*time.Millisecond, cfg.Services[1].FlushInterval.Duration)
+}
