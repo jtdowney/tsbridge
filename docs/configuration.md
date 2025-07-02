@@ -126,15 +126,21 @@ The `[global]` section defines default values that apply to all services unless 
 
 ### Timeouts
 
-All timeouts use Go duration format (e.g., "30s", "1m", "1h30m"):
+All timeouts use Go duration format (e.g., "30s", "1m", "1h30m"). Setting a timeout to "0s" disables that specific timeout:
 
 ```toml
 [global]
-read_header_timeout = "30s"  # Maximum time to read request headers
-write_timeout = "30s"        # Maximum time to write response
-idle_timeout = "120s"        # Maximum time to wait for next request on keep-alive connection
-shutdown_timeout = "15s"     # Maximum time to wait for graceful shutdown
+read_header_timeout = "30s"  # Maximum time to read request headers (0s = no timeout)
+write_timeout = "30s"        # Maximum time to write response (0s = no timeout)
+idle_timeout = "120s"        # Maximum time to wait for next request on keep-alive connection (0s = no timeout)
+shutdown_timeout = "15s"     # Maximum time to wait for graceful shutdown (cannot be disabled)
 ```
+
+**Important distinctions**:
+- **Omitting a timeout**: Uses the default value (e.g., 30s for write_timeout)
+- **Setting to "0s"**: Explicitly disables the timeout, allowing unlimited duration
+
+**Note**: Use caution when disabling timeouts. While useful for streaming services, disabled timeouts can lead to resource exhaustion if clients don't properly close connections.
 
 ### Backend Connection
 

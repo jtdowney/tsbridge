@@ -21,17 +21,22 @@ func TestParseDuration(t *testing.T) {
 		{
 			name:     "valid duration",
 			value:    "30s",
-			expected: config.Duration{Duration: 30 * time.Second},
+			expected: config.Duration{Duration: 30 * time.Second, IsSet: true},
 		},
 		{
 			name:     "valid duration with ms",
 			value:    "500ms",
-			expected: config.Duration{Duration: 500 * time.Millisecond},
+			expected: config.Duration{Duration: 500 * time.Millisecond, IsSet: true},
+		},
+		{
+			name:     "zero duration",
+			value:    "0s",
+			expected: config.Duration{Duration: 0, IsSet: true},
 		},
 		{
 			name:     "empty string",
 			value:    "",
-			expected: config.Duration{},
+			expected: config.Duration{Duration: 0, IsSet: false},
 		},
 		{
 			name:     "invalid duration",
@@ -48,10 +53,37 @@ func TestParseDuration(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				assert.Equal(t, tt.expected, result)
+				assert.Equal(t, tt.expected.Duration, result.Duration)
+				assert.Equal(t, tt.expected.IsSet, result.IsSet)
 			}
 		})
 	}
+}
+
+func TestDockerZeroDurationParsing(t *testing.T) {
+	t.Run("zero duration from Docker label", func(t *testing.T) {
+		labels := map[string]string{
+			"tsbridge.service.write_timeout": "0s",
+		}
+
+		parser := newLabelParser(labels, "tsbridge")
+		duration := parser.getDuration("service.write_timeout")
+
+		assert.Equal(t, time.Duration(0), duration.Duration)
+		assert.True(t, duration.IsSet)
+	})
+
+	t.Run("missing duration from Docker label", func(t *testing.T) {
+		labels := map[string]string{
+			// write_timeout not set
+		}
+
+		parser := newLabelParser(labels, "tsbridge")
+		duration := parser.getDuration("service.write_timeout")
+
+		assert.Equal(t, time.Duration(0), duration.Duration)
+		assert.False(t, duration.IsSet)
+	})
 }
 
 func TestParseBool(t *testing.T) {

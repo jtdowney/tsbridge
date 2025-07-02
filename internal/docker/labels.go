@@ -310,7 +310,7 @@ func parseDuration(value string) (config.Duration, error) {
 	if err != nil {
 		return config.Duration{}, err
 	}
-	return config.Duration{Duration: d}, nil
+	return config.Duration{Duration: d, IsSet: true}, nil
 }
 
 // parseBool parses a boolean string and returns a pointer to bool

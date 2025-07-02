@@ -87,12 +87,16 @@ type Service struct {
 // Duration wraps time.Duration for TOML unmarshaling
 type Duration struct {
 	time.Duration
+	IsSet bool `mapstructure:"-" toml:"-" json:"-"` // Track if explicitly set
 }
 
 // UnmarshalText implements encoding.TextUnmarshaler for Duration
 func (d *Duration) UnmarshalText(text []byte) error {
 	var err error
 	d.Duration, err = time.ParseDuration(string(text))
+	if err == nil {
+		d.IsSet = true
+	}
 	return err
 }
 
@@ -193,17 +197,17 @@ func durationDecodeHook() mapstructure.DecodeHookFunc {
 			if err != nil {
 				return nil, err
 			}
-			return Duration{Duration: d}, nil
+			return Duration{Duration: d, IsSet: true}, nil
 		}
 
 		// Handle time.Duration conversion
 		if from == reflect.TypeOf(time.Duration(0)) {
-			return Duration{Duration: data.(time.Duration)}, nil
+			return Duration{Duration: data.(time.Duration), IsSet: true}, nil
 		}
 
 		// Handle int64 conversion (nanoseconds)
 		if from.Kind() == reflect.Int64 {
-			return Duration{Duration: time.Duration(data.(int64))}, nil
+			return Duration{Duration: time.Duration(data.(int64)), IsSet: true}, nil
 		}
 
 		return data, nil
@@ -320,17 +324,21 @@ func ProcessLoadedConfigWithProvider(cfg *Config, provider string) error {
 // SetDefaults sets default values for any unspecified configuration
 func (c *Config) SetDefaults() {
 	// Set global defaults if not specified
-	if c.Global.ReadHeaderTimeout.Duration == 0 {
+	if !c.Global.ReadHeaderTimeout.IsSet {
 		c.Global.ReadHeaderTimeout.Duration = constants.DefaultReadHeaderTimeout
+		c.Global.ReadHeaderTimeout.IsSet = true
 	}
-	if c.Global.WriteTimeout.Duration == 0 {
+	if !c.Global.WriteTimeout.IsSet {
 		c.Global.WriteTimeout.Duration = constants.DefaultWriteTimeout
+		c.Global.WriteTimeout.IsSet = true
 	}
-	if c.Global.IdleTimeout.Duration == 0 {
+	if !c.Global.IdleTimeout.IsSet {
 		c.Global.IdleTimeout.Duration = constants.DefaultIdleTimeout
+		c.Global.IdleTimeout.IsSet = true
 	}
-	if c.Global.ShutdownTimeout.Duration == 0 {
+	if !c.Global.ShutdownTimeout.IsSet {
 		c.Global.ShutdownTimeout.Duration = constants.DefaultShutdownTimeout
+		c.Global.ShutdownTimeout.IsSet = true
 	}
 
 	// Default access_log to true if not specified
@@ -340,23 +348,29 @@ func (c *Config) SetDefaults() {
 	}
 
 	// Set transport timeout defaults if not specified
-	if c.Global.DialTimeout.Duration == 0 {
+	if !c.Global.DialTimeout.IsSet {
 		c.Global.DialTimeout.Duration = constants.DefaultDialTimeout
+		c.Global.DialTimeout.IsSet = true
 	}
-	if c.Global.KeepAliveTimeout.Duration == 0 {
+	if !c.Global.KeepAliveTimeout.IsSet {
 		c.Global.KeepAliveTimeout.Duration = constants.DefaultKeepAliveTimeout
+		c.Global.KeepAliveTimeout.IsSet = true
 	}
-	if c.Global.IdleConnTimeout.Duration == 0 {
+	if !c.Global.IdleConnTimeout.IsSet {
 		c.Global.IdleConnTimeout.Duration = constants.DefaultIdleConnTimeout
+		c.Global.IdleConnTimeout.IsSet = true
 	}
-	if c.Global.TLSHandshakeTimeout.Duration == 0 {
+	if !c.Global.TLSHandshakeTimeout.IsSet {
 		c.Global.TLSHandshakeTimeout.Duration = constants.DefaultTLSHandshakeTimeout
+		c.Global.TLSHandshakeTimeout.IsSet = true
 	}
-	if c.Global.ExpectContinueTimeout.Duration == 0 {
+	if !c.Global.ExpectContinueTimeout.IsSet {
 		c.Global.ExpectContinueTimeout.Duration = constants.DefaultExpectContinueTimeout
+		c.Global.ExpectContinueTimeout.IsSet = true
 	}
-	if c.Global.MetricsReadHeaderTimeout.Duration == 0 {
+	if !c.Global.MetricsReadHeaderTimeout.IsSet {
 		c.Global.MetricsReadHeaderTimeout.Duration = constants.DefaultMetricsReadHeaderTimeout
+		c.Global.MetricsReadHeaderTimeout.IsSet = true
 	}
 
 	// Set service defaults
@@ -370,8 +384,9 @@ func (c *Config) SetDefaults() {
 		}
 
 		// Default whois_timeout to 5 seconds if not specified
-		if svc.WhoisTimeout.Duration == 0 {
+		if !svc.WhoisTimeout.IsSet {
 			svc.WhoisTimeout.Duration = constants.DefaultWhoisTimeout
+			svc.WhoisTimeout.IsSet = true
 		}
 
 		// Default tls_mode to "auto" if not specified
@@ -389,17 +404,17 @@ func (c *Config) Normalize() {
 	for i := range c.Services {
 		svc := &c.Services[i]
 
-		// Only copy if the service value is zero (not set)
-		if svc.ReadHeaderTimeout.Duration == 0 {
+		// Only copy if the service value is not set
+		if !svc.ReadHeaderTimeout.IsSet {
 			svc.ReadHeaderTimeout = c.Global.ReadHeaderTimeout
 		}
-		if svc.WriteTimeout.Duration == 0 {
+		if !svc.WriteTimeout.IsSet {
 			svc.WriteTimeout = c.Global.WriteTimeout
 		}
-		if svc.IdleTimeout.Duration == 0 {
+		if !svc.IdleTimeout.IsSet {
 			svc.IdleTimeout = c.Global.IdleTimeout
 		}
-		if svc.ResponseHeaderTimeout.Duration == 0 {
+		if !svc.ResponseHeaderTimeout.IsSet {
 			svc.ResponseHeaderTimeout = c.Global.ResponseHeaderTimeout
 		}
 
@@ -409,7 +424,7 @@ func (c *Config) Normalize() {
 		}
 
 		// Copy flush interval if not set
-		if svc.FlushInterval.Duration == 0 {
+		if !svc.FlushInterval.IsSet {
 			svc.FlushInterval = c.Global.FlushInterval
 		}
 	}
@@ -508,14 +523,15 @@ func (c *Config) validateOAuth() error {
 }
 
 func (c *Config) validateGlobal() error {
-	if c.Global.ReadHeaderTimeout.Duration <= 0 {
-		return errors.NewValidationError("read_header_timeout must be positive")
+	// Allow zero durations when explicitly set (IsSet = true)
+	if c.Global.ReadHeaderTimeout.Duration < 0 {
+		return errors.NewValidationError("read_header_timeout cannot be negative")
 	}
-	if c.Global.WriteTimeout.Duration <= 0 {
-		return errors.NewValidationError("write_timeout must be positive")
+	if c.Global.WriteTimeout.Duration < 0 {
+		return errors.NewValidationError("write_timeout cannot be negative")
 	}
-	if c.Global.IdleTimeout.Duration <= 0 {
-		return errors.NewValidationError("idle_timeout must be positive")
+	if c.Global.IdleTimeout.Duration < 0 {
+		return errors.NewValidationError("idle_timeout cannot be negative")
 	}
 	if c.Global.ShutdownTimeout.Duration <= 0 {
 		return errors.NewValidationError("shutdown_timeout must be positive")

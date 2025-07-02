@@ -13,6 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Helper function to create a Duration with IsSet=true
+func makeDuration(d time.Duration) Duration {
+	return Duration{Duration: d, IsSet: true}
+}
+
 func TestLoad(t *testing.T) {
 	// Focus on testing our custom logic, not library functionality
 
@@ -687,17 +692,17 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:         "api",
 						BackendAddr:  "127.0.0.1:8080",
 						WhoisEnabled: &trueVal,
-						WhoisTimeout: Duration{1 * time.Second},
+						WhoisTimeout: makeDuration(1 * time.Second),
 					},
 				},
 			},
@@ -708,10 +713,10 @@ func TestValidate(t *testing.T) {
 			config: &Config{
 				Tailscale: Tailscale{},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -730,10 +735,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{},
 			},
@@ -747,10 +752,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -773,10 +778,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -795,10 +800,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -817,10 +822,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -832,16 +837,17 @@ func TestValidate(t *testing.T) {
 			wantErr: "invalid backend address",
 		},
 		{
-			name: "zero durations",
+			name: "negative durations",
 			config: &Config{
 				Tailscale: Tailscale{
 					OAuthClientID:     "test-id",
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{0},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
+					ReadHeaderTimeout: makeDuration(-5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -850,7 +856,7 @@ func TestValidate(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "read_header_timeout must be positive",
+			wantErr: "read_header_timeout cannot be negative",
 		},
 		{
 			name: "valid unix socket",
@@ -860,10 +866,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -883,10 +889,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 					MetricsAddr:       "not-a-valid-addr",
 				},
 				Services: []Service{
@@ -906,10 +912,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 					TrustedProxies:    []string{"invalid-ip"},
 				},
 				Services: []Service{
@@ -929,10 +935,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 					TrustedProxies:    []string{"10.0.0.0/33"},
 				},
 				Services: []Service{
@@ -952,10 +958,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 					TrustedProxies:    []string{"192.168.1.1", "10.0.0.0/8", "172.16.0.0/12"},
 				},
 				Services: []Service{
@@ -976,10 +982,10 @@ func TestValidate(t *testing.T) {
 					AuthKey:           "test-auth-key",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -997,10 +1003,10 @@ func TestValidate(t *testing.T) {
 					AuthKey: "test-auth-key",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1020,10 +1026,10 @@ func TestValidate(t *testing.T) {
 					OAuthTags:         []string{"tag:tsbridge", "tag:role=proxy"},
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1043,10 +1049,10 @@ func TestValidate(t *testing.T) {
 					OAuthTags: []string{"tag:tsbridge"},
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1066,10 +1072,10 @@ func TestValidate(t *testing.T) {
 					StateDir:          "/var/lib/tsbridge",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1089,10 +1095,10 @@ func TestValidate(t *testing.T) {
 					StateDir:          "",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1111,10 +1117,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: Duration{5 * time.Second},
-					WriteTimeout:      Duration{10 * time.Second},
-					IdleTimeout:       Duration{120 * time.Second},
-					ShutdownTimeout:   Duration{15 * time.Second},
+					ReadHeaderTimeout: makeDuration(5 * time.Second),
+					WriteTimeout:      makeDuration(10 * time.Second),
+					IdleTimeout:       makeDuration(120 * time.Second),
+					ShutdownTimeout:   makeDuration(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1156,10 +1162,10 @@ func TestNormalize(t *testing.T) {
 			name: "service inherits all global timeouts",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1171,19 +1177,19 @@ func TestNormalize(t *testing.T) {
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     Duration{5 * time.Second},
-						WriteTimeout:          Duration{10 * time.Second},
-						IdleTimeout:           Duration{120 * time.Second},
-						ResponseHeaderTimeout: Duration{30 * time.Second},
+						ReadHeaderTimeout:     makeDuration(5 * time.Second),
+						WriteTimeout:          makeDuration(10 * time.Second),
+						IdleTimeout:           makeDuration(120 * time.Second),
+						ResponseHeaderTimeout: makeDuration(30 * time.Second),
 					},
 				},
 			},
@@ -1192,37 +1198,37 @@ func TestNormalize(t *testing.T) {
 			name: "service keeps its own timeouts",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     Duration{15 * time.Second},
-						WriteTimeout:          Duration{20 * time.Second},
-						IdleTimeout:           Duration{180 * time.Second},
-						ResponseHeaderTimeout: Duration{45 * time.Second},
+						ReadHeaderTimeout:     makeDuration(15 * time.Second),
+						WriteTimeout:          makeDuration(20 * time.Second),
+						IdleTimeout:           makeDuration(180 * time.Second),
+						ResponseHeaderTimeout: makeDuration(45 * time.Second),
 					},
 				},
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     Duration{15 * time.Second},
-						WriteTimeout:          Duration{20 * time.Second},
-						IdleTimeout:           Duration{180 * time.Second},
-						ResponseHeaderTimeout: Duration{45 * time.Second},
+						ReadHeaderTimeout:     makeDuration(15 * time.Second),
+						WriteTimeout:          makeDuration(20 * time.Second),
+						IdleTimeout:           makeDuration(180 * time.Second),
+						ResponseHeaderTimeout: makeDuration(45 * time.Second),
 					},
 				},
 			},
@@ -1231,37 +1237,37 @@ func TestNormalize(t *testing.T) {
 			name: "service inherits only missing timeouts",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:              "api",
 						BackendAddr:       "127.0.0.1:8080",
-						ReadHeaderTimeout: Duration{15 * time.Second},
-						WriteTimeout:      Duration{0}, // Should inherit from global
-						IdleTimeout:       Duration{180 * time.Second},
+						ReadHeaderTimeout: makeDuration(15 * time.Second),
+						WriteTimeout:      Duration{Duration: 0, IsSet: false}, // Should inherit from global
+						IdleTimeout:       makeDuration(180 * time.Second),
 						// ResponseHeaderTimeout not set, should inherit
 					},
 				},
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     Duration{15 * time.Second},
-						WriteTimeout:          Duration{10 * time.Second}, // Inherited
-						IdleTimeout:           Duration{180 * time.Second},
-						ResponseHeaderTimeout: Duration{30 * time.Second}, // Inherited
+						ReadHeaderTimeout:     makeDuration(15 * time.Second),
+						WriteTimeout:          makeDuration(10 * time.Second), // Inherited
+						IdleTimeout:           makeDuration(180 * time.Second),
+						ResponseHeaderTimeout: makeDuration(30 * time.Second), // Inherited
 					},
 				},
 			},
@@ -1270,47 +1276,47 @@ func TestNormalize(t *testing.T) {
 			name: "multiple services normalized correctly",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:              "api",
 						BackendAddr:       "127.0.0.1:8080",
-						ReadHeaderTimeout: Duration{15 * time.Second},
+						ReadHeaderTimeout: makeDuration(15 * time.Second),
 					},
 					{
 						Name:         "web",
 						BackendAddr:  "127.0.0.1:8081",
-						WriteTimeout: Duration{25 * time.Second},
+						WriteTimeout: makeDuration(25 * time.Second),
 					},
 				},
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     Duration{5 * time.Second},
-					WriteTimeout:          Duration{10 * time.Second},
-					IdleTimeout:           Duration{120 * time.Second},
-					ResponseHeaderTimeout: Duration{30 * time.Second},
+					ReadHeaderTimeout:     makeDuration(5 * time.Second),
+					WriteTimeout:          makeDuration(10 * time.Second),
+					IdleTimeout:           makeDuration(120 * time.Second),
+					ResponseHeaderTimeout: makeDuration(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     Duration{15 * time.Second},
-						WriteTimeout:          Duration{10 * time.Second},  // Inherited
-						IdleTimeout:           Duration{120 * time.Second}, // Inherited
-						ResponseHeaderTimeout: Duration{30 * time.Second},  // Inherited
+						ReadHeaderTimeout:     makeDuration(15 * time.Second),
+						WriteTimeout:          makeDuration(10 * time.Second),  // Inherited
+						IdleTimeout:           makeDuration(120 * time.Second), // Inherited
+						ResponseHeaderTimeout: makeDuration(30 * time.Second),  // Inherited
 					},
 					{
 						Name:                  "web",
 						BackendAddr:           "127.0.0.1:8081",
-						ReadHeaderTimeout:     Duration{5 * time.Second}, // Inherited
-						WriteTimeout:          Duration{25 * time.Second},
-						IdleTimeout:           Duration{120 * time.Second}, // Inherited
-						ResponseHeaderTimeout: Duration{30 * time.Second},  // Inherited
+						ReadHeaderTimeout:     makeDuration(5 * time.Second), // Inherited
+						WriteTimeout:          makeDuration(25 * time.Second),
+						IdleTimeout:           makeDuration(120 * time.Second), // Inherited
+						ResponseHeaderTimeout: makeDuration(30 * time.Second),  // Inherited
 					},
 				},
 			},
@@ -1495,10 +1501,10 @@ func TestConfigString(t *testing.T) {
 			StateDir:          "/var/lib/tsbridge",
 		},
 		Global: Global{
-			ReadHeaderTimeout: Duration{5 * time.Second},
-			WriteTimeout:      Duration{10 * time.Second},
-			IdleTimeout:       Duration{120 * time.Second},
-			ShutdownTimeout:   Duration{15 * time.Second},
+			ReadHeaderTimeout: makeDuration(5 * time.Second),
+			WriteTimeout:      makeDuration(10 * time.Second),
+			IdleTimeout:       makeDuration(120 * time.Second),
+			ShutdownTimeout:   makeDuration(15 * time.Second),
 			MetricsAddr:       ":9090",
 		},
 		Services: []Service{
@@ -1506,7 +1512,7 @@ func TestConfigString(t *testing.T) {
 				Name:         "api",
 				BackendAddr:  "127.0.0.1:8080",
 				WhoisEnabled: &[]bool{true}[0],
-				WhoisTimeout: Duration{1 * time.Second},
+				WhoisTimeout: makeDuration(1 * time.Second),
 			},
 			{
 				Name:        "web",
@@ -2112,13 +2118,13 @@ flush_interval = "0s"
 func TestFlushIntervalNormalization(t *testing.T) {
 	cfg := &Config{
 		Global: Global{
-			FlushInterval: Duration{Duration: 100 * time.Millisecond},
+			FlushInterval: makeDuration(100 * time.Millisecond),
 		},
 		Services: []Service{
 			{
 				Name:          "with-override",
 				BackendAddr:   "localhost:8080",
-				FlushInterval: Duration{Duration: 50 * time.Millisecond},
+				FlushInterval: makeDuration(50 * time.Millisecond),
 			},
 			{
 				Name:        "without-override",
@@ -2137,4 +2143,112 @@ func TestFlushIntervalNormalization(t *testing.T) {
 
 	// Service without override should inherit global value
 	assert.Equal(t, 100*time.Millisecond, cfg.Services[1].FlushInterval.Duration)
+}
+
+func TestZeroDurationHandling(t *testing.T) {
+	// Test that "0s" in TOML results in Duration{0, true}
+	t.Run("explicit zero duration in TOML", func(t *testing.T) {
+		configContent := `
+[tailscale]
+auth_key = "test-key"
+
+[global]
+read_header_timeout = "30s"
+write_timeout = "0s"
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		// Check that write_timeout is 0 and IsSet is true
+		assert.Equal(t, time.Duration(0), cfg.Global.WriteTimeout.Duration)
+		assert.True(t, cfg.Global.WriteTimeout.IsSet)
+	})
+
+	// Test that missing value results in Duration{0, false}
+	t.Run("missing duration in TOML", func(t *testing.T) {
+		// Create a config directly without loading from file to test pre-SetDefaults state
+		cfg := &Config{
+			Global: Global{
+				ReadHeaderTimeout: Duration{Duration: 30 * time.Second, IsSet: true},
+				// WriteTimeout not set, should be Duration{0, false}
+			},
+		}
+
+		// Before SetDefaults, write_timeout should be Duration{0, false}
+		assert.Equal(t, time.Duration(0), cfg.Global.WriteTimeout.Duration)
+		assert.False(t, cfg.Global.WriteTimeout.IsSet)
+
+		// After SetDefaults, it should have the default value with IsSet=true
+		cfg.SetDefaults()
+		assert.Equal(t, 30*time.Second, cfg.Global.WriteTimeout.Duration)
+		assert.True(t, cfg.Global.WriteTimeout.IsSet)
+	})
+
+	// Test that SetDefaults respects IsSet flag
+	t.Run("SetDefaults respects IsSet flag", func(t *testing.T) {
+		// Test case 1: When IsSet is false, should apply default
+		cfg1 := &Config{
+			Global: Global{
+				WriteTimeout: Duration{Duration: 0, IsSet: false},
+			},
+		}
+		cfg1.SetDefaults()
+		assert.Equal(t, 30*time.Second, cfg1.Global.WriteTimeout.Duration)
+		assert.True(t, cfg1.Global.WriteTimeout.IsSet)
+
+		// Test case 2: When IsSet is true with 0 duration, should keep 0
+		cfg2 := &Config{
+			Global: Global{
+				WriteTimeout: Duration{Duration: 0, IsSet: true},
+			},
+		}
+		cfg2.SetDefaults()
+		assert.Equal(t, time.Duration(0), cfg2.Global.WriteTimeout.Duration)
+		assert.True(t, cfg2.Global.WriteTimeout.IsSet)
+	})
+
+	// Test that Normalize respects IsSet flag
+	t.Run("Normalize respects IsSet flag", func(t *testing.T) {
+		// Test case 1: Service inherits global when not set
+		cfg1 := &Config{
+			Global: Global{
+				WriteTimeout: Duration{Duration: 60 * time.Second, IsSet: true},
+			},
+			Services: []Service{
+				{
+					Name:         "test",
+					BackendAddr:  "localhost:8080",
+					WriteTimeout: Duration{Duration: 0, IsSet: false},
+				},
+			},
+		}
+		cfg1.Normalize()
+		assert.Equal(t, 60*time.Second, cfg1.Services[0].WriteTimeout.Duration)
+		assert.True(t, cfg1.Services[0].WriteTimeout.IsSet)
+
+		// Test case 2: Service keeps its own value when IsSet is true
+		cfg2 := &Config{
+			Global: Global{
+				WriteTimeout: Duration{Duration: 60 * time.Second, IsSet: true},
+			},
+			Services: []Service{
+				{
+					Name:         "test",
+					BackendAddr:  "localhost:8080",
+					WriteTimeout: Duration{Duration: 0, IsSet: true},
+				},
+			},
+		}
+		cfg2.Normalize()
+		assert.Equal(t, time.Duration(0), cfg2.Services[0].WriteTimeout.Duration)
+		assert.True(t, cfg2.Services[0].WriteTimeout.IsSet)
+	})
 }
