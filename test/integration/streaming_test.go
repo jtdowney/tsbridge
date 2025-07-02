@@ -94,9 +94,6 @@ func TestStreamingWithZeroTimeout(t *testing.T) {
 		configPath := helpers.WriteConfigFile(t, cfg)
 		process := helpers.StartTSBridge(t, configPath)
 
-		// Wait for service to be ready
-		time.Sleep(2 * time.Second)
-
 		// The integration test framework runs in test mode where services
 		// start but don't actually serve HTTP traffic. So we'll verify
 		// the configuration was processed correctly.

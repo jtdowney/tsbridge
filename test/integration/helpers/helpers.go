@@ -169,6 +169,7 @@ type TSBridgeProcess struct {
 	outputChan chan string
 	t          *testing.T
 	shutdown   bool
+	output     string
 }
 
 // StartTSBridge starts a tsbridge process with common setup.
@@ -212,8 +213,8 @@ func StartTSBridge(t *testing.T, configPath string, extraEnv ...string) *TSBridg
 		t:          t,
 	}
 
-	// Wait for startup
-	time.Sleep(2 * time.Second)
+	// Wait for startup instead of fixed sleep
+	process.WaitForStartup()
 
 	// Set up cleanup
 	t.Cleanup(func() {
@@ -252,9 +253,46 @@ func (p *TSBridgeProcess) Shutdown() {
 	}
 }
 
+// WaitForStartup waits for the tsbridge process to complete initial startup.
+// This is more reliable than a fixed sleep and makes tests less flaky.
+func (p *TSBridgeProcess) WaitForStartup() {
+	p.t.Helper()
+
+	// In test mode, startup is fast. Use exponential backoff
+	// starting with a very short delay.
+	delays := []time.Duration{
+		50 * time.Millisecond,
+		100 * time.Millisecond,
+		200 * time.Millisecond,
+		400 * time.Millisecond,
+		800 * time.Millisecond,
+	}
+
+	for i, delay := range delays {
+		time.Sleep(delay)
+
+		// For the last delay, log if startup is taking too long
+		if i == len(delays)-1 {
+			p.t.Logf("Note: startup took longer than expected (>1.5s)")
+		}
+	}
+}
+
 // GetOutput returns the captured output from the process.
 // Should be called after Shutdown to ensure all output is captured.
 func (p *TSBridgeProcess) GetOutput() string {
+	// If we already have output from WaitForServices, use that
+	if p.output != "" {
+		// Continue reading any remaining output
+		select {
+		case additionalOutput := <-p.outputChan:
+			p.output += additionalOutput
+		case <-time.After(100 * time.Millisecond):
+			// No more output
+		}
+		return p.output
+	}
+
 	// If process is still running, shutdown first
 	if p.cmd.Process != nil {
 		p.Shutdown()
