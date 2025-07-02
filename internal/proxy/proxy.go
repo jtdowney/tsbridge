@@ -320,7 +320,8 @@ func createProxyTransport(backendAddr string, config *TransportConfig) *http.Tra
 			}
 			return d.DialContext(ctx, network, addr)
 		},
-		ForceAttemptHTTP2:     true,
+		DisableCompression:    true,
+		ForceAttemptHTTP2:     false,
 		MaxIdleConns:          100,
 		MaxConnsPerHost:       50,
 		MaxIdleConnsPerHost:   10,
