@@ -239,16 +239,8 @@ type Server struct {
 	readHeaderTimeout time.Duration
 }
 
-// NewServer creates a new metrics server
-func NewServer(addr string) *Server {
-	return &Server{
-		addr:     addr,
-		registry: prometheus.DefaultRegisterer.(*prometheus.Registry),
-	}
-}
-
-// NewServerWithRegistry creates a new metrics server with a custom registry
-func NewServerWithRegistry(addr string, registry *prometheus.Registry, readHeaderTimeout time.Duration) *Server {
+// NewServer creates a new metrics server with a custom registry
+func NewServer(addr string, registry *prometheus.Registry, readHeaderTimeout time.Duration) *Server {
 	return &Server{
 		addr:              addr,
 		registry:          registry,

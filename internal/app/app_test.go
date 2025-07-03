@@ -965,7 +965,7 @@ func TestMetricsServerIntegration(t *testing.T) {
 	err := collector.Register(reg)
 	require.NoError(t, err)
 
-	server := metrics.NewServerWithRegistry("127.0.0.1:0", reg, 5*time.Second)
+	server := metrics.NewServer("127.0.0.1:0", reg, 5*time.Second)
 
 	// Start the server
 	ctx := context.Background()

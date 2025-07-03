@@ -194,7 +194,9 @@ func TestMiddleware(t *testing.T) {
 func TestServer(t *testing.T) {
 	t.Run("starts metrics server", func(t *testing.T) {
 		// Create server
-		s := NewServer(":0") // Use random port
+		reg := prometheus.NewRegistry()
+		reg.MustRegister(collectors.NewGoCollector())
+		s := NewServer(":0", reg, 5*time.Second)
 
 		// Start server
 		ctx := context.Background()
@@ -238,22 +240,20 @@ func TestServer(t *testing.T) {
 	})
 
 	t.Run("graceful shutdown", func(t *testing.T) {
-		s := NewServer(":0")
+		metricsServer := NewServer(":0", prometheus.NewRegistry(), 5*time.Second)
+		err := metricsServer.Start(context.TODO())
+		require.NoError(t, err)
 
-		ctx := context.Background()
-		err := s.Start(ctx)
-		if err != nil {
-			t.Fatalf("failed to start server: %v", err)
-		}
+		// Ensure we have a valid address
+		addr := metricsServer.Addr()
+		assert.NotEmpty(t, addr)
 
-		// Shutdown with timeout
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Shutdown with a valid context should succeed
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		err = s.Shutdown(shutdownCtx)
-		if err != nil {
-			t.Errorf("shutdown failed: %v", err)
-		}
+		err = metricsServer.Shutdown(ctx)
+		assert.NoError(t, err)
 	})
 }
 
@@ -432,7 +432,7 @@ func TestSetBackendHealth(t *testing.T) {
 	}
 
 	t.Run("server startup failure returns startup error", func(t *testing.T) {
-		server1 := NewServer("invalid:address:format") // Invalid address
+		server1 := NewServer("invalid:address:format", prometheus.NewRegistry(), 5*time.Second) // Invalid address
 		err := server1.Start(context.Background())
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to listen on")
@@ -440,19 +440,19 @@ func TestSetBackendHealth(t *testing.T) {
 	})
 
 	t.Run("graceful shutdown", func(t *testing.T) {
-		server2 := NewServer(":0")
-		err := server2.Start(context.Background())
+		metricsServer := NewServer(":0", prometheus.NewRegistry(), 5*time.Second)
+		err := metricsServer.Start(context.Background())
 		require.NoError(t, err)
 
 		// Ensure we have a valid address
-		addr := server2.Addr()
+		addr := metricsServer.Addr()
 		assert.NotEmpty(t, addr)
 
 		// Shutdown with a valid context should succeed
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		err = server2.Shutdown(ctx)
+		err = metricsServer.Shutdown(ctx)
 		assert.NoError(t, err)
 	})
 }
@@ -508,7 +508,7 @@ func TestMetricsErrorTypes(t *testing.T) {
 
 	t.Run("invalid address returns resource error", func(t *testing.T) {
 		// Create server with invalid address
-		server := NewServer("invalid:address:format")
+		server := NewServer("invalid:address:format", prometheus.NewRegistry(), 5*time.Second)
 
 		ctx := context.Background()
 		err := server.Start(ctx)
@@ -523,7 +523,7 @@ func TestMetricsErrorTypes(t *testing.T) {
 
 	t.Run("port already in use returns resource error", func(t *testing.T) {
 		// Create first server
-		server1 := NewServer("127.0.0.1:0") // Use port 0 to get random port
+		server1 := NewServer("127.0.0.1:0", prometheus.NewRegistry(), 5*time.Second) // Use port 0 to get random port
 		ctx := context.Background()
 		err := server1.Start(ctx)
 		if err != nil {
@@ -535,7 +535,7 @@ func TestMetricsErrorTypes(t *testing.T) {
 		addr := server1.Addr()
 
 		// Try to create second server on same port
-		server2 := NewServer(addr)
+		server2 := NewServer(addr, prometheus.NewRegistry(), 5*time.Second)
 		err = server2.Start(ctx)
 		if err == nil {
 			t.Fatal("expected error for port already in use")
@@ -593,7 +593,7 @@ func TestMetricsEndpoint(t *testing.T) {
 	reg.MustRegister(collectors.NewGoCollector())
 
 	// Start metrics server
-	metricsServer := NewServerWithRegistry(":0", reg, 5*time.Second)
+	metricsServer := NewServer(":0", reg, 5*time.Second)
 	err = metricsServer.Start(context.TODO())
 	require.NoError(t, err)
 	defer func() {
@@ -700,7 +700,7 @@ func TestMetricsMiddlewareIntegration(t *testing.T) {
 	}
 
 	// Start metrics server to check the metrics
-	metricsServer := NewServerWithRegistry(":0", reg, 5*time.Second)
+	metricsServer := NewServer(":0", reg, 5*time.Second)
 	err = metricsServer.Start(context.TODO())
 	require.NoError(t, err)
 	defer func() {
@@ -731,7 +731,7 @@ func TestMetricsMiddlewareIntegration(t *testing.T) {
 
 func TestMetricsServerGracefulShutdown(t *testing.T) {
 	// Create metrics server
-	metricsServer := NewServer(":0")
+	metricsServer := NewServer(":0", prometheus.NewRegistry(), 5*time.Second)
 	err := metricsServer.Start(context.TODO())
 	require.NoError(t, err)
 
