@@ -326,7 +326,6 @@ auth_key = "%s"`, cfg.Tailscale.AuthKey)
 		content += fmt.Sprintf(`
 oauth_client_id = "%s"
 oauth_client_secret = "%s"`, cfg.Tailscale.OAuthClientID, cfg.Tailscale.OAuthClientSecret)
-
 	}
 
 	// Add default_tags if present

@@ -25,16 +25,17 @@ func (r RedactedString) Format(f fmt.State, verb rune) {
 
 // RedactedTailscale is a version of Tailscale config with sensitive fields redacted
 type RedactedTailscale struct {
-	OAuthClientID         string `json:"oauth_client_id,omitempty"`
-	OAuthClientIDEnv      string `json:"oauth_client_id_env,omitempty"`
-	OAuthClientIDFile     string `json:"oauth_client_id_file,omitempty"`
-	OAuthClientSecret     string `json:"oauth_client_secret,omitempty"`
-	OAuthClientSecretEnv  string `json:"oauth_client_secret_env,omitempty"`
-	OAuthClientSecretFile string `json:"oauth_client_secret_file,omitempty"`
-	AuthKey               string `json:"auth_key,omitempty"`
-	AuthKeyEnv            string `json:"auth_key_env,omitempty"`
-	AuthKeyFile           string `json:"auth_key_file,omitempty"`
-	StateDir              string `json:"state_dir,omitempty"`
+	OAuthClientID         string   `json:"oauth_client_id,omitempty"`
+	OAuthClientIDEnv      string   `json:"oauth_client_id_env,omitempty"`
+	OAuthClientIDFile     string   `json:"oauth_client_id_file,omitempty"`
+	OAuthClientSecret     string   `json:"oauth_client_secret,omitempty"`
+	OAuthClientSecretEnv  string   `json:"oauth_client_secret_env,omitempty"`
+	OAuthClientSecretFile string   `json:"oauth_client_secret_file,omitempty"`
+	AuthKey               string   `json:"auth_key,omitempty"`
+	AuthKeyEnv            string   `json:"auth_key_env,omitempty"`
+	AuthKeyFile           string   `json:"auth_key_file,omitempty"`
+	StateDir              string   `json:"state_dir,omitempty"`
+	DefaultTags           []string `json:"default_tags,omitempty"`
 }
 
 // RedactedConfig is a version of Config with sensitive fields redacted for safe logging
@@ -60,6 +61,7 @@ func (c *Config) Redacted() *RedactedConfig {
 			AuthKeyEnv:            c.Tailscale.AuthKeyEnv,
 			AuthKeyFile:           c.Tailscale.AuthKeyFile,
 			StateDir:              c.Tailscale.StateDir,
+			DefaultTags:           c.Tailscale.DefaultTags,
 		},
 		Global:   c.Global,
 		Services: make([]Service, len(c.Services)),
