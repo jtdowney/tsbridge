@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,9 +86,11 @@ func TestE2EFullStartupWithOAuth(t *testing.T) {
 		WithService("test-oauth-service", backend.Listener.Addr().String()).
 		Build()
 
-	// Add OAuth tags and adjust whois timeout
-	cfg.Tailscale.OAuthTags = []string{"tag:test", "tag:integration"}
-	cfg.Services[0].WhoisTimeout = config.Duration{Duration: 100 * time.Millisecond}
+	// Add tags to all services and adjust whois timeout
+	for i := range cfg.Services {
+		cfg.Services[i].Tags = []string{"tag:test", "tag:integration"}
+		cfg.Services[i].WhoisTimeout = config.Duration{Duration: 100 * time.Millisecond}
+	}
 
 	// Write config file using helper
 	configPath := helpers.WriteConfigFile(t, cfg)
@@ -130,5 +133,109 @@ func TestE2EFullStartupWithOAuth(t *testing.T) {
 	outputStr := string(output)
 	if outputStr == "" {
 		t.Error("expected some output from tsbridge")
+	}
+}
+
+// TestTagsRequiredWithOAuth tests that services must have tags when using OAuth
+func TestTagsRequiredWithOAuth(t *testing.T) {
+	// Skip if not in integration test mode
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// Test 1: Service with no tags and no global defaults should fail validation
+	cfg1 := &config.Config{
+		Tailscale: config.Tailscale{
+			OAuthClientID:     "test-id",
+			OAuthClientSecret: "test-secret",
+			StateDir:          t.TempDir(),
+		},
+		Services: []config.Service{
+			{
+				Name:        "no-tags-service",
+				BackendAddr: "localhost:8080",
+			},
+		},
+	}
+	cfg1.SetDefaults()
+	err := cfg1.Validate()
+	if err == nil {
+		t.Error("expected validation error for service without tags using OAuth")
+	}
+	if err != nil && !strings.Contains(err.Error(), "service must have at least one tag when using OAuth") {
+		t.Errorf("expected error about missing tags, got: %v", err)
+	}
+
+	// Test 2: Service inheriting from global defaults should pass validation
+	cfg2 := &config.Config{
+		Tailscale: config.Tailscale{
+			OAuthClientID:     "test-id",
+			OAuthClientSecret: "test-secret",
+			StateDir:          t.TempDir(),
+			DefaultTags:       []string{"tag:default"},
+		},
+		Global: config.Global{},
+		Services: []config.Service{
+			{
+				Name:        "inherits-tags-service",
+				BackendAddr: "localhost:8080",
+			},
+		},
+	}
+	cfg2.SetDefaults()
+	cfg2.Normalize()
+	err = cfg2.Validate()
+	if err != nil {
+		t.Errorf("expected validation to pass for service inheriting global tags, got: %v", err)
+	}
+
+	// Test 3: Service with explicit tags should pass validation
+	cfg3 := &config.Config{
+		Tailscale: config.Tailscale{
+			OAuthClientID:     "test-id",
+			OAuthClientSecret: "test-secret",
+			StateDir:          t.TempDir(),
+		},
+		Services: []config.Service{
+			{
+				Name:        "explicit-tags-service",
+				BackendAddr: "localhost:8080",
+				Tags:        []string{"tag:service"},
+			},
+		},
+	}
+	cfg3.SetDefaults()
+	err = cfg3.Validate()
+	if err != nil {
+		t.Errorf("expected validation to pass for service with explicit tags, got: %v", err)
+	}
+}
+
+// TestTagsNotRequiredWithAuthKey tests that tags are optional when using auth keys
+func TestTagsNotRequiredWithAuthKey(t *testing.T) {
+	// Skip if not in integration test mode
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	// Create config with auth key (no OAuth)
+	cfg := &config.Config{
+		Tailscale: config.Tailscale{
+			AuthKey:  "tskey-auth-test123",
+			StateDir: t.TempDir(),
+		},
+		Services: []config.Service{
+			{
+				Name:        "no-tags-allowed",
+				BackendAddr: "localhost:8080",
+			},
+		},
+	}
+	cfg.SetDefaults()
+
+	// Should validate successfully without tags
+	err := cfg.Validate()
+	if err != nil {
+		t.Errorf("service without tags should be valid when using auth key, got: %v", err)
 	}
 }

@@ -35,7 +35,6 @@ func TestNewServer(t *testing.T) {
 			cfg: config.Tailscale{
 				OAuthClientID:     "test-client-id",
 				OAuthClientSecret: "test-client-secret",
-				OAuthTags:         []string{"tag:tsbridge"},
 			},
 			wantErr: false,
 		},
@@ -139,7 +138,9 @@ func TestServer_Listen(t *testing.T) {
 	}
 
 	// Test that we can create a listener
-	listener, err := server.Listen("test-service", "auto", false)
+	svc := config.Service{Name: "test-service"}
+
+	listener, err := server.Listen(svc, "auto", false)
 	if err != nil {
 		t.Errorf("Listen() error = %v", err)
 	}
@@ -177,7 +178,9 @@ func TestServer_ListenWithFunnel(t *testing.T) {
 	}
 
 	// Test with funnel enabled
-	listener, err := server.Listen("test-service", "auto", true)
+	svc := config.Service{Name: "test-service"}
+
+	listener, err := server.Listen(svc, "auto", true)
 	if err != nil {
 		t.Errorf("Listen() with funnel error = %v", err)
 	}
@@ -328,7 +331,9 @@ func TestServerWithDependencyInjection(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		listener, err := server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		listener, err := server.Listen(svc, "auto", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -372,7 +377,9 @@ func TestServerWithDependencyInjection(t *testing.T) {
 		// Create multiple services
 		services := []string{"service1", "service2", "service3"}
 		for _, svc := range services {
-			_, err := server.Listen(svc, "auto", false)
+			svcConfig := config.Service{Name: svc}
+
+			_, err := server.Listen(svcConfig, "auto", false)
 			if err != nil {
 				t.Fatalf("unexpected error creating listener for %s: %v", svc, err)
 			}
@@ -424,7 +431,9 @@ func TestServerWithDependencyInjection(t *testing.T) {
 
 		// Create multiple services
 		for i := 0; i < 4; i++ {
-			_, err := server.Listen(string(rune('a'+i)), "auto", false)
+			svcConfig := config.Service{Name: string(rune('a' + i))}
+
+			_, err := server.Listen(svcConfig, "auto", false)
 			if err != nil {
 				t.Fatalf("unexpected error creating listener: %v", err)
 			}
@@ -517,7 +526,7 @@ func TestServiceLifecycle(t *testing.T) {
 		// Verify that Start method does not exist on the server interface
 		// This test will fail to compile if Start() method exists
 		type noStartMethodInterface interface {
-			Listen(serviceName string, tlsMode string, funnelEnabled bool) (net.Listener, error)
+			Listen(svc config.Service, tlsMode string, funnelEnabled bool) (net.Listener, error)
 			Close() error
 			GetServiceServer(serviceName string) tsnet.TSNetServer
 		}
@@ -563,7 +572,9 @@ func TestServiceLifecycle(t *testing.T) {
 		}
 
 		// Call Listen to initialize the service
-		listener, err := server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		listener, err := server.Listen(svc, "auto", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -617,7 +628,9 @@ func TestServiceLifecycle(t *testing.T) {
 		for i := 0; i < numGoroutines; i++ {
 			go func(idx int) {
 				serviceName := fmt.Sprintf("service-%d", idx)
-				listener, err := server.Listen(serviceName, "auto", false)
+				svcConfig := config.Service{Name: serviceName}
+
+				listener, err := server.Listen(svcConfig, "auto", false)
 				if err != nil {
 					errChan <- err
 				} else {
@@ -667,7 +680,9 @@ func TestServiceLifecycle(t *testing.T) {
 		}
 
 		// Listen should fail when Start fails
-		_, err = server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "auto", false)
 		if err == nil {
 			t.Error("expected error when Start fails, got nil")
 		}
@@ -704,7 +719,9 @@ func TestServiceLifecycle(t *testing.T) {
 		// Create multiple services
 		serviceNames := []string{"service1", "service2", "service3"}
 		for _, name := range serviceNames {
-			_, err := server.Listen(name, "auto", false)
+			svcConfig := config.Service{Name: name}
+
+			_, err := server.Listen(svcConfig, "auto", false)
 			if err != nil {
 				t.Fatalf("unexpected error creating listener for %s: %v", name, err)
 			}
@@ -751,7 +768,9 @@ func TestServiceLifecycle(t *testing.T) {
 		}
 
 		// Create a service
-		_, err = server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "auto", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -801,7 +820,9 @@ func TestServiceLifecycle(t *testing.T) {
 		}
 
 		// Create a service to trigger configuration
-		_, err = server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "auto", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -841,7 +862,9 @@ func TestServiceLifecycle(t *testing.T) {
 		}
 
 		// Create a service to trigger configuration
-		_, err = server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "auto", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -888,7 +911,9 @@ func TestServiceLifecycle(t *testing.T) {
 		// Create multiple services
 		services := []string{"service1", "service2", "service3"}
 		for _, svc := range services {
-			_, err := server.Listen(svc, "auto", false)
+			svcConfig := config.Service{Name: svc}
+
+			_, err := server.Listen(svcConfig, "auto", false)
 			if err != nil {
 				t.Fatalf("unexpected error creating listener for %s: %v", svc, err)
 			}
@@ -948,7 +973,7 @@ func TestEphemeralServices(t *testing.T) {
 		}
 
 		// Listen should create the server with ephemeral flag
-		_, err = server.ListenWithService(svc, "off", false)
+		_, err = server.Listen(svc, "off", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -997,7 +1022,7 @@ func TestEphemeralServices(t *testing.T) {
 		}
 
 		// Listen should create the server with ephemeral flag false
-		_, err = server.ListenWithService(svc, "off", false)
+		_, err = server.Listen(svc, "off", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1077,7 +1102,9 @@ func TestTLSMode(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		listener, err := server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		listener, err := server.Listen(svc, "auto", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1119,7 +1146,9 @@ func TestTLSMode(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		listener, err := server.Listen("test-service", "off", false)
+		svc := config.Service{Name: "test-service"}
+
+		listener, err := server.Listen(svc, "off", false)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -1148,7 +1177,9 @@ func TestTLSMode(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		_, err = server.Listen("test-service", "invalid", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "invalid", false)
 		if err == nil {
 			t.Error("expected error for invalid TLS mode")
 		}
@@ -1214,7 +1245,9 @@ func TestTailscaleErrorTypes(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		_, err = server.Listen("test-service", "invalid-mode", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "invalid-mode", false)
 		if err == nil {
 			t.Fatal("expected error for invalid TLS mode")
 		}
@@ -1242,7 +1275,9 @@ func TestTailscaleErrorTypes(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		_, err = server.Listen("test-service", "auto", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "auto", false)
 		if err == nil {
 			t.Fatal("expected error when tsnet server fails to start")
 		}
@@ -1278,7 +1313,9 @@ func TestTailscaleErrorTypes(t *testing.T) {
 		}
 
 		// Create a service
-		_, err = server.Listen("test-service", "off", false)
+		svc := config.Service{Name: "test-service"}
+
+		_, err = server.Listen(svc, "off", false)
 		if err != nil {
 			t.Fatalf("unexpected error creating listener: %v", err)
 		}
@@ -1324,7 +1361,6 @@ func TestSecretResolutionByConfig(t *testing.T) {
 			cfg: config.Tailscale{
 				OAuthClientID:     "test-client-id",
 				OAuthClientSecret: "test-client-secret",
-				OAuthTags:         []string{"tag:test"},
 			},
 			expectNewErr: false,
 		},
@@ -1564,8 +1600,8 @@ func TestCertificatePriming(t *testing.T) {
 				BackendAddr: "localhost:8080",
 			}
 
-			// Call ListenWithService
-			listener, err := server.ListenWithService(svc, tt.tlsMode, tt.funnelEnabled)
+			// Call Listen
+			listener, err := server.Listen(svc, tt.tlsMode, tt.funnelEnabled)
 			assert.NoError(t, err)
 			assert.NotNil(t, listener)
 

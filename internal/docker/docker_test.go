@@ -165,8 +165,8 @@ func TestParseGlobalConfig(t *testing.T) {
 			Labels: map[string]string{
 				"tsbridge.tailscale.oauth_client_id_env":     "TS_OAUTH_CLIENT_ID",
 				"tsbridge.tailscale.oauth_client_secret_env": "TS_OAUTH_CLIENT_SECRET",
-				"tsbridge.tailscale.oauth_tags":              "tag:proxy, tag:server",
 				"tsbridge.tailscale.state_dir":               "/var/lib/tsbridge",
+				"tsbridge.tailscale.default_tags":            "tag:proxy,tag:server",
 				"tsbridge.global.metrics_addr":               ":9090",
 				"tsbridge.global.read_header_timeout":        "30s",
 				"tsbridge.global.write_timeout":              "30s",
@@ -186,8 +186,8 @@ func TestParseGlobalConfig(t *testing.T) {
 		assert.Equal(t, "", cfg.Tailscale.OAuthClientSecret)
 		assert.Equal(t, "TS_OAUTH_CLIENT_ID", cfg.Tailscale.OAuthClientIDEnv)
 		assert.Equal(t, "TS_OAUTH_CLIENT_SECRET", cfg.Tailscale.OAuthClientSecretEnv)
-		assert.Equal(t, []string{"tag:proxy", "tag:server"}, cfg.Tailscale.OAuthTags)
 		assert.Equal(t, "/var/lib/tsbridge", cfg.Tailscale.StateDir)
+		assert.Equal(t, []string{"tag:proxy", "tag:server"}, cfg.Tailscale.DefaultTags)
 
 		// Verify global config
 		assert.Equal(t, ":9090", cfg.Global.MetricsAddr)
@@ -908,6 +908,7 @@ func createTsbridgeContainer(id string) container.Summary {
 		"tsbridge.tailscale.oauth_client_id":     "tskey-123",
 		"tsbridge.tailscale.oauth_client_secret": "secret-456",
 		"tsbridge.tailscale.hostname":            "test-bridge",
+		"tsbridge.tailscale.default_tags":        "tag:test,tag:docker",
 	}
 	return container.Summary{
 		ID:     id,

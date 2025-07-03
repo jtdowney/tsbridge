@@ -37,21 +37,21 @@ type Tailscale struct {
 	AuthKey               string   `mapstructure:"auth_key"`                 // Tailscale auth key (alternative to OAuth)
 	AuthKeyEnv            string   `mapstructure:"auth_key_env"`             // Env var containing auth key
 	AuthKeyFile           string   `mapstructure:"auth_key_file"`            // File containing auth key
-	OAuthTags             []string `mapstructure:"oauth_tags"`               // Tags to apply with OAuth
 	StateDir              string   `mapstructure:"state_dir"`                // Directory for Tailscale state
+	DefaultTags           []string `mapstructure:"default_tags"`             // Default tags for services
 }
 
 // Global contains global default settings
 type Global struct {
-	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`     // Time allowed to read request headers
-	WriteTimeout          Duration `mapstructure:"write_timeout"`           // Max duration for writing response
-	IdleTimeout           Duration `mapstructure:"idle_timeout"`            // Max time to wait for next request
-	ShutdownTimeout       Duration `mapstructure:"shutdown_timeout"`        // Max duration for graceful shutdown
-	ResponseHeaderTimeout Duration `mapstructure:"response_header_timeout"` // Timeout for backend response headers
-	MetricsAddr           string   `mapstructure:"metrics_addr"`            // Address for Prometheus metrics
+	FlushInterval         Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
 	AccessLog             *bool    `mapstructure:"access_log"`              // Enable access logging (default: true)
 	TrustedProxies        []string `mapstructure:"trusted_proxies"`         // List of trusted proxy IPs or CIDR ranges
-	FlushInterval         Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
+	MetricsAddr           string   `mapstructure:"metrics_addr"`            // Address for Prometheus metrics
+	ResponseHeaderTimeout Duration `mapstructure:"response_header_timeout"` // Timeout for backend response headers
+	ShutdownTimeout       Duration `mapstructure:"shutdown_timeout"`        // Max duration for graceful shutdown
+	WriteTimeout          Duration `mapstructure:"write_timeout"`           // Max duration for writing response
+	IdleTimeout           Duration `mapstructure:"idle_timeout"`            // Max time to wait for next request
+	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`     // Time allowed to read request headers
 	// Transport timeouts
 	DialTimeout              Duration `mapstructure:"dial_timeout"`                // Max time for connection dial
 	KeepAliveTimeout         Duration `mapstructure:"keep_alive_timeout"`          // Keep-alive probe interval
@@ -68,6 +68,7 @@ type Service struct {
 	WhoisEnabled *bool    `mapstructure:"whois_enabled"` // Enable whois lookups (default: true)
 	WhoisTimeout Duration `mapstructure:"whois_timeout"` // Max time for whois lookup
 	TLSMode      string   `mapstructure:"tls_mode"`      // "auto" (default), "off"
+	Tags         []string `mapstructure:"tags"`          // Service-specific tags
 	// Optional overrides
 	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`     // Override global read header timeout
 	WriteTimeout          Duration `mapstructure:"write_timeout"`           // Override global write timeout
@@ -427,6 +428,13 @@ func (c *Config) Normalize() {
 		if !svc.FlushInterval.IsSet {
 			svc.FlushInterval = c.Global.FlushInterval
 		}
+
+		// Copy tags if not set
+		if svc.Tags == nil && c.Tailscale.DefaultTags != nil {
+			// Make a copy to prevent services from modifying the global default slice
+			svc.Tags = make([]string, len(c.Tailscale.DefaultTags))
+			copy(svc.Tags, c.Tailscale.DefaultTags)
+		}
 	}
 }
 
@@ -466,15 +474,6 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// validateAuthKeySources validates AuthKey authentication configuration
-func validateAuthKeySources(ts Tailscale) error {
-	if ts.AuthKey != "" && len(ts.OAuthTags) > 0 {
-		return errors.NewValidationError("oauth_tags can only be used with OAuth authentication")
-	}
-
-	return nil
-}
-
 // validateOAuthSources validates OAuth authentication configuration
 func validateOAuthSources(ts Tailscale) error {
 	if ts.OAuthClientID == "" {
@@ -504,22 +503,13 @@ func (c *Config) validateOAuth() error {
 		return err
 	}
 
-	// Determine which auth method is being used
-	hasAuthKey := c.Tailscale.AuthKey != ""
-	hasOAuth := c.Tailscale.OAuthClientID != "" || c.Tailscale.OAuthClientSecret != ""
-
-	// Validate based on the auth method
-	if hasAuthKey {
-		return validateAuthKeySources(c.Tailscale)
+	// If an auth key is provided, auth validation is complete
+	if c.Tailscale.AuthKey != "" {
+		return nil
 	}
 
-	if hasOAuth || (!hasAuthKey && !hasOAuth) {
-		// If OAuth is being used, or if no auth is configured yet,
-		// validate OAuth (which will require both ID and secret)
-		return validateOAuthSources(c.Tailscale)
-	}
-
-	return nil
+	// Otherwise, we must have valid OAuth credentials
+	return validateOAuthSources(c.Tailscale)
 }
 
 func (c *Config) validateGlobal() error {
@@ -610,6 +600,13 @@ func (c *Config) validateService(svc *Service) error {
 		return errors.NewValidationError("idle_timeout must be non-negative")
 	}
 
+	// Validate tags when using OAuth
+	if c.Tailscale.OAuthClientID != "" || c.Tailscale.OAuthClientSecret != "" {
+		if len(svc.Tags) == 0 {
+			return errors.NewValidationError("service must have at least one tag when using OAuth authentication")
+		}
+	}
+
 	return nil
 }
 
@@ -641,11 +638,11 @@ func (t Tailscale) String() string {
 	b.WriteString(fmt.Sprintf("  AuthKeyEnv: %s\n", t.AuthKeyEnv))
 	b.WriteString(fmt.Sprintf("  AuthKeyFile: %s\n", t.AuthKeyFile))
 
-	// OAuth Tags (not sensitive)
-	b.WriteString(fmt.Sprintf("  OAuthTags: %v\n", t.OAuthTags))
-
 	// State Directory (not sensitive)
 	b.WriteString(fmt.Sprintf("  StateDir: %s\n", t.StateDir))
+
+	// Default Tags (not sensitive)
+	b.WriteString(fmt.Sprintf("  DefaultTags: %v\n", t.DefaultTags))
 
 	return b.String()
 }
@@ -683,6 +680,9 @@ func (c *Config) String() string {
 		b.WriteString(fmt.Sprintf("    WhoisTimeout: %s\n", svc.WhoisTimeout.Duration))
 		if svc.TLSMode != "" {
 			b.WriteString(fmt.Sprintf("    TLSMode: %s\n", svc.TLSMode))
+		}
+		if len(svc.Tags) > 0 {
+			b.WriteString(fmt.Sprintf("    Tags: %v\n", svc.Tags))
 		}
 		// Add service-level overrides if set
 		if svc.ReadHeaderTimeout.Duration > 0 {

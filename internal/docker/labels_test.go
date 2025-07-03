@@ -644,6 +644,7 @@ func getDockerParsedGlobalFields() map[string]bool {
 		"global.expect_continue_timeout":     true,
 		"global.metrics_read_header_timeout": true,
 		"global.flush_interval":              true,
+		"global.default_tags":                true,
 	}
 }
 
@@ -668,5 +669,6 @@ func getDockerParsedServiceFields() map[string]bool {
 		"service.downstream_headers":      true,
 		"service.remove_upstream":         true,
 		"service.remove_downstream":       true,
+		"service.tags":                    true,
 	}
 }

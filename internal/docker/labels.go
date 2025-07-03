@@ -191,7 +191,7 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 		AuthKeyEnv:            parser.getString("tailscale.auth_key_env"),
 		AuthKeyFile:           parser.getString("tailscale.auth_key_file"),
 		StateDir:              parser.getString("tailscale.state_dir"),
-		OAuthTags:             parser.getStringSlice("tailscale.oauth_tags", ","),
+		DefaultTags:           parser.getStringSlice("tailscale.default_tags", ","),
 	}
 
 	// Parse global configuration
@@ -266,6 +266,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.BackendAddr = backendAddr
 
 	// Parse configuration
+	svc.Tags = parser.getStringSlice("service.tags", ",")
 	svc.WhoisEnabled = parser.getBool("service.whois_enabled")
 	svc.AccessLog = parser.getBool("service.access_log")
 	svc.FunnelEnabled = parser.getBool("service.funnel_enabled")

@@ -4,11 +4,12 @@
 # OAuth credentials are provided via environment variables
 oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
 oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
-# OAuth tags are REQUIRED when using OAuth authentication
-oauth_tags = ["tag:server"]
 state_dir = "/var/lib/tsbridge"
+# Default tags for all services (can be overridden per-service)
+default_tags = ["tag:tsbridge", "tag:proxy"]
 
 [global]
+
 # Timeouts
 read_header_timeout = "30s"
 write_timeout = "30s"
@@ -25,18 +26,19 @@ metrics_addr = ":9090"
 # Enable access logging
 access_log = true
 
-# API service
+# API service (uses default tags)
 [[services]]
 name = "demo-api"
 backend_addr = "api-backend:8080"
 whois_enabled = true
 whois_timeout = "500ms"
 
-# Web service
+# Web service with custom tags
 [[services]]
 name = "demo-web"
 backend_addr = "web-backend:8081"
 whois_enabled = true
+tags = ["tag:web", "tag:frontend"]
 
 # Example of a service with custom timeouts
 [[services]]

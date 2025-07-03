@@ -117,16 +117,16 @@ Your main configuration should be in `/etc/tsbridge/config.toml`. Make sure to u
 [tailscale]
 # Option 1: Minimal config - will use TS_OAUTH_CLIENT_ID and TS_OAUTH_CLIENT_SECRET env vars
 state_dir = "/var/lib/tsbridge"
-# OAuth tags are REQUIRED when using OAuth authentication
-oauth_tags = ["tag:server", "tag:proxy"]
 
 # Option 2: Explicitly specify which env vars to use
 # oauth_client_id_env = "CUSTOM_OAUTH_ID"
 # oauth_client_secret_env = "CUSTOM_OAUTH_SECRET"
-# oauth_tags = ["tag:server", "tag:proxy"]
 
 # Option 3: Use auth key instead of OAuth
 # auth_key_env = "TS_AUTHKEY"
+
+# Default tags for all services (when using OAuth, your service must have tags)
+default_tags = ["tag:server", "tag:proxy"]
 
 [global]
 metrics_addr = ":9090"

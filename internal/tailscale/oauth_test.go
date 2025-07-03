@@ -76,7 +76,6 @@ func TestGenerateAuthKeyWithOAuth(t *testing.T) {
 	cfg := config.Tailscale{
 		OAuthClientID:     "test-client-id",
 		OAuthClientSecret: "test-client-secret",
-		OAuthTags:         []string{"tag:server", "tag:tsbridge"},
 	}
 
 	// Create OAuth client with test endpoints
@@ -89,7 +88,7 @@ func TestGenerateAuthKeyWithOAuth(t *testing.T) {
 	}
 
 	// Generate auth key using OAuth
-	authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, cfg.OAuthTags, false)
+	authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
 	if err != nil {
 		t.Fatalf("failed to generate auth key: %v", err)
 	}
@@ -325,6 +324,73 @@ func TestOAuthErrorTypes(t *testing.T) {
 			t.Error("expected error for invalid JSON response")
 		}
 	})
+}
+
+func TestGenerateOrResolveAuthKeyWithServiceTags(t *testing.T) {
+	// Track the request body to verify tags
+	var requestBody []byte
+
+	// Create a single server that handles both OAuth token and API endpoints
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/v2/oauth/token":
+			// Handle OAuth token request
+			token := map[string]interface{}{
+				"access_token": "mock-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			}
+			_ = json.NewEncoder(w).Encode(token)
+		case "/api/v2/tailnet/-/keys":
+			// Handle API request
+			body, _ := io.ReadAll(r.Body)
+			requestBody = body
+
+			response := map[string]interface{}{
+				"key":     "tskey-auth-mock123",
+				"created": time.Now().Format(time.RFC3339),
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		}
+	}))
+	defer server.Close()
+
+	// Set up test environment
+	t.Setenv("TSBRIDGE_OAUTH_ENDPOINT", server.URL)
+
+	// Test with service-specific tags
+	cfg := config.Config{
+		Tailscale: config.Tailscale{
+			OAuthClientID:     "test-client-id",
+			OAuthClientSecret: "test-client-secret",
+		},
+	}
+
+	svc := config.Service{
+		Name: "test-service",
+		Tags: []string{"tag:api", "tag:prod"},
+	}
+
+	authKey, err := generateOrResolveAuthKey(cfg, svc)
+	if err != nil {
+		t.Fatalf("failed to generate auth key: %v", err)
+	}
+
+	if authKey != "tskey-auth-mock123" {
+		t.Errorf("expected tskey-auth-mock123, got %s", authKey)
+	}
+
+	// Verify the service tags were used
+	var req authKeyRequest
+	if err := json.Unmarshal(requestBody, &req); err != nil {
+		t.Fatalf("failed to unmarshal request body: %v", err)
+	}
+
+	if len(req.Tags) != 2 || req.Tags[0] != "tag:api" || req.Tags[1] != "tag:prod" {
+		t.Errorf("expected service tags [tag:api tag:prod], got %v", req.Tags)
+	}
 }
 
 func TestOAuthEphemeralFlag(t *testing.T) {

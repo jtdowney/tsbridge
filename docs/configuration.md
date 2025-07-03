@@ -6,6 +6,9 @@ This document provides a comprehensive guide to configuring tsbridge using TOML 
 
 - [Configuration File Structure](#configuration-file-structure)
 - [Tailscale Section](#tailscale-section)
+  - [OAuth Authentication](#oauth-authentication)
+  - [Tag Ownership and OAuth Security](#tag-ownership-and-oauth-security)
+  - [Auth Key Authentication](#auth-key-authentication)
 - [Global Section](#global-section)
 - [Services Section](#services-section)
 - [Streaming Services Configuration](#streaming-services-configuration)
@@ -48,7 +51,7 @@ This means that while secrets must be available at startup, the actual Tailscale
 
 OAuth is the recommended authentication method for production use.
 
-**Important**: When using OAuth authentication, you MUST also specify `oauth_tags` to define which ACL tags the node should have.
+**Important**: When using OAuth authentication, each service MUST have at least one tag. You can set tags globally using `default_tags` in the `[global]` section, or per-service using the `tags` field.
 
 #### Provisioning OAuth Credentials
 
@@ -74,10 +77,82 @@ oauth_client_id_file = "/path/to/id.txt"      # From file
 oauth_client_secret = "direct-value"              # Direct value (not recommended)
 oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET" # From environment variable
 oauth_client_secret_file = "/path/to/secret.txt"  # From file
-
-# OAuth tags - REQUIRED when using OAuth
-oauth_tags = ["tag:server", "tag:proxy"]      # ACL tags for the node
 ```
+
+### Tag Ownership and OAuth Security
+
+tsbridge supports and encourages the use of Tailscale's tag ownership model for enhanced security. This approach allows you to create a hierarchical permission structure where an OAuth client has a parent tag that owns service tags.
+
+#### Understanding Tag Ownership
+
+In Tailscale, tags can own other tags, creating a permission hierarchy. When you create an OAuth client with a parent tag, it can generate auth keys for any tags that it owns. This provides:
+
+- **Centralized permission management**: One OAuth client can manage multiple service tags
+- **Scalable configuration**: Add new service tags without modifying the OAuth client
+- **Clear security boundaries**: Services can only use tags within the ownership hierarchy
+
+#### Setting Up Tag Ownership
+
+First, configure tag ownership in your Tailscale admin console's Access Controls (ACL) policy:
+
+```json
+{
+  "tagOwners": {
+    "tag:tsbridge": [],               // Parent tag for the OAuth client
+    "tag:server": ["tag:tsbridge"],   // Service tag owned by tag:tsbridge
+    "tag:proxy": ["tag:tsbridge"],    // Additional service tags as needed
+    "tag:prod": ["tag:tsbridge"],
+    "tag:dev": ["tag:tsbridge"]
+  }
+}
+```
+
+In this configuration:
+- `tag:tsbridge` is the parent tag with no explicit owners (managed by admins)
+- `tag:server`, `tag:proxy`, `tag:prod`, and `tag:dev` are owned by `tag:tsbridge`
+- The OAuth client created with `tag:tsbridge` can create auth keys for any of these owned tags
+
+#### Creating an OAuth Client with Tag Ownership
+
+When creating your OAuth client:
+
+1. Navigate to **Settings** → **OAuth clients** in the Tailscale admin console
+2. Click **Generate OAuth client...**
+3. Configure the client:
+   - **Name**: `tsbridge` (or another descriptive name)
+   - **Scopes**: Check both **Read** and **Write** under **Auth Keys**
+   - **Tags**: Select `tag:tsbridge` (the parent tag, not the service tags)
+4. Click **Generate client** and save the credentials
+
+**Important**: Select the parent tag (`tag:tsbridge`) for the OAuth client, not the service tags. This gives the OAuth client permission to create auth keys for all tags it owns.
+
+#### Configuring tsbridge with Tag Hierarchies
+
+With tag ownership configured, your tsbridge services can use any tags owned by the OAuth client's tag:
+
+```toml
+[tailscale]
+# OAuth client created with tag:tsbridge
+oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
+oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
+
+# Default tags for all services (must be owned by tag:tsbridge)
+default_tags = ["tag:server"]
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+# Can use any tags owned by tag:tsbridge
+tags = ["tag:server", "tag:proxy", "tag:prod"]
+
+[[services]]
+name = "dev-app"
+backend_addr = "localhost:3000"
+# Mix and match tags as needed
+tags = ["tag:server", "tag:dev"]
+```
+
+This approach provides a secure, scalable way to manage service permissions while maintaining clear boundaries between different types of services in your tailnet.
 
 ### Auth Key Authentication
 
@@ -109,16 +184,17 @@ state_dir_env = "TSBRIDGE_STATE_DIR" # From environment variable
 # - Windows: %APPDATA%/tsbridge
 ```
 
-### OAuth Tags
+### Default Tags
 
-**Required** when using OAuth authentication. These tags are applied to the Tailscale node created by tsbridge:
+When using OAuth authentication, services must have at least one tag. You can set default tags that apply to all services:
 
 ```toml
 [tailscale]
-oauth_tags = ["tag:server", "tag:proxy", "tag:production"]
+default_tags = ["tag:tsbridge", "tag:proxy"]
 ```
 
-**Important**: OAuth tags are only used with OAuth authentication and cannot be specified when using auth keys.
+These tags will be applied to any service that doesn't specify its own tags. Services can override these defaults by setting their own `tags` field.
+
 
 ## Global Section
 
@@ -208,9 +284,12 @@ Each `[[services]]` section defines a unique service that tsbridge will proxy.
 [[services]]
 name = "api"                      # Unique service name (becomes hostname)
 backend_addr = "127.0.0.1:8080"  # Backend address to proxy to
+tags = ["tag:api", "tag:prod"]   # Service-specific tags (optional, inherits from global.default_tags if not set)
 ```
 
 The `name` field becomes part of your Tailscale hostname: `https://api.<tailnet-name>.ts.net`
+
+**Tags**: When using OAuth authentication, each service must have at least one tag. If not specified, the service inherits tags from `global.default_tags`.
 
 ### Backend Address Formats
 
@@ -338,8 +417,10 @@ For each configuration value, the precedence order is:
 # Minimal config - uses environment variables for auth
 [tailscale]
 # Will automatically use TS_OAUTH_CLIENT_ID and TS_OAUTH_CLIENT_SECRET
-# OAuth tags are REQUIRED when using OAuth authentication
-oauth_tags = ["tag:server", "tag:proxy"]
+
+[global]
+# Default tags for all services when using OAuth
+default_tags = ["tag:server", "tag:proxy"]
 
 [[services]]
 name = "app"
@@ -353,9 +434,11 @@ backend_addr = "localhost:8080"
 oauth_client_id_file = "/etc/tsbridge/oauth-id"
 oauth_client_secret_file = "/etc/tsbridge/oauth-secret"
 state_dir = "/var/lib/tsbridge"
-oauth_tags = ["tag:server", "tag:proxy", "tag:prod"]
 
 [global]
+# Default tags for all services
+default_tags = ["tag:server", "tag:proxy", "tag:prod"]
+
 # Conservative timeouts
 read_header_timeout = "30s"
 write_timeout = "30s"
@@ -407,10 +490,11 @@ write_timeout = "5m"
 [tailscale]
 oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
 oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
-# OAuth tags are REQUIRED when using OAuth authentication
-oauth_tags = ["tag:dev", "tag:proxy"]
 
 [global]
+# Default tags for all services
+default_tags = ["tag:dev", "tag:proxy"]
+
 # Shorter timeouts for development
 read_header_timeout = "5s"
 write_timeout = "5s"
@@ -428,11 +512,11 @@ whois_enabled = false  # Disable for local development
 [tailscale]
 oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
 oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
-# OAuth tags are REQUIRED when using OAuth authentication
-oauth_tags = ["tag:server", "tag:proxy"]
 state_dir = "/opt/tsbridge/state"
 
 [global]
+# Default tags for all services
+default_tags = ["tag:server", "tag:proxy"]
 read_header_timeout = "30s"
 write_timeout = "30s"
 metrics_addr = ":9090"
@@ -611,7 +695,7 @@ tsbridge validates configuration at startup and will exit with an error if:
 4. **Conflicting auth**: Cannot specify both OAuth and auth key credentials
 5. **Invalid backend address**: Must be valid TCP address or Unix socket path
 6. **Multiple credential sources**: Cannot specify multiple sources for the same credential (e.g., both `oauth_client_id` and `oauth_client_id_env`)
-7. **OAuth tags with auth keys**: `oauth_tags` can only be used with OAuth authentication, not with auth keys
+7. **Missing tags with OAuth**: When using OAuth authentication, each service must have at least one tag (either from `tags` field or inherited from `global.default_tags`)
 8. **Invalid trusted proxies**: Each trusted proxy must be a valid IP address or CIDR range
 
 ## Best Practices

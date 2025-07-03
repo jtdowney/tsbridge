@@ -116,7 +116,7 @@ func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tag
 }
 
 // generateOrResolveAuthKey generates an auth key using OAuth if configured, otherwise uses the resolved auth key
-func generateOrResolveAuthKey(cfg config.Config) (string, error) {
+func generateOrResolveAuthKey(cfg config.Config, svc config.Service) (string, error) {
 	// Config package has already resolved all secrets, so we can use them directly
 	clientID := cfg.Tailscale.OAuthClientID
 	clientSecret := cfg.Tailscale.OAuthClientSecret
@@ -139,7 +139,7 @@ func generateOrResolveAuthKey(cfg config.Config) (string, error) {
 				TokenURL: tokenURL,
 			},
 		}
-		authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiBase, cfg.Tailscale.OAuthTags, false)
+		authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiBase, svc.Tags, svc.Ephemeral)
 		if err != nil {
 			// Error from generateAuthKeyWithOAuth is already typed
 			return "", err

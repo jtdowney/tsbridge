@@ -16,14 +16,14 @@ services:
       # Global configuration
       - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
       - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
-      - "tsbridge.tailscale.oauth_tags=tag:server"  # Required when using OAuth
       - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+      - "tsbridge.tailscale.default_tags=tag:server,tag:proxy"
       - "tsbridge.global.metrics_addr=:9090"
     environment:
       - TS_OAUTH_CLIENT_ID=${TS_OAUTH_CLIENT_ID}
       - TS_OAUTH_CLIENT_SECRET=${TS_OAUTH_CLIENT_SECRET}
     ports:
-      - "9090:9090"  # Metrics port
+      - "9090:9090" # Metrics port
 
   api:
     image: myapp:latest
@@ -68,11 +68,11 @@ labels:
   - "tsbridge.tailscale.auth_key_env=<env_var>"
   - "tsbridge.tailscale.auth_key_file=<file_path>"
 
-  # OAuth tags (comma-separated) - REQUIRED when using OAuth
-  - "tsbridge.tailscale.oauth_tags=tag:server,tag:proxy"
-
   # State directory
   - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+
+  # Default tags for all services (comma-separated)
+  - "tsbridge.tailscale.default_tags=tag:tsbridge,tag:proxy"
 ```
 
 #### Global Defaults
@@ -85,7 +85,6 @@ labels:
   - "tsbridge.global.idle_timeout=120s"
   - "tsbridge.global.shutdown_timeout=15s"
   - "tsbridge.global.response_header_timeout=10s"
-
 
   # Metrics
   - "tsbridge.global.metrics_addr=:9090"
@@ -129,6 +128,9 @@ labels:
 
 ```yaml
 labels:
+  # Service-specific tags (comma-separated) - overrides tailscale.default_tags
+  - "tsbridge.service.tags=tag:api,tag:prod"
+
   # Whois configuration
   - "tsbridge.service.whois_enabled=true"
   - "tsbridge.service.whois_timeout=2s"
@@ -141,7 +143,6 @@ labels:
   - "tsbridge.service.write_timeout=60s"
   - "tsbridge.service.idle_timeout=300s"
   - "tsbridge.service.response_header_timeout=30s"
-
 
   # Access logging (override global)
   - "tsbridge.service.access_log=false"
@@ -202,7 +203,6 @@ When running in Docker, use `tsbridge.service.port` instead of `tsbridge.service
 
 # Unix socket (requires volume mount)
 - "tsbridge.service.backend_addr=unix:///var/run/app.sock"
-
 # Auto-detection (uses first exposed port)
 # No backend labels needed if container exposes a port
 ```
@@ -249,8 +249,8 @@ services:
       # Tailscale configuration
       - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
       - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
-      - "tsbridge.tailscale.oauth_tags=tag:server,tag:proxy"
       - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+      - "tsbridge.tailscale.default_tags=tag:server,tag:proxy"
 
       # Global defaults
       - "tsbridge.global.metrics_addr=:9090"

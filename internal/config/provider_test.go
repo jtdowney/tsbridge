@@ -36,6 +36,7 @@ oauth_client_secret = "test-client-secret"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `,
 			ExpectedConfig: &Config{
 				Tailscale: Tailscale{
@@ -79,6 +80,7 @@ write_timeout = "60s"
 access_log = false
 funnel_enabled = true
 ephemeral = false
+tags = ["tag:test"]
 
 [[services.upstream_headers]]
 name = "X-Custom-Header"
@@ -88,6 +90,7 @@ value = "custom-value"
 name = "web"
 backend_addr = "localhost:3000"
 whois_enabled = false
+tags = ["tag:test"]
 `,
 			ExpectedConfig: &Config{
 				Tailscale: Tailscale{
@@ -119,11 +122,13 @@ whois_enabled = false
 						UpstreamHeaders: map[string]string{
 							"X-Custom-Header": "custom-value",
 						},
+						Tags: []string{"tag:test"},
 					},
 					{
 						Name:         "web",
 						BackendAddr:  "localhost:3000",
 						WhoisEnabled: boolPtr(false),
+						Tags:         []string{"tag:test"},
 					},
 				},
 			},
@@ -139,6 +144,7 @@ oauth_client_secret_env = "TEST_OAUTH_SECRET"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `,
 			ExpectedConfig: &Config{
 				Tailscale: Tailscale{
@@ -164,6 +170,7 @@ oauth_client_secret = "test-secret"
 [[services]]
 name = "unix-service"
 backend_addr = "unix:///var/run/app.sock"
+tags = ["tag:test"]
 `,
 			ExpectedConfig: &Config{
 				Tailscale: Tailscale{
@@ -189,6 +196,7 @@ backend_addr = "unix:///var/run/app.sock"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `,
 			ExpectError: "oauth_client_id and oauth_client_secret are required",
 		},
@@ -853,6 +861,7 @@ oauth_client_secret = "test-secret"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 				provider, cleanup := tt.createProvider(t, content)
 				defer cleanup()

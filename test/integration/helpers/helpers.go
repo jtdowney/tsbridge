@@ -327,17 +327,19 @@ auth_key = "%s"`, cfg.Tailscale.AuthKey)
 oauth_client_id = "%s"
 oauth_client_secret = "%s"`, cfg.Tailscale.OAuthClientID, cfg.Tailscale.OAuthClientSecret)
 
-		if len(cfg.Tailscale.OAuthTags) > 0 {
-			content += `
-oauth_tags = [`
-			for i, tag := range cfg.Tailscale.OAuthTags {
-				if i > 0 {
-					content += ", "
-				}
-				content += fmt.Sprintf(`"%s"`, tag)
+	}
+
+	// Add default_tags if present
+	if len(cfg.Tailscale.DefaultTags) > 0 {
+		content += `
+default_tags = [`
+		for i, tag := range cfg.Tailscale.DefaultTags {
+			if i > 0 {
+				content += ", "
 			}
-			content += "]"
+			content += fmt.Sprintf(`"%s"`, tag)
 		}
+		content += `]`
 	}
 
 	content += fmt.Sprintf(`
@@ -347,14 +349,16 @@ metrics_addr = "%s"
 read_header_timeout = "%s"
 write_timeout = "%s" 
 idle_timeout = "%s"
-shutdown_timeout = "%s"
-
-`,
+shutdown_timeout = "%s"`,
 		cfg.Global.MetricsAddr,
 		cfg.Global.ReadHeaderTimeout.Duration,
 		cfg.Global.WriteTimeout.Duration,
 		cfg.Global.IdleTimeout.Duration,
 		cfg.Global.ShutdownTimeout.Duration)
+
+	content += `
+
+`
 
 	// Add services
 	for _, svc := range cfg.Services {
@@ -374,6 +378,19 @@ whois_enabled = %s
 		if svc.WhoisTimeout.Duration > 0 {
 			content += fmt.Sprintf(`whois_timeout = "%s"
 `, svc.WhoisTimeout.Duration)
+		}
+
+		// Add tags if present
+		if len(svc.Tags) > 0 {
+			content += `tags = [`
+			for i, tag := range svc.Tags {
+				if i > 0 {
+					content += ", "
+				}
+				content += fmt.Sprintf(`"%s"`, tag)
+			}
+			content += `]
+`
 		}
 	}
 

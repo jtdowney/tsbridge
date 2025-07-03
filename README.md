@@ -36,9 +36,10 @@ Create a `tsbridge.toml` file:
 [tailscale]
 oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
 oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
-# OAuth tags are REQUIRED when using OAuth authentication
-oauth_tags = ["tag:server", "tag:proxy"]
 state_dir = "/var/lib/tsbridge"
+# Default tags for all services
+# When using tag ownership, services use tags owned by your OAuth client's parent tag
+default_tags = ["tag:server"]
 
 # Global defaults for all services
 [global]
@@ -56,6 +57,8 @@ whois_enabled = true
 name = "web"
 backend_addr = "unix:///var/run/web.sock"
 ```
+
+For enhanced security using tag ownership, see [Tag Ownership and OAuth Security](docs/configuration.md#tag-ownership-and-oauth-security) in the configuration guide.
 
 ### Running tsbridge
 
@@ -83,11 +86,10 @@ tsbridge supports long-lived streaming connections such as media streaming, Serv
   - `-1ms`: Immediate flushing (no buffering) - recommended for streaming
   - `100ms`: Flush every 100ms - good for periodic updates
   - Not set: Default buffering for performance
-  
 - **`write_timeout`**: Controls connection lifetime
   - `0s`: No timeout - allows indefinite streaming
   - `30s` (default): Connections terminate after 30 seconds
-  
+
 ### Example: Media Streaming Service
 
 ```toml
@@ -183,15 +185,13 @@ auth_key_file = "/path/to/authkey"
 # State directory for TSNet data
 state_dir = "/var/lib/tsbridge"
 state_dir_env = "TSBRIDGE_STATE_DIR"
-
-# Optional: OAuth tags (required when using OAuth authentication)
-oauth_tags = ["tag:proxy", "tag:production"]
 ```
 
 ### Global Defaults
 
 ```toml
 [global]
+
 # Timeouts (Go duration format)
 read_header_timeout = "30s"
 write_timeout = "30s"
@@ -213,10 +213,11 @@ access_log = true
 
 ```toml
 [[services]]
-name = "api"                          # Unique service name
-backend_addr = "127.0.0.1:8080"      # Backend address (TCP or Unix socket)
-whois_enabled = true                 # Inject Tailscale identity headers
-whois_timeout = "500ms"              # Override global whois timeout
+name = "api"                        # Unique service name
+backend_addr = "127.0.0.1:8080"     # Backend address (TCP or Unix socket)
+tags = ["tag:api", "tag:prod"]      # Service-specific tags (overrides tailscale.default_tags)
+whois_enabled = true                # Inject Tailscale identity headers
+whois_timeout = "500ms"             # Override global whois timeout
 
 # Override global settings for this service
 read_header_timeout = "60s"
@@ -264,11 +265,11 @@ services:
     labels:
       - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
       - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
-      - "tsbridge.tailscale.oauth_tags=tag:server"  # Required when using OAuth
       - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+      - "tsbridge.tailscale.default_tags=tag:server,tag:proxy"
       - "tsbridge.global.metrics_addr=:9090"
     ports:
-      - "9090:9090"  # Metrics port
+      - "9090:9090" # Metrics port
 
   myapp:
     image: myapp:latest

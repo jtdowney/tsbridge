@@ -112,7 +112,7 @@ func (r *Registry) StartServices() error {
 func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 
 	// Create listener for this service
-	listener, err := r.tsServer.ListenWithService(svcCfg, svcCfg.TLSMode, svcCfg.FunnelEnabled != nil && *svcCfg.FunnelEnabled)
+	listener, err := r.tsServer.Listen(svcCfg, svcCfg.TLSMode, svcCfg.FunnelEnabled != nil && *svcCfg.FunnelEnabled)
 	if err != nil {
 		return nil, tserrors.WrapResource(err, "creating listener")
 	}

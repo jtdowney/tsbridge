@@ -60,6 +60,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -98,6 +99,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(tmpDir, "config.toml")
@@ -122,6 +124,7 @@ oauth_client_secret = "test-secret"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -159,6 +162,7 @@ read_header_timeout = "60s"
 name = "test-service"
 backend_addr = "localhost:8080"
 read_header_timeout = "90s"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -186,6 +190,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -227,6 +232,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(tmpDir, "config.toml")
@@ -265,6 +271,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(tmpDir, "config.toml")
@@ -295,6 +302,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(tmpDir, "config.toml")
@@ -318,6 +326,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -346,6 +355,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -374,6 +384,7 @@ write_timeout = "40s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -404,6 +415,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -426,6 +438,7 @@ read_header_timeout = "30s"
 [[services]]
 name = "test-service"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `
 
 		tmpFile := filepath.Join(t.TempDir(), "config.toml")
@@ -512,50 +525,6 @@ func TestResolveSecrets(t *testing.T) {
 		}
 	})
 }
-func TestValidateAuthKeySources(t *testing.T) {
-	tests := []struct {
-		name      string
-		tailscale Tailscale
-		wantErr   bool
-		errMsg    string
-	}{
-		{
-			name: "valid AuthKey",
-			tailscale: Tailscale{
-				AuthKey: "test-auth-key",
-			},
-			wantErr: false,
-		},
-		{
-			name: "AuthKey with oauth_tags",
-			tailscale: Tailscale{
-				AuthKey:   "test-auth-key",
-				OAuthTags: []string{"tag:tsbridge"},
-			},
-			wantErr: true,
-			errMsg:  "oauth_tags can only be used with OAuth authentication",
-		},
-		{
-			name: "empty AuthKey is valid",
-			tailscale: Tailscale{
-				AuthKey: "",
-			},
-			wantErr: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateAuthKeySources(tt.tailscale)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("validateAuthKeySources() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if err != nil && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
-				t.Errorf("validateAuthKeySources() error = %v, want error containing %v", err, tt.errMsg)
-			}
-		})
-	}
-}
 
 func TestValidateOAuthSources(t *testing.T) {
 	tests := []struct {
@@ -591,11 +560,10 @@ func TestValidateOAuthSources(t *testing.T) {
 			errMsg:  "OAuth client secret must be provided",
 		},
 		{
-			name: "OAuth with tags",
+			name: "OAuth valid",
 			tailscale: Tailscale{
 				OAuthClientID:     "test-id",
 				OAuthClientSecret: "test-secret",
-				OAuthTags:         []string{"tag:tsbridge"},
 			},
 			wantErr: false,
 		},
@@ -703,6 +671,7 @@ func TestValidate(t *testing.T) {
 						BackendAddr:  "127.0.0.1:8080",
 						WhoisEnabled: &trueVal,
 						WhoisTimeout: makeDuration(1 * time.Second),
+						Tags:         []string{"tag:test"},
 					},
 				},
 			},
@@ -761,10 +730,12 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8081",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -787,6 +758,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -809,6 +781,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -831,6 +804,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "not-a-valid-address",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -853,6 +827,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -876,6 +851,7 @@ func TestValidate(t *testing.T) {
 						Name:         "api",
 						BackendAddr:  "unix:///var/run/api.sock",
 						WhoisEnabled: &falseVal,
+						Tags:         []string{"tag:test"},
 					},
 				},
 			},
@@ -899,6 +875,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -922,6 +899,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -945,6 +923,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -968,6 +947,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -991,6 +971,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -1017,52 +998,7 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr: "",
 		},
-		{
-			name: "oauth_tags with OAuth is valid",
-			config: &Config{
-				Tailscale: Tailscale{
-					OAuthClientID:     "test-id",
-					OAuthClientSecret: "test-secret",
-					OAuthTags:         []string{"tag:tsbridge", "tag:role=proxy"},
-				},
-				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
-				},
-				Services: []Service{
-					{
-						Name:        "api",
-						BackendAddr: "127.0.0.1:8080",
-					},
-				},
-			},
-			wantErr: "",
-		},
 
-		{
-			name: "oauth_tags with AuthKey is invalid",
-			config: &Config{
-				Tailscale: Tailscale{
-					AuthKey:   "test-auth-key",
-					OAuthTags: []string{"tag:tsbridge"},
-				},
-				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
-				},
-				Services: []Service{
-					{
-						Name:        "api",
-						BackendAddr: "127.0.0.1:8080",
-					},
-				},
-			},
-			wantErr: "oauth_tags can only be used with OAuth",
-		},
 		{
 			name: "valid state directory",
 			config: &Config{
@@ -1081,6 +1017,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -1104,6 +1041,7 @@ func TestValidate(t *testing.T) {
 					{
 						Name:        "api",
 						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
 					},
 				},
 			},
@@ -1127,6 +1065,7 @@ func TestValidate(t *testing.T) {
 						Name:          "api",
 						BackendAddr:   "127.0.0.1:8080",
 						FunnelEnabled: &trueVal,
+						Tags:          []string{"tag:test"},
 					},
 				},
 			},
@@ -1453,12 +1392,10 @@ func TestTailscaleString(t *testing.T) {
 			ts: Tailscale{
 				OAuthClientID:     "client-123",
 				OAuthClientSecret: "secret",
-				OAuthTags:         []string{"tag:server", "tag:prod"},
 				StateDir:          "/var/lib/tsbridge",
 			},
 			contains: []string{
 				"OAuthClientID: client-123",
-				"OAuthTags: [tag:server tag:prod]",
 				"StateDir: /var/lib/tsbridge",
 			},
 		},
@@ -1997,6 +1934,7 @@ flush_interval = "100ms"
 [[services]]
 name = "test"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `,
 			checkGlobal:    true,
 			expectedGlobal: 100 * time.Millisecond,
@@ -2012,6 +1950,7 @@ oauth_client_secret = "test-secret"
 name = "test"
 backend_addr = "localhost:8080"
 flush_interval = "200ms"
+tags = ["tag:test"]
 `,
 			checkService: true,
 			expectedSvc:  200 * time.Millisecond,
@@ -2029,6 +1968,7 @@ flush_interval = "300ms"
 [[services]]
 name = "test"
 backend_addr = "localhost:8080"
+tags = ["tag:test"]
 `,
 			checkService: true,
 			expectedSvc:  300 * time.Millisecond,
@@ -2047,6 +1987,7 @@ flush_interval = "300ms"
 name = "test"
 backend_addr = "localhost:8080"
 flush_interval = "50ms"
+tags = ["tag:test"]
 `,
 			checkGlobal:    true,
 			checkService:   true,
@@ -2064,6 +2005,7 @@ oauth_client_secret = "test-secret"
 name = "streaming"
 backend_addr = "localhost:8080"
 flush_interval = "-1ms"
+tags = ["tag:test"]
 `,
 			checkService: true,
 			expectedSvc:  -1 * time.Millisecond,
@@ -2079,6 +2021,7 @@ oauth_client_secret = "test-secret"
 name = "test"
 backend_addr = "localhost:8080"
 flush_interval = "0s"
+tags = ["tag:test"]
 `,
 			checkService: true,
 			expectedSvc:  0,
@@ -2143,6 +2086,227 @@ func TestFlushIntervalNormalization(t *testing.T) {
 
 	// Service without override should inherit global value
 	assert.Equal(t, 100*time.Millisecond, cfg.Services[1].FlushInterval.Duration)
+}
+
+func TestTagsConfiguration(t *testing.T) {
+	t.Run("global default tags", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+default_tags = ["tag:web", "tag:prod"]
+
+[global]
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		assert.Equal(t, []string{"tag:web", "tag:prod"}, cfg.Tailscale.DefaultTags)
+	})
+
+	t.Run("service-specific tags", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+default_tags = ["tag:default"]
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+tags = ["tag:api", "tag:prod"]
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		assert.Equal(t, []string{"tag:api", "tag:prod"}, cfg.Services[0].Tags)
+	})
+
+	t.Run("service inherits global tags when not specified", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+default_tags = ["tag:global", "tag:prod"]
+
+[global]
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		// After normalization, service should inherit global tags
+		assert.Equal(t, []string{"tag:global", "tag:prod"}, cfg.Services[0].Tags)
+	})
+
+	t.Run("service keeps its own tags when specified", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+default_tags = ["tag:global"]
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+tags = ["tag:api", "tag:special"]
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		// Service should keep its own tags, not inherit global
+		assert.Equal(t, []string{"tag:api", "tag:special"}, cfg.Services[0].Tags)
+	})
+
+	t.Run("error when service has empty tags array", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+tags = []
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		_, err := Load(tmpFile)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "must have at least one tag")
+	})
+
+	t.Run("error when no tags configured anywhere", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		_, err := Load(tmpFile)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "must have at least one tag")
+	})
+
+	t.Run("tags required when using OAuth", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+default_tags = ["tag:web"]
+
+[global]
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		// Service should have inherited tags
+		assert.Equal(t, []string{"tag:web"}, cfg.Services[0].Tags)
+	})
+
+	t.Run("tags not required when using auth key", func(t *testing.T) {
+		configContent := `
+[tailscale]
+auth_key = "test-key"
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+`
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		// No error expected when using auth key without tags
+	})
+}
+
+func TestTagsInheritance(t *testing.T) {
+	t.Run("multiple services with mixed tag configuration", func(t *testing.T) {
+		cfg := &Config{
+			Tailscale: Tailscale{
+				OAuthClientID:     "test-id",
+				OAuthClientSecret: "test-secret",
+				DefaultTags:       []string{"tag:global", "tag:default"},
+			},
+			Global: Global{
+				ReadHeaderTimeout: makeDuration(30 * time.Second),
+				WriteTimeout:      makeDuration(30 * time.Second),
+				IdleTimeout:       makeDuration(120 * time.Second),
+				ShutdownTimeout:   makeDuration(30 * time.Second),
+			},
+			Services: []Service{
+				{
+					Name:        "api",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:api", "tag:custom"},
+				},
+				{
+					Name:        "web",
+					BackendAddr: "localhost:8081",
+					// No tags specified, should inherit
+				},
+			},
+		}
+
+		cfg.SetDefaults()
+		cfg.Normalize()
+
+		// First service keeps its own tags
+		assert.Equal(t, []string{"tag:api", "tag:custom"}, cfg.Services[0].Tags)
+
+		// Second service inherits global tags
+		assert.Equal(t, []string{"tag:global", "tag:default"}, cfg.Services[1].Tags)
+
+		// Validate should pass
+		err := cfg.Validate()
+		assert.NoError(t, err)
+	})
 }
 
 func TestZeroDurationHandling(t *testing.T) {

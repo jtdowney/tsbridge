@@ -834,6 +834,7 @@ func TestAppSetupMetrics(t *testing.T) {
 						Name:         "test-service",
 						BackendAddr:  "unix:///tmp/test.sock",
 						WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+						Tags:         []string{"tag:test"},
 					},
 				},
 			}

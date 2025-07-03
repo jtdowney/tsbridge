@@ -69,74 +69,8 @@ func NewServer(cfg config.Tailscale) (*Server, error) {
 	return NewServerWithFactory(cfg, factory)
 }
 
-// Listen creates a listener for a specific service
-func (s *Server) Listen(serviceName string, tlsMode string, funnelEnabled bool) (net.Listener, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Create a new server for this service
-	serviceServer := s.serverFactory()
-
-	// Configure the service server
-	serviceServer.SetHostname(serviceName)
-
-	// Priority for state directory
-	stateDir := s.config.StateDir
-	if stateDir == "" {
-		stateDir = os.Getenv("TSBRIDGE_STATE_DIR")
-	}
-	if stateDir == "" {
-		// Use XDG data directory as default
-		stateDir = getDefaultStateDir()
-	}
-	// Each service needs its own unique state directory to avoid conflicts
-	// when multiple tsnet.Server instances write to the same directory
-	serviceStateDir := filepath.Join(stateDir, serviceName)
-	serviceServer.SetDir(serviceStateDir)
-
-	// Check if this service already has state
-	// If state exists, tsnet will use it and doesn't need an auth key
-	if !hasExistingState(stateDir, serviceName) {
-		// Generate or resolve auth key with OAuth support only for new nodes
-		cfg := config.Config{
-			Tailscale: s.config,
-		}
-		authKey, err := generateOrResolveAuthKey(cfg)
-		if err != nil {
-			return nil, tserrors.WrapConfig(err, fmt.Sprintf("resolving auth key for service %q", serviceName))
-		}
-		serviceServer.SetAuthKey(authKey)
-	}
-	// If state exists, we don't set an auth key - tsnet will use the stored state
-
-	// Store the service server for later operations
-	s.serviceServers[serviceName] = serviceServer
-
-	// Start the service server before listening
-	if err := serviceServer.Start(); err != nil {
-		return nil, tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", serviceName))
-	}
-
-	// Choose the appropriate listener based on TLS mode and funnel settings
-	if funnelEnabled {
-		// Funnel requires HTTPS on port 443
-		return serviceServer.ListenFunnel("tcp", ":443")
-	}
-
-	switch tlsMode {
-	case "auto":
-		// Use ListenTLS for automatic TLS certificate provisioning
-		return serviceServer.ListenTLS("tcp", ":443")
-	case "off":
-		// Use plain Listen without TLS (traffic still encrypted via WireGuard)
-		return serviceServer.Listen("tcp", ":80")
-	default:
-		return nil, tserrors.NewValidationError(fmt.Sprintf("invalid TLS mode: %q", tlsMode))
-	}
-}
-
-// ListenWithService creates a listener for a specific service using its full configuration
-func (s *Server) ListenWithService(svc config.Service, tlsMode string, funnelEnabled bool) (net.Listener, error) {
+// Listen creates a listener for a specific service using its full configuration
+func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) (net.Listener, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -168,7 +102,7 @@ func (s *Server) ListenWithService(svc config.Service, tlsMode string, funnelEna
 		cfg := config.Config{
 			Tailscale: s.config,
 		}
-		authKey, err := generateOrResolveAuthKey(cfg)
+		authKey, err := generateOrResolveAuthKey(cfg, svc)
 		if err != nil {
 			return nil, tserrors.WrapConfig(err, fmt.Sprintf("resolving auth key for service %q", svc.Name))
 		}
