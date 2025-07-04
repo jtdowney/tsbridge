@@ -248,29 +248,80 @@ func (a *App) watchConfigChanges(ctx context.Context, configCh <-chan *config.Co
 			}
 
 			slog.Info("configuration changed, reloading services")
-			if err := a.reloadConfig(newCfg); err != nil {
+			if err := a.ReloadConfig(newCfg); err != nil {
 				slog.Error("failed to reload configuration", "error", err)
 			}
 		}
 	}
 }
 
-// reloadConfig reloads the configuration and restarts affected services
-func (a *App) reloadConfig(newCfg *config.Config) error {
+// ReloadConfig reloads the configuration and restarts affected services
+// This method is exported for testing purposes
+func (a *App) ReloadConfig(newCfg *config.Config) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// For now, we just log the change. Full reload implementation would:
-	// 1. Compare old and new configs to find changes
-	// 2. Stop removed services
-	// 3. Start new services
-	// 4. Restart modified services
-	slog.Info("configuration reload requested", "services", len(newCfg.Services))
+	oldCfg := a.cfg
 
-	// Update the config
+	// Use the extracted reload logic
+	err := reloadConfigWithRegistry(oldCfg, newCfg, a.registry)
+
+	// Always update the config, even if some operations failed
+	// This ensures we're working with the latest intended configuration
 	a.cfg = newCfg
 
-	return nil
+	return err
+}
+
+// findServicesToRemove returns service names that exist in old config but not in new config
+func findServicesToRemove(old, new *config.Config) []string {
+	newServices := make(map[string]bool)
+	for _, svc := range new.Services {
+		newServices[svc.Name] = true
+	}
+
+	var toRemove []string
+	for _, svc := range old.Services {
+		if !newServices[svc.Name] {
+			toRemove = append(toRemove, svc.Name)
+		}
+	}
+	return toRemove
+}
+
+// findServicesToAdd returns services that exist in new config but not in old config
+func findServicesToAdd(old, new *config.Config) []config.Service {
+	oldServices := make(map[string]bool)
+	for _, svc := range old.Services {
+		oldServices[svc.Name] = true
+	}
+
+	var toAdd []config.Service
+	for _, svc := range new.Services {
+		if !oldServices[svc.Name] {
+			toAdd = append(toAdd, svc)
+		}
+	}
+	return toAdd
+}
+
+// findServicesToUpdate returns services that exist in both configs but have changed
+func findServicesToUpdate(old, new *config.Config) []config.Service {
+	oldServices := make(map[string]config.Service)
+	for _, svc := range old.Services {
+		oldServices[svc.Name] = svc
+	}
+
+	var toUpdate []config.Service
+	for _, newSvc := range new.Services {
+		if oldSvc, exists := oldServices[newSvc.Name]; exists {
+			// Compare configurations
+			if !config.ServiceConfigEqual(oldSvc, newSvc) {
+				toUpdate = append(toUpdate, newSvc)
+			}
+		}
+	}
+	return toUpdate
 }
 
 // MetricsAddr returns the actual address the metrics server is listening on.

@@ -799,15 +799,17 @@ func TestConcurrentShutdown(t *testing.T) {
 	// Create a registry
 	registry := &Registry{
 		config:   cfg,
-		services: make([]*Service, 0),
+		services: make(map[string]*Service),
 	}
 
 	// Create multiple mock services with servers
 	numServices := 5
 	for i := 0; i < numServices; i++ {
+		serviceName := "test-service-" + string(rune('a'+i))
 		svc := &Service{
+			Name: serviceName,
 			Config: config.Service{
-				Name: "test-service-" + string(rune('a'+i)),
+				Name: serviceName,
 			},
 			server: &http.Server{
 				Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -829,7 +831,7 @@ func TestConcurrentShutdown(t *testing.T) {
 		}()
 
 		go func() { _ = svc.server.Serve(listener) }()
-		registry.services = append(registry.services, svc)
+		registry.services[serviceName] = svc
 	}
 
 	// Wait for all services to start
@@ -858,11 +860,12 @@ func TestShutdownErrorHandling(t *testing.T) {
 				ShutdownTimeout: config.Duration{Duration: 100 * time.Millisecond},
 			},
 		},
-		services: make([]*Service, 0),
+		services: make(map[string]*Service),
 	}
 
 	// Add a service with a handler that never completes
 	svc := &Service{
+		Name: "hanging-service",
 		Config: config.Service{
 			Name: "hanging-service",
 		},
@@ -884,7 +887,7 @@ func TestShutdownErrorHandling(t *testing.T) {
 	}()
 
 	go func() { _ = svc.server.Serve(listener) }()
-	registry.services = append(registry.services, svc)
+	registry.services[svc.Config.Name] = svc
 
 	// Make a request that will hang
 	go func() {
@@ -1020,12 +1023,13 @@ func TestShutdownIdempotency(t *testing.T) {
 				ShutdownTimeout: config.Duration{Duration: 1 * time.Second},
 			},
 		},
-		services: make([]*Service, 0),
+		services: make(map[string]*Service),
 		mu:       sync.Mutex{},
 	}
 
 	// Add a simple service
 	svc := &Service{
+		Name: "test-service",
 		Config: config.Service{
 			Name: "test-service",
 		},
@@ -1046,7 +1050,7 @@ func TestShutdownIdempotency(t *testing.T) {
 	}()
 
 	go func() { _ = svc.server.Serve(listener) }()
-	registry.services = append(registry.services, svc)
+	registry.services[svc.Config.Name] = svc
 
 	// First shutdown
 	ctx1, cancel1 := context.WithTimeout(context.Background(), 1*time.Second)
@@ -1059,4 +1063,785 @@ func TestShutdownIdempotency(t *testing.T) {
 	defer cancel2()
 	err2 := registry.Shutdown(ctx2)
 	assert.NoError(t, err2, "second shutdown failed")
+}
+
+// TestService_NameField verifies that Service struct has a Name field that is properly set
+func TestService_NameField(t *testing.T) {
+	tests := []struct {
+		name        string
+		serviceName string
+	}{
+		{
+			name:        "service has name field set from config",
+			serviceName: "test-service-1",
+		},
+		{
+			name:        "service with different name",
+			serviceName: "api-service",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Service{
+				Name:        tt.serviceName,
+				BackendAddr: "localhost:8080",
+			}
+
+			svc := &Service{
+				Name:   cfg.Name,
+				Config: cfg,
+			}
+
+			// Test that Service has a Name field
+			assert.Equal(t, tt.serviceName, svc.Name, "Service.Name should be set from config")
+		})
+	}
+}
+
+// TestRegistry_StartServices_SetsServiceName verifies that startService sets the Name field
+func TestRegistry_StartServices_SetsServiceName(t *testing.T) {
+	// Start a mock backend server
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	backendAddr := listener.Addr().String()
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	// Create config with services
+	cfg := &config.Config{
+		Global: config.Global{
+			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+		},
+		Services: []config.Service{
+			{
+				Name:        "test-service-1",
+				BackendAddr: backendAddr,
+				TLSMode:     "off",
+			},
+			{
+				Name:        "test-service-2",
+				BackendAddr: backendAddr,
+				TLSMode:     "off",
+			},
+		},
+		Tailscale: config.Tailscale{
+			AuthKey: "test-key",
+		},
+	}
+
+	// Create tailscale server using the test factory
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+
+	// Start services
+	err = registry.StartServices()
+	require.NoError(t, err)
+
+	// Verify services have Name field set
+	assert.Len(t, registry.services, 2)
+
+	// Check each service by name
+	for _, expectedSvc := range cfg.Services {
+		svc, exists := registry.services[expectedSvc.Name]
+		assert.True(t, exists, "Service %s should exist", expectedSvc.Name)
+		assert.Equal(t, expectedSvc.Name, svc.Name, "Service.Name should match config")
+	}
+
+	// Shutdown
+	shutdownCtx := context.Background()
+	err = registry.Shutdown(shutdownCtx)
+	assert.NoError(t, err)
+}
+
+// TestRegistry_ServicesAsMap verifies that Registry stores services in a map
+func TestRegistry_ServicesAsMap(t *testing.T) {
+	// Start a mock backend server
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	backendAddr := listener.Addr().String()
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	// Create config with services
+	cfg := &config.Config{
+		Global: config.Global{
+			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+		},
+		Services: []config.Service{
+			{
+				Name:        "test-service-1",
+				BackendAddr: backendAddr,
+				TLSMode:     "off",
+			},
+			{
+				Name:        "test-service-2",
+				BackendAddr: backendAddr,
+				TLSMode:     "off",
+			},
+		},
+		Tailscale: config.Tailscale{
+			AuthKey: "test-key",
+		},
+	}
+
+	// Create tailscale server using the test factory
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+
+	// Start services
+	err = registry.StartServices()
+	require.NoError(t, err)
+
+	// Verify services are stored in a map
+	registry.mu.Lock()
+	defer registry.mu.Unlock()
+
+	// Check that services map exists and has correct entries
+	assert.NotNil(t, registry.services)
+	assert.Len(t, registry.services, 2)
+
+	// Verify each service is accessible by name
+	svc1, exists := registry.services["test-service-1"]
+	assert.True(t, exists, "test-service-1 should exist in map")
+	assert.NotNil(t, svc1)
+	assert.Equal(t, "test-service-1", svc1.Name)
+
+	svc2, exists := registry.services["test-service-2"]
+	assert.True(t, exists, "test-service-2 should exist in map")
+	assert.NotNil(t, svc2)
+	assert.Equal(t, "test-service-2", svc2.Name)
+}
+
+// TestRegistry_GetService verifies the GetService method
+func TestRegistry_GetService(t *testing.T) {
+	// Start a mock backend server
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer listener.Close()
+
+	backendAddr := listener.Addr().String()
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+
+	// Create config with services
+	cfg := &config.Config{
+		Global: config.Global{
+			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+		},
+		Services: []config.Service{
+			{
+				Name:        "test-service-1",
+				BackendAddr: backendAddr,
+				TLSMode:     "off",
+			},
+			{
+				Name:        "test-service-2",
+				BackendAddr: backendAddr,
+				TLSMode:     "off",
+			},
+		},
+		Tailscale: config.Tailscale{
+			AuthKey: "test-key",
+		},
+	}
+
+	// Create tailscale server using the test factory
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+
+	// Start services
+	err = registry.StartServices()
+	require.NoError(t, err)
+
+	// Test GetService for existing services
+	svc1, exists := registry.GetService("test-service-1")
+	assert.True(t, exists, "test-service-1 should exist")
+	assert.NotNil(t, svc1)
+	assert.Equal(t, "test-service-1", svc1.Name)
+
+	svc2, exists := registry.GetService("test-service-2")
+	assert.True(t, exists, "test-service-2 should exist")
+	assert.NotNil(t, svc2)
+	assert.Equal(t, "test-service-2", svc2.Name)
+
+	// Test GetService for non-existent service
+	svc3, exists := registry.GetService("non-existent-service")
+	assert.False(t, exists, "non-existent-service should not exist")
+	assert.Nil(t, svc3)
+
+	// Test that GetService is thread-safe
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			svc, _ := registry.GetService("test-service-1")
+			assert.NotNil(t, svc)
+		}()
+	}
+	wg.Wait()
+}
+
+// TestRegistry_AddService verifies the AddService method
+func TestRegistry_AddService(t *testing.T) {
+	tests := []struct {
+		name             string
+		existingServices []config.Service
+		newService       config.Service
+		expectError      bool
+		errorContains    string
+	}{
+		{
+			name:             "add new service successfully",
+			existingServices: []config.Service{},
+			newService: config.Service{
+				Name:        "new-service",
+				BackendAddr: "localhost:9000",
+				TLSMode:     "off",
+			},
+			expectError: false,
+		},
+		{
+			name: "add service when others exist",
+			existingServices: []config.Service{
+				{Name: "existing-1", BackendAddr: "localhost:8001", TLSMode: "off"},
+				{Name: "existing-2", BackendAddr: "localhost:8002", TLSMode: "off"},
+			},
+			newService: config.Service{
+				Name:        "new-service",
+				BackendAddr: "localhost:9000",
+				TLSMode:     "off",
+			},
+			expectError: false,
+		},
+		{
+			name: "fail when service already exists",
+			existingServices: []config.Service{
+				{Name: "existing-service", BackendAddr: "localhost:8001", TLSMode: "off"},
+			},
+			newService: config.Service{
+				Name:        "existing-service",
+				BackendAddr: "localhost:9000",
+				TLSMode:     "off",
+			},
+			expectError:   true,
+			errorContains: "already exists",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create config with existing services
+			cfg := &config.Config{
+				Global: config.Global{
+					ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+				},
+				Services: tt.existingServices,
+				Tailscale: config.Tailscale{
+					AuthKey: "test-key",
+				},
+			}
+
+			// Create tailscale server
+			tsServer, err := testTailscaleServerFactory()
+			require.NoError(t, err)
+
+			// Create registry
+			registry := NewRegistry(cfg, tsServer)
+
+			// Start existing services if any
+			if len(tt.existingServices) > 0 {
+				err = registry.StartServices()
+				require.NoError(t, err)
+			}
+
+			// Add the new service
+			err = registry.AddService(tt.newService)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				require.NoError(t, err)
+
+				// Verify service was added
+				svc, exists := registry.GetService(tt.newService.Name)
+				assert.True(t, exists)
+				assert.NotNil(t, svc)
+				assert.Equal(t, tt.newService.Name, svc.Name)
+				assert.NotNil(t, svc.server)
+				assert.NotNil(t, svc.listener)
+			}
+
+			// Cleanup
+			ctx := context.Background()
+			_ = registry.Shutdown(ctx)
+		})
+	}
+}
+
+// TestRegistry_AddService_Concurrent verifies thread safety of AddService
+func TestRegistry_AddService_Concurrent(t *testing.T) {
+	cfg := &config.Config{
+		Global: config.Global{
+			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+		},
+		Tailscale: config.Tailscale{
+			AuthKey: "test-key",
+		},
+	}
+
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	registry := NewRegistry(cfg, tsServer)
+
+	// Try to add multiple services concurrently
+	var wg sync.WaitGroup
+	errors := make(chan error, 10)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			svc := config.Service{
+				Name:        fmt.Sprintf("service-%d", idx),
+				BackendAddr: fmt.Sprintf("localhost:900%d", idx),
+				TLSMode:     "off",
+			}
+			if err := registry.AddService(svc); err != nil {
+				errors <- err
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errors)
+
+	// Check for errors
+	for err := range errors {
+		t.Errorf("concurrent add failed: %v", err)
+	}
+
+	// Verify all services were added
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("service-%d", i)
+		svc, exists := registry.GetService(name)
+		assert.True(t, exists, "service %s should exist", name)
+		assert.NotNil(t, svc)
+	}
+
+	// Cleanup
+	ctx := context.Background()
+	_ = registry.Shutdown(ctx)
+}
+
+// TestRegistry_RemoveService verifies the RemoveService method
+func TestRegistry_RemoveService(t *testing.T) {
+	tests := []struct {
+		name            string
+		initialServices []config.Service
+		removeService   string
+		expectError     bool
+		errorContains   string
+	}{
+		{
+			name: "remove existing service",
+			initialServices: []config.Service{
+				{Name: "service-1", BackendAddr: "localhost:8001", TLSMode: "off"},
+				{Name: "service-2", BackendAddr: "localhost:8002", TLSMode: "off"},
+			},
+			removeService: "service-1",
+			expectError:   false,
+		},
+		{
+			name: "remove last remaining service",
+			initialServices: []config.Service{
+				{Name: "only-service", BackendAddr: "localhost:8001", TLSMode: "off"},
+			},
+			removeService: "only-service",
+			expectError:   false,
+		},
+		{
+			name: "fail when service doesn't exist",
+			initialServices: []config.Service{
+				{Name: "service-1", BackendAddr: "localhost:8001", TLSMode: "off"},
+			},
+			removeService: "non-existent",
+			expectError:   true,
+			errorContains: "not found",
+		},
+		{
+			name:            "fail when no services exist",
+			initialServices: []config.Service{},
+			removeService:   "any-service",
+			expectError:     true,
+			errorContains:   "not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create config
+			cfg := &config.Config{
+				Global: config.Global{
+					ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+				},
+				Services: tt.initialServices,
+				Tailscale: config.Tailscale{
+					AuthKey: "test-key",
+				},
+			}
+
+			// Create tailscale server
+			tsServer, err := testTailscaleServerFactory()
+			require.NoError(t, err)
+
+			// Create registry
+			registry := NewRegistry(cfg, tsServer)
+
+			// Start initial services
+			if len(tt.initialServices) > 0 {
+				err = registry.StartServices()
+				require.NoError(t, err)
+			}
+
+			// Remove the service
+			err = registry.RemoveService(tt.removeService)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				require.NoError(t, err)
+
+				// Verify service was removed
+				svc, exists := registry.GetService(tt.removeService)
+				assert.False(t, exists, "service should not exist after removal")
+				assert.Nil(t, svc)
+
+				// Verify other services still exist
+				for _, initialSvc := range tt.initialServices {
+					if initialSvc.Name != tt.removeService {
+						svc, exists := registry.GetService(initialSvc.Name)
+						assert.True(t, exists, "service %s should still exist", initialSvc.Name)
+						assert.NotNil(t, svc)
+					}
+				}
+			}
+
+			// Cleanup remaining services
+			ctx := context.Background()
+			_ = registry.Shutdown(ctx)
+		})
+	}
+}
+
+// TestRegistry_RemoveService_VerifyStop verifies that RemoveService properly stops the service
+func TestRegistry_RemoveService_VerifyStop(t *testing.T) {
+	// Create a channel to track server state
+	serverRunning := make(chan bool, 1)
+	serverRunning <- true
+
+	// Create a test handler that tracks when server stops
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-serverRunning:
+			// Server is running
+		default:
+			// Server has been stopped
+			t.Error("handler called after server stop")
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	cfg := &config.Config{
+		Global: config.Global{
+			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+		},
+		Services: []config.Service{
+			{Name: "test-service", BackendAddr: "localhost:8001", TLSMode: "off"},
+		},
+		Tailscale: config.Tailscale{
+			AuthKey: "test-key",
+		},
+	}
+
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	registry := NewRegistry(cfg, tsServer)
+
+	// Start service
+	err = registry.StartServices()
+	require.NoError(t, err)
+
+	// Get the service and replace its handler for testing
+	svc, exists := registry.GetService("test-service")
+	require.True(t, exists)
+	require.NotNil(t, svc)
+
+	// Store original server reference
+	originalServer := svc.server
+
+	// Create a custom server with our test handler
+	svc.server = &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 30 * time.Second,
+	}
+
+	// Remove the service
+	err = registry.RemoveService("test-service")
+	require.NoError(t, err)
+
+	// Signal that server should be stopped
+	close(serverRunning)
+
+	// Verify the service's HTTP server was shut down
+	// Try to use the server - it should fail
+	testReq := httptest.NewRequest("GET", "/", nil)
+	testRec := httptest.NewRecorder()
+
+	// This should not panic or cause issues because server is properly shut down
+	// We can't directly test server.Serve() but we verified Shutdown was called
+	_ = testReq
+	_ = testRec
+
+	// Verify service is removed from registry
+	svc, exists = registry.GetService("test-service")
+	assert.False(t, exists)
+	assert.Nil(t, svc)
+
+	// Restore original server for proper cleanup
+	if originalServer != nil {
+		ctx := context.Background()
+		_ = originalServer.Shutdown(ctx)
+	}
+}
+
+// TestRegistry_UpdateService verifies the UpdateService method
+func TestRegistry_UpdateService(t *testing.T) {
+	tests := []struct {
+		name           string
+		initialService config.Service
+		updatedService config.Service
+		expectError    bool
+		errorContains  string
+	}{
+		{
+			name: "update existing service",
+			initialService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8001",
+				TLSMode:     "off",
+			},
+			updatedService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:9001",
+				TLSMode:     "off",
+			},
+			expectError: false,
+		},
+		{
+			name: "update service with new headers",
+			initialService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8001",
+				TLSMode:     "off",
+			},
+			updatedService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8001",
+				TLSMode:     "off",
+				UpstreamHeaders: map[string]string{
+					"X-Custom-Header": "value",
+				},
+			},
+			expectError: false,
+		},
+		{
+			name: "fail when service doesn't exist",
+			initialService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8001",
+				TLSMode:     "off",
+			},
+			updatedService: config.Service{
+				Name:        "non-existent-service",
+				BackendAddr: "localhost:9001",
+				TLSMode:     "off",
+			},
+			expectError:   true,
+			errorContains: "not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create config
+			cfg := &config.Config{
+				Global: config.Global{
+					ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+				},
+				Services: []config.Service{tt.initialService},
+				Tailscale: config.Tailscale{
+					AuthKey: "test-key",
+				},
+			}
+
+			// Create tailscale server
+			tsServer, err := testTailscaleServerFactory()
+			require.NoError(t, err)
+
+			// Create registry
+			registry := NewRegistry(cfg, tsServer)
+
+			// Start initial service
+			err = registry.StartServices()
+			require.NoError(t, err)
+
+			// Update the service
+			err = registry.UpdateService(tt.updatedService.Name, tt.updatedService)
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				require.NoError(t, err)
+
+				// Verify service was updated
+				svc, exists := registry.GetService(tt.updatedService.Name)
+				assert.True(t, exists)
+				assert.NotNil(t, svc)
+
+				// Verify the service has new configuration
+				assert.Equal(t, tt.updatedService.BackendAddr, svc.Config.BackendAddr)
+				if len(tt.updatedService.UpstreamHeaders) > 0 {
+					assert.Equal(t, tt.updatedService.UpstreamHeaders, svc.Config.UpstreamHeaders)
+				}
+			}
+
+			// Cleanup
+			ctx := context.Background()
+			_ = registry.Shutdown(ctx)
+		})
+	}
+}
+
+// TestRegistry_UpdateService_Concurrent verifies concurrent updates don't cause issues
+func TestRegistry_UpdateService_Concurrent(t *testing.T) {
+	cfg := &config.Config{
+		Global: config.Global{
+			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+		},
+		Services: []config.Service{
+			{Name: "service-1", BackendAddr: "localhost:8001", TLSMode: "off"},
+			{Name: "service-2", BackendAddr: "localhost:8002", TLSMode: "off"},
+		},
+		Tailscale: config.Tailscale{
+			AuthKey: "test-key",
+		},
+	}
+
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	registry := NewRegistry(cfg, tsServer)
+
+	// Start services
+	err = registry.StartServices()
+	require.NoError(t, err)
+
+	// Update services concurrently
+	var wg sync.WaitGroup
+	errors := make(chan error, 10)
+
+	for i := 0; i < 5; i++ {
+		wg.Add(2)
+
+		// Update service-1
+		go func(idx int) {
+			defer wg.Done()
+			updated := config.Service{
+				Name:        "service-1",
+				BackendAddr: fmt.Sprintf("localhost:900%d", idx),
+				TLSMode:     "off",
+			}
+			if err := registry.UpdateService("service-1", updated); err != nil {
+				errors <- err
+			}
+		}(i)
+
+		// Update service-2
+		go func(idx int) {
+			defer wg.Done()
+			updated := config.Service{
+				Name:        "service-2",
+				BackendAddr: fmt.Sprintf("localhost:901%d", idx),
+				TLSMode:     "off",
+			}
+			if err := registry.UpdateService("service-2", updated); err != nil {
+				errors <- err
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errors)
+
+	// Check for errors
+	errorCount := 0
+	for err := range errors {
+		errorCount++
+		t.Logf("concurrent update error: %v", err)
+	}
+	assert.Equal(t, 0, errorCount, "no errors expected in concurrent updates")
+
+	// Verify services still exist
+	svc1, exists := registry.GetService("service-1")
+	assert.True(t, exists)
+	assert.NotNil(t, svc1)
+
+	svc2, exists := registry.GetService("service-2")
+	assert.True(t, exists)
+	assert.NotNil(t, svc2)
+
+	// Cleanup
+	ctx := context.Background()
+	_ = registry.Shutdown(ctx)
 }

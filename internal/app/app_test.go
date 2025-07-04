@@ -1172,13 +1172,131 @@ func TestReloadConfig(t *testing.T) {
 		newCfg.SetDefaults()
 
 		// Reload config
-		err = app.reloadConfig(newCfg)
+		err = app.ReloadConfig(newCfg)
 		require.NoError(t, err)
 
 		// Verify config was updated
 		assert.Equal(t, 2, len(app.cfg.Services))
 		assert.Equal(t, "localhost:8081", app.cfg.Services[0].BackendAddr)
 		assert.Equal(t, "new-service", app.cfg.Services[1].Name)
+	})
+
+	t.Run("adds new services", func(t *testing.T) {
+		// Test that reloadConfig identifies and processes new services
+		// We'll use the helper functions directly to verify the logic
+		oldCfg := &config.Config{
+			Services: []config.Service{
+				{
+					Name:        "existing-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+
+		newCfg := &config.Config{
+			Services: []config.Service{
+				{
+					Name:        "existing-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+				{
+					Name:        "new-service",
+					BackendAddr: "localhost:8081",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+
+		// Verify helper functions work correctly
+		toAdd := findServicesToAdd(oldCfg, newCfg)
+		assert.Equal(t, 1, len(toAdd))
+		assert.Equal(t, "new-service", toAdd[0].Name)
+
+		toRemove := findServicesToRemove(oldCfg, newCfg)
+		assert.Equal(t, 0, len(toRemove))
+
+		toUpdate := findServicesToUpdate(oldCfg, newCfg)
+		assert.Equal(t, 0, len(toUpdate))
+	})
+
+	t.Run("removes services", func(t *testing.T) {
+		// Test that reloadConfig identifies and processes removed services
+		oldCfg := &config.Config{
+			Services: []config.Service{
+				{
+					Name:        "service-1",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+				{
+					Name:        "service-2",
+					BackendAddr: "localhost:8081",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+
+		newCfg := &config.Config{
+			Services: []config.Service{
+				{
+					Name:        "service-1",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+
+		// Verify helper functions work correctly
+		toRemove := findServicesToRemove(oldCfg, newCfg)
+		assert.Equal(t, 1, len(toRemove))
+		assert.Equal(t, "service-2", toRemove[0])
+
+		toAdd := findServicesToAdd(oldCfg, newCfg)
+		assert.Equal(t, 0, len(toAdd))
+
+		toUpdate := findServicesToUpdate(oldCfg, newCfg)
+		assert.Equal(t, 0, len(toUpdate))
+	})
+
+	t.Run("updates changed services", func(t *testing.T) {
+		// Test that reloadConfig identifies and processes updated services
+		oldCfg := &config.Config{
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+					TLSMode:     "auto",
+				},
+			},
+		}
+		oldCfg.SetDefaults()
+
+		newCfg := &config.Config{
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+					TLSMode:     "off", // Changed
+				},
+			},
+		}
+		newCfg.SetDefaults()
+
+		// Verify helper functions work correctly
+		toUpdate := findServicesToUpdate(oldCfg, newCfg)
+		assert.Equal(t, 1, len(toUpdate))
+		assert.Equal(t, "test-service", toUpdate[0].Name)
+		assert.Equal(t, "off", toUpdate[0].TLSMode)
+
+		toAdd := findServicesToAdd(oldCfg, newCfg)
+		assert.Equal(t, 0, len(toAdd))
+
+		toRemove := findServicesToRemove(oldCfg, newCfg)
+		assert.Equal(t, 0, len(toRemove))
 	})
 
 	t.Run("handles concurrent reloads", func(t *testing.T) {
@@ -1219,7 +1337,7 @@ func TestReloadConfig(t *testing.T) {
 					},
 				}
 				newCfg.SetDefaults()
-				app.reloadConfig(newCfg)
+				app.ReloadConfig(newCfg)
 				done <- true
 			}(i)
 		}
@@ -1233,6 +1351,242 @@ func TestReloadConfig(t *testing.T) {
 		assert.Equal(t, 1, len(app.cfg.Services))
 		assert.Equal(t, "test-service", app.cfg.Services[0].Name)
 	})
+}
+
+func TestFindServicesToRemove(t *testing.T) {
+	tests := []struct {
+		name     string
+		oldCfg   *config.Config
+		newCfg   *config.Config
+		expected []string
+	}{
+		{
+			name: "no services removed",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			expected: []string{},
+		},
+		{
+			name: "one service removed",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+				},
+			},
+			expected: []string{"service2"},
+		},
+		{
+			name: "all services removed",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{},
+			},
+			expected: []string{"service1", "service2"},
+		},
+		{
+			name: "empty old config",
+			oldCfg: &config.Config{
+				Services: []config.Service{},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+				},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := findServicesToRemove(tt.oldCfg, tt.newCfg)
+			assert.ElementsMatch(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFindServicesToAdd(t *testing.T) {
+	tests := []struct {
+		name     string
+		oldCfg   *config.Config
+		newCfg   *config.Config
+		expected []string
+	}{
+		{
+			name: "no services added",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			expected: []string{},
+		},
+		{
+			name: "one service added",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			expected: []string{"service2"},
+		},
+		{
+			name: "all services are new",
+			oldCfg: &config.Config{
+				Services: []config.Service{},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+					{Name: "service2"},
+				},
+			},
+			expected: []string{"service1", "service2"},
+		},
+		{
+			name: "empty new config",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := findServicesToAdd(tt.oldCfg, tt.newCfg)
+			resultNames := make([]string, len(result))
+			for i, svc := range result {
+				resultNames[i] = svc.Name
+			}
+			assert.ElementsMatch(t, tt.expected, resultNames)
+		})
+	}
+}
+
+func TestFindServicesToUpdate(t *testing.T) {
+	tests := []struct {
+		name     string
+		oldCfg   *config.Config
+		newCfg   *config.Config
+		expected []string
+	}{
+		{
+			name: "no services updated",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:8080"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:8080"},
+				},
+			},
+			expected: []string{},
+		},
+		{
+			name: "backend address changed",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:8080"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:8081"},
+				},
+			},
+			expected: []string{"service1"},
+		},
+		{
+			name: "multiple services updated",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:8080"},
+					{Name: "service2", BackendAddr: "localhost:8081"},
+					{Name: "service3", BackendAddr: "localhost:8082"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:9080"}, // Changed
+					{Name: "service2", BackendAddr: "localhost:8081"}, // Same
+					{Name: "service3", BackendAddr: "localhost:9082"}, // Changed
+				},
+			},
+			expected: []string{"service1", "service3"},
+		},
+		{
+			name: "service not in old config is not updated",
+			oldCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:8080"},
+				},
+			},
+			newCfg: &config.Config{
+				Services: []config.Service{
+					{Name: "service1", BackendAddr: "localhost:8080"},
+					{Name: "service2", BackendAddr: "localhost:8081"},
+				},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set defaults for proper comparison
+			tt.oldCfg.SetDefaults()
+			tt.newCfg.SetDefaults()
+
+			result := findServicesToUpdate(tt.oldCfg, tt.newCfg)
+			resultNames := make([]string, len(result))
+			for i, svc := range result {
+				resultNames[i] = svc.Name
+			}
+			assert.ElementsMatch(t, tt.expected, resultNames)
+		})
+	}
 }
 
 func TestConfigWatchIntegration(t *testing.T) {

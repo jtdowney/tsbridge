@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"sync"
@@ -24,7 +25,7 @@ import (
 type Registry struct {
 	config           *config.Config
 	tsServer         *tailscale.Server
-	services         []*Service
+	services         map[string]*Service
 	metricsCollector *metrics.Collector
 	whoisCache       *middleware.WhoisCache
 	mu               sync.Mutex
@@ -32,6 +33,7 @@ type Registry struct {
 
 // Service represents a single service instance
 type Service struct {
+	Name             string
 	Config           config.Service
 	globalConfig     *config.Config
 	listener         net.Listener
@@ -61,7 +63,7 @@ func NewRegistry(cfg *config.Config, tsServer *tailscale.Server) *Registry {
 	return &Registry{
 		config:     cfg,
 		tsServer:   tsServer,
-		services:   make([]*Service, 0, len(cfg.Services)),
+		services:   make(map[string]*Service, len(cfg.Services)),
 		whoisCache: middleware.NewWhoisCache(1000, 5*time.Minute),
 	}
 }
@@ -71,6 +73,14 @@ func (r *Registry) SetMetricsCollector(collector *metrics.Collector) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.metricsCollector = collector
+}
+
+// GetService returns a service by name
+func (r *Registry) GetService(name string) (*Service, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	svc, exists := r.services[name]
+	return svc, exists
 }
 
 // StartServices starts all configured services
@@ -89,7 +99,7 @@ func (r *Registry) StartServices() error {
 			failedServices[svcCfg.Name] = err
 			continue // Skip failed services as per spec
 		}
-		r.services = append(r.services, svc)
+		r.services[svcCfg.Name] = svc
 		slog.Info("started service", "service", svcCfg.Name)
 		successfulCount++
 	}
@@ -119,6 +129,7 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 
 	// Create service instance
 	svc := &Service{
+		Name:             svcCfg.Name,
 		Config:           svcCfg,
 		globalConfig:     r.config,
 		listener:         listener,
@@ -254,6 +265,14 @@ func (s *Service) isAccessLogEnabled() bool {
 	return true
 }
 
+// Stop gracefully stops the service
+func (s *Service) Stop(ctx context.Context) error {
+	if s.server != nil {
+		return s.server.Shutdown(ctx)
+	}
+	return nil
+}
+
 // Shutdown gracefully shuts down all services
 func (r *Registry) Shutdown(ctx context.Context) error {
 	r.mu.Lock()
@@ -285,5 +304,95 @@ func (r *Registry) Shutdown(ctx context.Context) error {
 		return errors.Join(errs...)
 	}
 
+	return nil
+}
+
+// AddService starts a new service and adds it to the registry
+func (r *Registry) AddService(svcCfg config.Service) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Check if service already exists
+	if _, exists := r.services[svcCfg.Name]; exists {
+		return fmt.Errorf("service %s already exists", svcCfg.Name)
+	}
+
+	// Start the service
+	svc, err := r.startService(svcCfg)
+	if err != nil {
+		return fmt.Errorf("failed to start service %s: %w", svcCfg.Name, err)
+	}
+
+	// Add to registry
+	r.services[svcCfg.Name] = svc
+	slog.Info("added service", "service", svcCfg.Name)
+	return nil
+}
+
+// RemoveService stops and removes a service from the registry
+func (r *Registry) RemoveService(name string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	svc, exists := r.services[name]
+	if !exists {
+		return fmt.Errorf("service %s not found", name)
+	}
+
+	// Stop the service
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := svc.Stop(ctx); err != nil {
+		return fmt.Errorf("failed to stop service %s: %w", name, err)
+	}
+
+	// Close the listener
+	if svc.listener != nil {
+		if err := svc.listener.Close(); err != nil {
+			slog.Warn("failed to close listener", "service", name, "error", err)
+		}
+	}
+
+	// Close the handler if it implements Close
+	if svc.handler != nil {
+		if closer, ok := svc.handler.(io.Closer); ok {
+			if err := closer.Close(); err != nil {
+				slog.Warn("failed to close handler", "service", name, "error", err)
+			}
+		}
+	}
+
+	// Remove from registry
+	delete(r.services, name)
+	slog.Info("removed service", "service", name)
+	return nil
+}
+
+// UpdateService updates an existing service with new configuration
+func (r *Registry) UpdateService(name string, newCfg config.Service) error {
+	// For now, implement as remove + add
+	// Later can optimize to avoid downtime if needed
+
+	// First check if the service exists
+	r.mu.Lock()
+	_, exists := r.services[name]
+	r.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("service %s not found", name)
+	}
+
+	// Remove the old service
+	if err := r.RemoveService(name); err != nil {
+		return fmt.Errorf("failed to remove old service: %w", err)
+	}
+
+	// Add the new service
+	if err := r.AddService(newCfg); err != nil {
+		return fmt.Errorf("failed to add new service: %w", err)
+	}
+
+	slog.Info("updated service", "service", name)
 	return nil
 }
