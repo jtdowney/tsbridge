@@ -1134,9 +1134,8 @@ func TestReloadConfig(t *testing.T) {
 		// Create initial config
 		cfg := &config.Config{
 			Tailscale: config.Tailscale{
-				StateDir:          t.TempDir(),
-				OAuthClientID:     "test-client-id",
-				OAuthClientSecret: "test-client-secret",
+				StateDir: t.TempDir(),
+				AuthKey:  "test-auth-key", // Use auth key instead of OAuth to avoid API calls
 			},
 			Services: []config.Service{
 				{
@@ -1152,6 +1151,12 @@ func TestReloadConfig(t *testing.T) {
 		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
 		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 		require.NoError(t, err)
+
+		// Start the app to initialize services
+		ctx := context.Background()
+		err = app.Start(ctx)
+		require.NoError(t, err)
+		defer app.Shutdown(ctx)
 
 		// Create new config
 		newCfg := &config.Config{
