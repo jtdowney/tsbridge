@@ -910,6 +910,7 @@ func TestAppMetricsAddr(t *testing.T) {
 				select {
 				case <-done:
 				case <-time.After(100 * time.Millisecond):
+					require.Fail(t, "Timeout waiting for app.Start to complete")
 				}
 
 				return app
