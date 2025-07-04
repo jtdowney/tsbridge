@@ -214,7 +214,9 @@ func (p *Provider) createEventOptions() events.ListOptions {
 	eventFilters.Add("event", "die")
 	eventFilters.Add("event", "pause")
 	eventFilters.Add("event", "unpause")
+	// Accept both "enabled" and "enable" for compatibility
 	eventFilters.Add("label", p.labelPrefix+".enabled=true")
+	eventFilters.Add("label", p.labelPrefix+".enable=true")
 
 	return events.ListOptions{
 		Filters: eventFilters,
@@ -361,16 +363,33 @@ func (p *Provider) findSelfContainer(ctx context.Context) (*container.Summary, e
 	return &containers[0], nil
 }
 
-// findServiceContainers finds all containers with tsbridge.enabled=true
+// findServiceContainers finds all containers with tsbridge.enabled=true or tsbridge.enable=true
 func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summary, error) {
+	// Get all running containers
 	opts := container.ListOptions{
 		Filters: filters.NewArgs(
-			filters.Arg("label", fmt.Sprintf("%s.enabled=true", p.labelPrefix)),
 			filters.Arg("status", "running"),
 		),
 	}
 
-	return p.client.ContainerList(ctx, opts)
+	containers, err := p.client.ContainerList(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter containers that have either enabled=true or enable=true
+	var serviceContainers []container.Summary
+	for _, c := range containers {
+		enabledLabel := fmt.Sprintf("%s.enabled", p.labelPrefix)
+		enableLabel := fmt.Sprintf("%s.enable", p.labelPrefix)
+
+		// Check if either label is set to "true"
+		if c.Labels[enabledLabel] == "true" || c.Labels[enableLabel] == "true" {
+			serviceContainers = append(serviceContainers, c)
+		}
+	}
+
+	return serviceContainers, nil
 }
 
 // getContainerByID gets a container by ID

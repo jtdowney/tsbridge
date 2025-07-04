@@ -707,6 +707,7 @@ func TestDockerProvider_WatchWithEvents(t *testing.T) {
 
 		labels := options.Filters.Get("label")
 		assert.Contains(t, labels, "tsbridge.enabled=true")
+		assert.Contains(t, labels, "tsbridge.enable=true")
 	})
 
 	t.Run("watch event filtering configuration", func(t *testing.T) {
@@ -1047,6 +1048,42 @@ func TestProvider_Load(t *testing.T) {
 		require.NotNil(t, cfg)
 		assert.Len(t, cfg.Services, 1)
 		assert.Equal(t, "api", cfg.Services[0].Name)
+	})
+
+	t.Run("both enable and enabled labels are accepted", func(t *testing.T) {
+		mockClient := newMockDockerClient()
+
+		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
+		// Service with "enabled" label
+		enabledService := createServiceContainer("svc1", "api", "localhost:8080")
+		// Service with "enable" label (without 'd')
+		enableService := createTestContainer("svc2", "web", map[string]string{
+			"tsbridge.enable":               "true", // Note: "enable" not "enabled"
+			"tsbridge.service.name":         "web",
+			"tsbridge.service.backend_addr": "localhost:3000",
+		})
+
+		mockClient.containers = []container.Summary{tsbridgeContainer, enabledService, enableService}
+
+		provider := &Provider{
+			client:      mockClient,
+			labelPrefix: "tsbridge",
+		}
+
+		ctx := context.Background()
+		cfg, err := provider.Load(ctx)
+
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		assert.Len(t, cfg.Services, 2)
+
+		// Check both services were parsed correctly
+		serviceNames := make(map[string]bool)
+		for _, svc := range cfg.Services {
+			serviceNames[svc.Name] = true
+		}
+		assert.True(t, serviceNames["api"])
+		assert.True(t, serviceNames["web"])
 	})
 
 	t.Run("malformed service labels", func(t *testing.T) {
