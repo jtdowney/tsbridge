@@ -60,10 +60,6 @@ func (m *MockWhoisAdapter) WhoIs(ctx context.Context, remoteAddr string) (*apity
 	return nil, nil
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && s[:len(substr)] == substr || len(s) > len(substr) && contains(s[1:], substr)
-}
-
 func TestRegistry_StartServices(t *testing.T) {
 	// Start a mock backend server
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
