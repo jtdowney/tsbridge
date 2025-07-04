@@ -459,9 +459,7 @@ func TestResolveSecrets(t *testing.T) {
 		}
 
 		err := resolveSecrets(cfg)
-		if err != nil {
-			t.Fatalf("resolveSecrets() error = %v", err)
-		}
+		require.NoError(t, err, "resolveSecrets() failed")
 
 		if cfg.Tailscale.OAuthClientID != "test-id" {
 			t.Errorf("OAuthClientID = %v, want %v", cfg.Tailscale.OAuthClientID, "test-id")
@@ -481,9 +479,7 @@ func TestResolveSecrets(t *testing.T) {
 		}
 
 		err := resolveSecrets(cfg)
-		if err != nil {
-			t.Fatalf("resolveSecrets() error = %v", err)
-		}
+		require.NoError(t, err, "resolveSecrets() failed")
 
 		if cfg.Tailscale.OAuthClientSecret != "test-secret" {
 			t.Errorf("OAuthClientSecret = %v, want %v", cfg.Tailscale.OAuthClientSecret, "test-secret")
@@ -497,9 +493,7 @@ func TestResolveSecrets(t *testing.T) {
 		}
 
 		err := resolveSecrets(cfg)
-		if err != nil {
-			t.Fatalf("resolveSecrets() error = %v", err)
-		}
+		require.NoError(t, err, "resolveSecrets() failed")
 
 		if cfg.Tailscale.AuthKey != "fallback-key" {
 			t.Errorf("AuthKey = %v, want %v", cfg.Tailscale.AuthKey, "fallback-key")
@@ -516,9 +510,7 @@ func TestResolveSecrets(t *testing.T) {
 		}
 
 		err := resolveSecrets(cfg)
-		if err != nil {
-			t.Fatalf("resolveSecrets() error = %v", err)
-		}
+		require.NoError(t, err, "resolveSecrets() failed")
 
 		if cfg.Tailscale.OAuthClientID != "env-id" {
 			t.Errorf("OAuthClientID = %v, want %v", cfg.Tailscale.OAuthClientID, "env-id")

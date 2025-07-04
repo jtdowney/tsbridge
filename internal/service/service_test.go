@@ -189,9 +189,7 @@ func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
 
 			// Create tsnet server using the test factory
 			tsServer, err := testTailscaleServerFactory()
-			if err != nil {
-				t.Fatalf("failed to create tailscale server: %v", err)
-			}
+			require.NoError(t, err, "failed to create tailscale server")
 
 			// Create registry
 			registry := NewRegistry(cfg, tsServer)
@@ -199,16 +197,13 @@ func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
 			// Start services
 			err = registry.StartServices()
 
-			if tt.expectError && err == nil {
-				t.Error("expected error, got nil")
-			}
-			if !tt.expectError && err != nil {
-				t.Errorf("unexpected error: %v", err)
+			if tt.expectError {
+				require.Error(t, err, "expected error, got nil")
+			} else {
+				assert.NoError(t, err, "unexpected error")
 			}
 
-			if len(registry.services) != tt.expectedServices {
-				t.Errorf("expected %d services, got %d", tt.expectedServices, len(registry.services))
-			}
+			assert.Len(t, registry.services, tt.expectedServices)
 		})
 	}
 }
@@ -225,14 +220,10 @@ func TestServiceRegistryErrorTypes(t *testing.T) {
 		registry := NewRegistry(cfg, nil)
 
 		err := registry.StartServices()
-		if err == nil {
-			t.Fatal("expected error when no services configured")
-		}
+		require.Error(t, err, "expected error when no services configured")
 
 		// Should be an internal error
-		if !errors.IsInternal(err) {
-			t.Errorf("expected internal error, got %v", err)
-		}
+		assert.True(t, errors.IsInternal(err), "expected internal error, got %v", err)
 	})
 }
 
@@ -267,36 +258,25 @@ func TestServiceStartupPartialFailures(t *testing.T) {
 			AuthKey: "test-key",
 		}
 		tsServer, err := tailscale.NewServerWithFactory(tsServerCfg, failService1Factory)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer tsServer.Close()
 
 		registry := NewRegistry(cfg, tsServer)
 
 		err = registry.StartServices()
-		if err == nil {
-			t.Fatal("expected error when listener creation fails")
-		}
+		require.Error(t, err, "expected error when listener creation fails")
 
 		// Should be a ServiceStartupError
 		startupErr, ok := errors.AsServiceStartupError(err)
-		if !ok {
-			t.Errorf("expected ServiceStartupError, got %v", err)
-		}
+		assert.True(t, ok, "expected ServiceStartupError, got %v", err)
 
 		// Should have 1 failure (service1) and 1 success (service2)
-		if startupErr.Failed != 1 {
-			t.Errorf("expected 1 failed service, got %d", startupErr.Failed)
-		}
-		if startupErr.Successful != 1 {
-			t.Errorf("expected 1 successful service, got %d", startupErr.Successful)
-		}
+		assert.Equal(t, 1, startupErr.Failed, "expected 1 failed service")
+		assert.Equal(t, 1, startupErr.Successful, "expected 1 successful service")
 
 		// Error should mention listener creation
-		if _, ok := startupErr.Failures["service1"]; !ok {
-			t.Error("expected failure for service1")
-		}
+		_, ok = startupErr.Failures["service1"]
+		assert.True(t, ok, "expected failure for service1")
 	})
 }
 
@@ -311,17 +291,13 @@ func TestService_Handler(t *testing.T) {
 
 	// Initialize the handler
 	handler, err := svc.CreateHandler()
-	if err != nil {
-		t.Fatalf("failed to create handler: %v", err)
-	}
+	require.NoError(t, err, "failed to create handler")
 	svc.handler = handler
 
 	handler = svc.Handler()
 
 	// Just verify we get a handler
-	if handler == nil {
-		t.Error("expected handler, got nil")
-	}
+	assert.NotNil(t, handler, "expected handler, got nil")
 }
 
 func TestService_HandlerWithResponseHeaderTimeout(t *testing.T) {
@@ -375,17 +351,13 @@ func TestService_HandlerWithResponseHeaderTimeout(t *testing.T) {
 
 			// Initialize the handler
 			handler, err := svc.CreateHandler()
-			if err != nil {
-				t.Fatalf("failed to create handler: %v", err)
-			}
+			require.NoError(t, err, "failed to create handler")
 			svc.handler = handler
 
 			// We can't directly test the timeout value in the handler,
 			// but we can verify the handler is created successfully
 			handler = svc.Handler()
-			if handler == nil {
-				t.Error("expected handler, got nil")
-			}
+			assert.NotNil(t, handler, "expected handler, got nil")
 		})
 	}
 }
@@ -394,9 +366,7 @@ func TestService_HandlerWithMetrics(t *testing.T) {
 	collector := metrics.NewCollector()
 	reg := prometheus.NewRegistry()
 	err := collector.Register(reg)
-	if err != nil {
-		t.Fatalf("failed to register metrics: %v", err)
-	}
+	require.NoError(t, err, "failed to register metrics")
 
 	// Test that the service handler integrates metrics middleware
 	svc := &Service{
@@ -409,17 +379,13 @@ func TestService_HandlerWithMetrics(t *testing.T) {
 
 	// Initialize the handler
 	handler, err := svc.CreateHandler()
-	if err != nil {
-		t.Fatalf("failed to create handler: %v", err)
-	}
+	require.NoError(t, err, "failed to create handler")
 	svc.handler = handler
 
 	handler = svc.Handler()
 
 	// Just verify we get a handler
-	if handler == nil {
-		t.Error("expected handler, got nil")
-	}
+	assert.NotNil(t, handler, "expected handler, got nil")
 }
 
 func TestService_isAccessLogEnabled(t *testing.T) {
@@ -565,9 +531,7 @@ func TestServiceWithWhoisMiddleware(t *testing.T) {
 
 			// Initialize the handler
 			handler, err := svc.CreateHandler()
-			if err != nil {
-				t.Fatalf("failed to create handler: %v", err)
-			}
+			require.NoError(t, err, "failed to create handler")
 			svc.handler = handler
 
 			// Create the handler manually to simulate what would happen
@@ -588,24 +552,19 @@ func TestServiceWithWhoisMiddleware(t *testing.T) {
 			handler.ServeHTTP(w, req)
 
 			// Check status
-			if w.Code != http.StatusOK {
-				t.Errorf("got status %d, want %d", w.Code, http.StatusOK)
-			}
+			assert.Equal(t, http.StatusOK, w.Code)
 
 			// Check headers
 			for header, want := range tt.wantHeaders {
 				got := w.Header().Get(header)
-				if got != want {
-					t.Errorf("header %s = %q, want %q", header, got, want)
-				}
+				assert.Equal(t, want, got, "header %s", header)
 			}
 
 			// Check that no headers are present when whois is disabled
 			if !tt.whoisEnabled {
 				for _, header := range []string{"Echo-X-Tailscale-User", "Echo-X-Tailscale-Name", "Echo-X-Tailscale-Login"} {
-					if got := w.Header().Get(header); got != "" {
-						t.Errorf("header %s = %q, want empty (whois disabled)", header, got)
-					}
+					got := w.Header().Get(header)
+					assert.Empty(t, got, "header %s should be empty (whois disabled)", header)
 				}
 			}
 		})
@@ -616,9 +575,7 @@ func TestRegistry_Shutdown(t *testing.T) {
 
 	// Start a mock backend server
 	backend, err := net.Listen("tcp", "localhost:8081")
-	if err != nil {
-		t.Fatalf("failed to create backend listener: %v", err)
-	}
+	require.NoError(t, err, "failed to create backend listener")
 	defer func() {
 		if err := backend.Close(); err != nil {
 			t.Logf("failed to close backend: %v", err)
@@ -660,25 +617,19 @@ func TestRegistry_Shutdown(t *testing.T) {
 
 	// Create tsnet server using the test factory
 	tsServer, err := testTailscaleServerFactory()
-	if err != nil {
-		t.Fatalf("failed to create tailscale server: %v", err)
-	}
+	require.NoError(t, err, "failed to create tailscale server")
 
 	// Create registry and start services
 	registry := NewRegistry(cfg, tsServer)
 	err = registry.StartServices()
-	if err != nil {
-		t.Fatalf("failed to start services: %v", err)
-	}
+	require.NoError(t, err, "failed to start services")
 
 	// Test graceful shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.Global.ShutdownTimeout.Duration)
 	defer cancel()
 
 	err = registry.Shutdown(ctx)
-	if err != nil {
-		t.Errorf("shutdown failed: %v", err)
-	}
+	assert.NoError(t, err, "shutdown failed")
 }
 
 // TestShutdownWithInflightRequests verifies that shutdown waits for in-flight
@@ -750,9 +701,7 @@ func TestShutdownWithInflightRequests(t *testing.T) {
 
 			// Start server on a random port
 			listener, err := net.Listen("tcp", "localhost:0")
-			if err != nil {
-				t.Fatalf("failed to create listener: %v", err)
-			}
+			require.NoError(t, err, "failed to create listener")
 			defer func() {
 				if err := listener.Close(); err != nil {
 					t.Logf("failed to close listener: %v", err)
@@ -792,9 +741,7 @@ func TestShutdownWithInflightRequests(t *testing.T) {
 			mu.Lock()
 			currentActive := activeRequests
 			mu.Unlock()
-			if currentActive != 1 {
-				t.Errorf("expected 1 active request, got %d", currentActive)
-			}
+			assert.Equal(t, int32(1), currentActive, "expected 1 active request")
 
 			// Initiate shutdown
 			shutdownStart := time.Now()
@@ -808,53 +755,37 @@ func TestShutdownWithInflightRequests(t *testing.T) {
 			<-serverDone
 
 			// Check if server error is expected (ErrServerClosed)
-			if serverErr != http.ErrServerClosed {
-				t.Errorf("expected ErrServerClosed, got %v", serverErr)
-			}
+			assert.Equal(t, http.ErrServerClosed, serverErr, "expected ErrServerClosed")
 
 			// Wait for request to complete or timeout
 			select {
 			case <-requestDone:
 				// Request finished (either completed or failed)
 			case <-time.After(3 * time.Second):
-				t.Fatal("request did not finish in time")
+				require.Fail(t, "request did not finish in time")
 			}
 
 			// Verify no active requests remain
 			mu.Lock()
 			finalActive := activeRequests
 			mu.Unlock()
-			if finalActive != 0 {
-				t.Errorf("expected 0 active requests after shutdown, got %d", finalActive)
-			}
+			assert.Equal(t, int32(0), finalActive, "expected 0 active requests after shutdown")
 
 			// Check shutdown duration
 			if tt.expectRequestComplete {
 				// Shutdown should have waited for request
-				if shutdownDuration < tt.requestDuration-100*time.Millisecond {
-					t.Errorf("shutdown completed too quickly: %v < %v", shutdownDuration, tt.requestDuration)
-				}
+				assert.GreaterOrEqual(t, shutdownDuration, tt.requestDuration-100*time.Millisecond, "shutdown completed too quickly")
 				mu.Lock()
 				completed := requestCompleted
 				mu.Unlock()
-				if !completed {
-					t.Error("expected request to complete, but it didn't")
-				}
-				if shutdownErr != nil {
-					t.Errorf("expected clean shutdown, got error: %v", shutdownErr)
-				}
+				assert.True(t, completed, "expected request to complete")
+				assert.NoError(t, shutdownErr, "expected clean shutdown")
 			} else {
 				// Shutdown should have timed out
-				if shutdownDuration < tt.shutdownTimeout-100*time.Millisecond {
-					t.Errorf("shutdown completed too quickly: %v < %v", shutdownDuration, tt.shutdownTimeout)
-				}
-				if shutdownDuration > tt.shutdownTimeout+500*time.Millisecond {
-					t.Errorf("shutdown took too long: %v > %v", shutdownDuration, tt.shutdownTimeout)
-				}
+				assert.GreaterOrEqual(t, shutdownDuration, tt.shutdownTimeout-100*time.Millisecond, "shutdown completed too quickly")
+				assert.LessOrEqual(t, shutdownDuration, tt.shutdownTimeout+500*time.Millisecond, "shutdown took too long")
 				// Context deadline exceeded error is expected
-				if shutdownErr == nil || shutdownErr != context.DeadlineExceeded {
-					t.Errorf("expected context.DeadlineExceeded, got %v", shutdownErr)
-				}
+				assert.Equal(t, context.DeadlineExceeded, shutdownErr, "expected context.DeadlineExceeded")
 			}
 		})
 	}
@@ -894,9 +825,7 @@ func TestConcurrentShutdown(t *testing.T) {
 
 		// Start each service
 		listener, err := net.Listen("tcp", "localhost:0")
-		if err != nil {
-			t.Fatalf("failed to create listener for service %d: %v", i, err)
-		}
+		require.NoError(t, err, "failed to create listener for service %d", i)
 		defer func() {
 			if err := listener.Close(); err != nil {
 				t.Logf("failed to close listener: %v", err)
@@ -918,14 +847,10 @@ func TestConcurrentShutdown(t *testing.T) {
 	err := registry.Shutdown(ctx)
 	shutdownDuration := time.Since(shutdownStart)
 
-	if err != nil {
-		t.Errorf("unexpected shutdown error: %v", err)
-	}
+	assert.NoError(t, err, "unexpected shutdown error")
 
 	// Verify shutdown was concurrent (should be much less than numServices * 100ms)
-	if shutdownDuration > 500*time.Millisecond {
-		t.Errorf("shutdown took too long for concurrent operation: %v", shutdownDuration)
-	}
+	assert.LessOrEqual(t, shutdownDuration, 500*time.Millisecond, "shutdown took too long for concurrent operation")
 }
 
 // TestShutdownErrorHandling verifies that shutdown collects and returns all errors
@@ -955,9 +880,7 @@ func TestShutdownErrorHandling(t *testing.T) {
 	}
 
 	listener, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("failed to create listener: %v", err)
-	}
+	require.NoError(t, err, "failed to create listener")
 	defer func() {
 		if err := listener.Close(); err != nil {
 			t.Logf("failed to close listener: %v", err)
@@ -983,12 +906,10 @@ func TestShutdownErrorHandling(t *testing.T) {
 	err = registry.Shutdown(ctx)
 
 	// Should get an error due to timeout
-	if err == nil {
-		t.Error("expected shutdown error due to timeout, got nil")
-	}
+	assert.Error(t, err, "expected shutdown error due to timeout")
 
-	if err != nil && !contains(err.Error(), "hanging-service") {
-		t.Errorf("error should mention the service name, got: %v", err)
+	if err != nil {
+		assert.Contains(t, err.Error(), "hanging-service", "error should mention the service name")
 	}
 }
 
@@ -1121,9 +1042,7 @@ func TestShutdownIdempotency(t *testing.T) {
 	}
 
 	listener, err := net.Listen("tcp", "localhost:0")
-	if err != nil {
-		t.Fatalf("failed to create listener: %v", err)
-	}
+	require.NoError(t, err, "failed to create listener")
 	defer func() {
 		if err := listener.Close(); err != nil {
 			t.Logf("failed to close listener: %v", err)
@@ -1137,15 +1056,11 @@ func TestShutdownIdempotency(t *testing.T) {
 	ctx1, cancel1 := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel1()
 	err1 := registry.Shutdown(ctx1)
-	if err1 != nil {
-		t.Errorf("first shutdown failed: %v", err1)
-	}
+	assert.NoError(t, err1, "first shutdown failed")
 
 	// Second shutdown (should be safe)
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel2()
 	err2 := registry.Shutdown(ctx2)
-	if err2 != nil {
-		t.Errorf("second shutdown failed: %v", err2)
-	}
+	assert.NoError(t, err2, "second shutdown failed")
 }

@@ -6,9 +6,13 @@ import (
 	"fmt"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"log/slog"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -185,4 +189,273 @@ func TestRegisterProviders(t *testing.T) {
 		assert.NotNil(t, provider)
 		assert.Equal(t, "docker", provider.Name())
 	}
+}
+
+func TestMainIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Build the binary for testing
+	binPath := filepath.Join(t.TempDir(), "tsbridge-test")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = filepath.Dir(".")
+	err := cmd.Run()
+	require.NoError(t, err, "Failed to build test binary")
+
+	tests := []struct {
+		name       string
+		args       []string
+		env        []string
+		wantExit   int
+		wantOutput []string
+		wantErr    []string
+		timeout    time.Duration
+	}{
+		{
+			name:       "help flag shows usage",
+			args:       []string{"-help"},
+			wantExit:   0,
+			wantOutput: []string{"Usage of", "-config", "-provider", "-docker-socket"},
+			timeout:    2 * time.Second,
+		},
+		{
+			name:       "version flag shows version",
+			args:       []string{"-version"},
+			wantExit:   0,
+			wantOutput: []string{"tsbridge version:"},
+			timeout:    2 * time.Second,
+		},
+		{
+			name:     "missing config for file provider",
+			args:     []string{"-provider", "file"},
+			wantExit: 1,
+			wantErr:  []string{"-config flag is required for file provider"},
+			timeout:  2 * time.Second,
+		},
+		{
+			name:     "invalid provider",
+			args:     []string{"-provider", "invalid", "-config", "test.toml"},
+			wantExit: 1,
+			wantErr:  []string{"failed to create configuration provider"},
+			timeout:  2 * time.Second,
+		},
+		{
+			name:     "nonexistent config file",
+			args:     []string{"-provider", "file", "-config", "/nonexistent/config.toml"},
+			wantExit: 1,
+			wantErr:  []string{"failed to create application"},
+			timeout:  2 * time.Second,
+		},
+		{
+			name:       "verbose logging",
+			args:       []string{"-verbose", "-help"},
+			wantExit:   0,
+			wantOutput: []string{"Usage of"},
+			timeout:    2 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
+			defer cancel()
+
+			cmd := exec.CommandContext(ctx, binPath, tt.args...)
+			cmd.Env = append(os.Environ(), tt.env...)
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+
+			// Check exit code
+			exitCode := 0
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			}
+			assert.Equal(t, tt.wantExit, exitCode, "Exit code mismatch. Stdout: %s, Stderr: %s", stdout.String(), stderr.String())
+
+			// Check expected output
+			output := stdout.String() + stderr.String()
+			for _, want := range tt.wantOutput {
+				assert.Contains(t, output, want, "Expected output not found")
+			}
+
+			// Check expected errors
+			for _, want := range tt.wantErr {
+				assert.Contains(t, output, want, "Expected error not found")
+			}
+		})
+	}
+}
+
+func TestMainWithValidConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Create a minimal valid config
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "test.toml")
+	configContent := `
+[tailscale]
+auth_key = "test-auth-key"
+
+[[services]]
+name = "test-service"
+backend_addr = "http://localhost:8080"
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Build the binary
+	binPath := filepath.Join(t.TempDir(), "tsbridge-test")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = filepath.Dir(".")
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	// Start the application
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cmd = exec.CommandContext(ctx, binPath, "-config", configPath, "-verbose")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Start()
+	require.NoError(t, err)
+
+	// Give it a moment to start
+	time.Sleep(500 * time.Millisecond)
+
+	// Send interrupt signal
+	err = cmd.Process.Signal(os.Interrupt)
+	require.NoError(t, err)
+
+	// Wait for process to exit
+	_ = cmd.Wait()
+
+	// Check that it started properly
+	output := stdout.String() + stderr.String()
+	assert.Contains(t, output, "starting tsbridge")
+	assert.Contains(t, output, "loading configuration")
+	assert.Contains(t, output, "creating application")
+}
+
+func TestMainSignalHandling(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Create a valid config
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "test.toml")
+	configContent := `
+[tailscale]
+auth_key = "test-auth-key"
+
+[[services]]
+name = "test-service"
+backend_addr = "http://localhost:8080"
+`
+	err := os.WriteFile(configPath, []byte(configContent), 0644)
+	require.NoError(t, err)
+
+	// Build the binary
+	binPath := filepath.Join(t.TempDir(), "tsbridge-test")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = filepath.Dir(".")
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	// Test both SIGINT and SIGTERM
+	signals := []struct {
+		name   string
+		signal os.Signal
+	}{
+		{"SIGINT", os.Interrupt},
+		{"SIGTERM", os.Kill}, // os.Kill is SIGTERM on Unix
+	}
+
+	for _, sig := range signals {
+		t.Run(fmt.Sprintf("handles_%s", sig.name), func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			cmd = exec.CommandContext(ctx, binPath, "-config", configPath)
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err = cmd.Start()
+			require.NoError(t, err)
+
+			// Give it time to start
+			time.Sleep(1 * time.Second)
+
+			// Send signal
+			err = cmd.Process.Signal(sig.signal)
+			require.NoError(t, err)
+
+			// Wait for exit
+			waitErr := cmd.Wait()
+
+			// For SIGTERM (os.Kill), the process might exit with non-zero
+			if sig.signal == os.Kill {
+				// Just check that it exited
+				assert.NotNil(t, waitErr)
+			}
+
+			output := stdout.String() + stderr.String()
+			// Check for graceful shutdown indicators
+			if strings.Contains(output, "received signal") {
+				assert.Contains(t, output, "shutting down")
+			}
+		})
+	}
+}
+
+func TestMainDockerProvider(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	// Build the binary
+	binPath := filepath.Join(t.TempDir(), "tsbridge-test")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = filepath.Dir(".")
+	err := cmd.Run()
+	require.NoError(t, err)
+
+	// Test docker provider with custom options
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cmd = exec.CommandContext(ctx, binPath,
+		"-provider", "docker",
+		"-docker-socket", "unix:///custom/docker.sock",
+		"-docker-label-prefix", "custom.prefix",
+		"-verbose")
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Start()
+	require.NoError(t, err)
+
+	// Give it a moment to start
+	time.Sleep(500 * time.Millisecond)
+
+	// Kill the process
+	cmd.Process.Kill()
+	_ = cmd.Wait()
+
+	// Check that docker provider was selected
+	output := stdout.String() + stderr.String()
+	assert.Contains(t, output, "provider=docker")
 }

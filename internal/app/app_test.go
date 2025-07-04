@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -139,23 +140,20 @@ func TestNewApp(t *testing.T) {
 					TSServer: tsServer,
 				})
 
-				if (err != nil) != tt.wantErr {
-					t.Errorf("NewAppWithOptions() error = %v, wantErr %v", err, tt.wantErr)
-					return
-				}
-
-				if !tt.wantErr && app == nil {
-					t.Error("NewAppWithOptions() returned nil app without error")
+				if tt.wantErr {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, app)
 				}
 			} else {
 				// For nil config or expected errors, use NewApp directly
 				app, err := NewApp(tt.cfg)
-				if (err != nil) != tt.wantErr {
-					t.Errorf("NewApp() error = %v, wantErr %v", err, tt.wantErr)
-					return
-				}
-				if !tt.wantErr && app == nil {
-					t.Error("NewApp() returned nil app without error")
+				if tt.wantErr {
+					require.Error(t, err)
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, app)
 				}
 			}
 		})
@@ -219,10 +217,10 @@ func TestNewAppWithOptions(t *testing.T) {
 			app, err := NewAppWithOptions(tt.cfg, tt.opts)
 
 			if tt.wantErr {
-				assert.Error(t, err)
+				require.Error(t, err)
 				assert.Nil(t, app)
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				require.NotNil(t, app)
 
 				if tt.checkFn != nil {
@@ -236,13 +234,8 @@ func TestNewAppWithOptions(t *testing.T) {
 func TestAppErrorTypes(t *testing.T) {
 	t.Run("nil config returns validation error", func(t *testing.T) {
 		_, err := NewApp(nil)
-		if err == nil {
-			t.Fatal("expected error for nil config")
-		}
-
-		if !errors.IsValidation(err) {
-			t.Errorf("expected validation error, got %v", err)
-		}
+		require.Error(t, err)
+		assert.True(t, errors.IsValidation(err), "expected validation error, got %v", err)
 	})
 
 	t.Run("invalid config returns validation error", func(t *testing.T) {
@@ -254,13 +247,8 @@ func TestAppErrorTypes(t *testing.T) {
 		}
 
 		_, err := NewApp(cfg)
-		if err == nil {
-			t.Fatal("expected error for invalid config")
-		}
-
-		if !errors.IsValidation(err) {
-			t.Errorf("expected validation error, got %v", err)
-		}
+		require.Error(t, err)
+		assert.True(t, errors.IsValidation(err), "expected validation error, got %v", err)
 	})
 }
 
@@ -356,12 +344,12 @@ func TestAppStart(t *testing.T) {
 
 			// Check expectations
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.expectedErrMessage != "" {
 					assert.Contains(t, err.Error(), tt.expectedErrMessage)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 			}
 		})
 	}
@@ -403,9 +391,9 @@ func TestAppStartIdempotency(t *testing.T) {
 	err3 := app.Start(ctx)
 
 	// All should return nil (idempotent)
-	assert.NoError(t, err1)
-	assert.NoError(t, err2)
-	assert.NoError(t, err3)
+	require.NoError(t, err1)
+	require.NoError(t, err2)
+	require.NoError(t, err3)
 }
 
 // Test that Start returns without error when context is cancelled
@@ -434,9 +422,9 @@ func TestAppStartReturnsCleanlyOnContextCancel(t *testing.T) {
 	// Start should return nil (no error) when context is cancelled
 	select {
 	case err := <-startErr:
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
-		t.Fatal("Start did not return within timeout")
+		require.Fail(t, "Start did not return within timeout")
 	}
 }
 
@@ -471,16 +459,14 @@ func TestAppStartDoesNotBlockShutdown(t *testing.T) {
 	shutdownErr := app.Shutdown(shutdownCtx)
 
 	// Shutdown should succeed
-	assert.NoError(t, shutdownErr)
+	require.NoError(t, shutdownErr)
 }
 
 func TestAppStartWithPartialServiceFailures(t *testing.T) {
 	t.Run("app continues when some services fail", func(t *testing.T) {
 		// Start a test backend server
 		backend, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer backend.Close()
 
 		// Accept connections in background
@@ -517,17 +503,13 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 			return tsnet.NewMockTSNetServer()
 		}
 		tsServer, err := tailscale.NewServerWithFactory(cfg.Tailscale, factory)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Create app with the mocked dependencies
 		app, err := NewAppWithOptions(cfg, Options{
 			TSServer: tsServer,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Create a context that we'll cancel after services start
 		ctx, cancel := context.WithCancel(context.Background())
@@ -549,11 +531,9 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		select {
 		case err := <-startErr:
 			// Should have gotten a ServiceStartupError but app continued
-			if err != nil {
-				t.Errorf("expected no error from Start after graceful shutdown, got %v", err)
-			}
+			assert.NoError(t, err, "expected no error from Start after graceful shutdown")
 		case <-time.After(2 * time.Second):
-			t.Error("app did not shut down in time")
+			assert.Fail(t, "app did not shut down in time")
 		}
 	})
 
@@ -580,17 +560,13 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 			return tsnet.NewMockTSNetServer()
 		}
 		tsServer, err := tailscale.NewServerWithFactory(cfg.Tailscale, factory)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Create app with the mocked dependencies
 		app, err := NewAppWithOptions(cfg, Options{
 			TSServer: tsServer,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Create a context with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -601,16 +577,14 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 
 		// Should succeed because we use lazy connections
 		if err != nil {
-			t.Fatalf("expected app to start successfully with lazy connections, got error: %v", err)
+			require.NoError(t, err, "expected app to start successfully with lazy connections")
 		}
 	})
 
 	t.Run("metrics server continues when some services fail", func(t *testing.T) {
 		// Start a test backend server
 		backend, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 		defer backend.Close()
 
 		// Accept connections in background
@@ -647,16 +621,12 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 			return tsnet.NewMockTSNetServer()
 		}
 		tsServer, err := tailscale.NewServerWithFactory(cfg.Tailscale, factory)
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		app, err := NewAppWithOptions(cfg, Options{
 			TSServer: tsServer,
 		})
-		if err != nil {
-			t.Fatal(err)
-		}
+		require.NoError(t, err)
 
 		// Create a context that we'll cancel after services start
 		ctx, cancel := context.WithCancel(context.Background())
@@ -686,7 +656,7 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 				t.Errorf("expected no error from Start after graceful shutdown, got %v", err)
 			}
 		case <-time.After(2 * time.Second):
-			t.Error("app did not shut down in time")
+			assert.Fail(t, "app did not shut down in time")
 		}
 	})
 }
@@ -717,7 +687,7 @@ func TestAppShutdownCanBeCalledIndependently(t *testing.T) {
 	defer shutdownCancel()
 
 	err = app.Shutdown(shutdownCtx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	// Now cancel the start context
 	cancel()
@@ -725,9 +695,9 @@ func TestAppShutdownCanBeCalledIndependently(t *testing.T) {
 	// Wait for Start to return
 	select {
 	case err := <-startErr:
-		assert.NoError(t, err)
+		require.NoError(t, err)
 	case <-time.After(2 * time.Second):
-		t.Fatal("Start did not return within timeout")
+		require.Fail(t, "Start did not return within timeout")
 	}
 }
 
@@ -749,7 +719,7 @@ func TestAppShutdownErrorTypes(t *testing.T) {
 
 		app, err := NewApp(cfg)
 		if err != nil {
-			t.Fatalf("failed to create app: %v", err)
+			require.NoError(t, err, "failed to create app")
 		}
 
 		// Shutdown immediately (nothing to shut down)
@@ -800,7 +770,7 @@ func TestAppPerformShutdown(t *testing.T) {
 	// Now test performShutdown
 	shutdownCtx := context.Background()
 	err = app.performShutdown(shutdownCtx)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 func TestAppSetupMetrics(t *testing.T) {
@@ -853,12 +823,12 @@ func TestAppSetupMetrics(t *testing.T) {
 
 			// Check expectations
 			if tt.expectError {
-				assert.Error(t, err)
+				require.Error(t, err)
 				if tt.expectedErrMessage != "" {
 					assert.Contains(t, err.Error(), tt.expectedErrMessage)
 				}
 			} else {
-				assert.NoError(t, err)
+				require.NoError(t, err)
 				assert.NotNil(t, app.metricsServer)
 			}
 		})
@@ -929,12 +899,18 @@ func TestAppMetricsAddr(t *testing.T) {
 				require.NoError(t, err)
 
 				// Start metrics server to get actual address
-				ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
-				go func() { _ = app.Start(ctx) }()
 
-				// Give it a moment to start
-				time.Sleep(20 * time.Millisecond)
+				// Use a channel to ensure Start completes
+				done := make(chan error)
+				go func() { done <- app.Start(ctx) }()
+
+				// Wait for Start to complete or timeout
+				select {
+				case <-done:
+				case <-time.After(100 * time.Millisecond):
+				}
 
 				return app
 			},
@@ -986,7 +962,7 @@ func TestMetricsServerIntegration(t *testing.T) {
 
 	// Shutdown
 	err = server.Shutdown(context.Background())
-	assert.NoError(t, err)
+	require.NoError(t, err)
 }
 
 // TestAppPartialFailureLogging verifies that partial failures are logged correctly
@@ -994,4 +970,367 @@ func TestAppPartialFailureLogging(t *testing.T) {
 	// This test would capture logs to verify proper error reporting
 	// For now, we're focusing on the behavior rather than log output
 	t.Skip("Log capture test not implemented")
+}
+
+func TestWatchConfigChanges(t *testing.T) {
+	t.Run("handles config updates", func(t *testing.T) {
+		// Create initial config
+		cfg := &config.Config{
+			Tailscale: config.Tailscale{
+				StateDir:          t.TempDir(),
+				OAuthClientID:     "test-client-id",
+				OAuthClientSecret: "test-client-secret",
+			},
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+		cfg.SetDefaults()
+
+		// Create app
+		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
+		require.NoError(t, err)
+
+		// Create config channel
+		configCh := make(chan *config.Config, 1)
+
+		// Start watching in background
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		go app.watchConfigChanges(ctx, configCh)
+
+		// Send new config
+		newCfg := &config.Config{
+			Tailscale: cfg.Tailscale,
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8081", // Changed port
+					Tags:        []string{"tag:test"},
+				},
+				{
+					Name:        "new-service",
+					BackendAddr: "localhost:8082",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+		newCfg.SetDefaults()
+
+		configCh <- newCfg
+
+		// Give it time to process
+		time.Sleep(100 * time.Millisecond)
+
+		// Verify config was updated
+		app.mu.RLock()
+		assert.Equal(t, 2, len(app.cfg.Services))
+		assert.Equal(t, "localhost:8081", app.cfg.Services[0].BackendAddr)
+		assert.Equal(t, "new-service", app.cfg.Services[1].Name)
+		app.mu.RUnlock()
+	})
+
+	t.Run("stops watching when context is cancelled", func(t *testing.T) {
+		// Create config
+		cfg := &config.Config{
+			Tailscale: config.Tailscale{
+				StateDir:          t.TempDir(),
+				OAuthClientID:     "test-client-id",
+				OAuthClientSecret: "test-client-secret",
+			},
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+		cfg.SetDefaults()
+
+		// Create app
+		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
+		require.NoError(t, err)
+
+		// Create config channel
+		configCh := make(chan *config.Config, 1)
+
+		// Start watching
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			app.watchConfigChanges(ctx, configCh)
+			close(done)
+		}()
+
+		// Cancel context
+		cancel()
+
+		// Verify goroutine exits
+		select {
+		case <-done:
+			// Good, goroutine exited
+		case <-time.After(1 * time.Second):
+			require.Fail(t, "watchConfigChanges did not exit when context was cancelled")
+		}
+	})
+
+	t.Run("stops watching when channel is closed", func(t *testing.T) {
+		// Create config
+		cfg := &config.Config{
+			Tailscale: config.Tailscale{
+				StateDir:          t.TempDir(),
+				OAuthClientID:     "test-client-id",
+				OAuthClientSecret: "test-client-secret",
+			},
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+		cfg.SetDefaults()
+
+		// Create app
+		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
+		require.NoError(t, err)
+
+		// Create config channel
+		configCh := make(chan *config.Config)
+
+		// Start watching
+		ctx := context.Background()
+		done := make(chan struct{})
+		go func() {
+			app.watchConfigChanges(ctx, configCh)
+			close(done)
+		}()
+
+		// Close channel
+		close(configCh)
+
+		// Verify goroutine exits
+		select {
+		case <-done:
+			// Good, goroutine exited
+		case <-time.After(1 * time.Second):
+			require.Fail(t, "watchConfigChanges did not exit when channel was closed")
+		}
+	})
+}
+
+func TestReloadConfig(t *testing.T) {
+	t.Run("updates config successfully", func(t *testing.T) {
+		// Create initial config
+		cfg := &config.Config{
+			Tailscale: config.Tailscale{
+				StateDir:          t.TempDir(),
+				OAuthClientID:     "test-client-id",
+				OAuthClientSecret: "test-client-secret",
+			},
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+		cfg.SetDefaults()
+
+		// Create app
+		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
+		require.NoError(t, err)
+
+		// Create new config
+		newCfg := &config.Config{
+			Tailscale: cfg.Tailscale,
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8081",
+					Tags:        []string{"tag:test"},
+				},
+				{
+					Name:        "new-service",
+					BackendAddr: "localhost:8082",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+		newCfg.SetDefaults()
+
+		// Reload config
+		err = app.reloadConfig(newCfg)
+		require.NoError(t, err)
+
+		// Verify config was updated
+		assert.Equal(t, 2, len(app.cfg.Services))
+		assert.Equal(t, "localhost:8081", app.cfg.Services[0].BackendAddr)
+		assert.Equal(t, "new-service", app.cfg.Services[1].Name)
+	})
+
+	t.Run("handles concurrent reloads", func(t *testing.T) {
+		// Create initial config
+		cfg := &config.Config{
+			Tailscale: config.Tailscale{
+				StateDir:          t.TempDir(),
+				OAuthClientID:     "test-client-id",
+				OAuthClientSecret: "test-client-secret",
+			},
+			Services: []config.Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+		cfg.SetDefaults()
+
+		// Create app
+		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
+		require.NoError(t, err)
+
+		// Run multiple concurrent reloads
+		done := make(chan bool)
+		for i := 0; i < 10; i++ {
+			go func(port int) {
+				newCfg := &config.Config{
+					Tailscale: cfg.Tailscale,
+					Services: []config.Service{
+						{
+							Name:        "test-service",
+							BackendAddr: fmt.Sprintf("localhost:%d", 8080+port),
+							Tags:        []string{"tag:test"},
+						},
+					},
+				}
+				newCfg.SetDefaults()
+				app.reloadConfig(newCfg)
+				done <- true
+			}(i)
+		}
+
+		// Wait for all goroutines
+		for i := 0; i < 10; i++ {
+			<-done
+		}
+
+		// Verify final state is consistent
+		assert.Equal(t, 1, len(app.cfg.Services))
+		assert.Equal(t, "test-service", app.cfg.Services[0].Name)
+	})
+}
+
+func TestConfigWatchIntegration(t *testing.T) {
+	t.Run("provider with config watching", func(t *testing.T) {
+		// Create a mock provider that supports watching
+		mockProvider := &mockConfigProvider{
+			name: "mock",
+			loadFunc: func(ctx context.Context) (*config.Config, error) {
+				cfg := &config.Config{
+					Tailscale: config.Tailscale{
+						StateDir: t.TempDir(),
+						AuthKey:  "test-auth-key",
+					},
+					Services: []config.Service{
+						{
+							Name:        "test-service",
+							BackendAddr: "localhost:8080",
+						},
+					},
+				}
+				cfg.SetDefaults()
+				return cfg, nil
+			},
+			watchFunc: func(ctx context.Context) (<-chan *config.Config, error) {
+				ch := make(chan *config.Config, 1)
+				go func() {
+					// Simulate a config change after a short delay
+					time.Sleep(100 * time.Millisecond)
+					cfg := &config.Config{
+						Tailscale: config.Tailscale{
+							StateDir: t.TempDir(),
+							AuthKey:  "test-auth-key",
+						},
+						Services: []config.Service{
+							{
+								Name:        "test-service",
+								BackendAddr: "localhost:8081", // Changed
+							},
+						},
+					}
+					cfg.SetDefaults()
+					select {
+					case ch <- cfg:
+					case <-ctx.Done():
+					}
+				}()
+				return ch, nil
+			},
+		}
+
+		// Create app with the provider and mock tsnet server
+		tsServer := createMockTailscaleServer(t, config.Tailscale{AuthKey: "test-auth-key"})
+		app, err := NewAppWithOptions(nil, Options{Provider: mockProvider, TSServer: tsServer})
+		require.NoError(t, err)
+
+		// Start the app
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err = app.Start(ctx)
+		require.NoError(t, err)
+
+		// Wait for config change to be processed
+		time.Sleep(200 * time.Millisecond)
+
+		// Verify config was updated
+		app.mu.RLock()
+		assert.Equal(t, "localhost:8081", app.cfg.Services[0].BackendAddr)
+		app.mu.RUnlock()
+
+		// Shutdown
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		err = app.Shutdown(shutdownCtx)
+		require.NoError(t, err)
+	})
+}
+
+// mockConfigProvider implements config.Provider for testing
+type mockConfigProvider struct {
+	name      string
+	loadFunc  func(ctx context.Context) (*config.Config, error)
+	watchFunc func(ctx context.Context) (<-chan *config.Config, error)
+}
+
+func (m *mockConfigProvider) Name() string {
+	return m.name
+}
+
+func (m *mockConfigProvider) Load(ctx context.Context) (*config.Config, error) {
+	if m.loadFunc != nil {
+		return m.loadFunc(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockConfigProvider) Watch(ctx context.Context) (<-chan *config.Config, error) {
+	if m.watchFunc != nil {
+		return m.watchFunc(ctx)
+	}
+	return nil, nil
 }

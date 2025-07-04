@@ -144,9 +144,7 @@ func TestHTTPProxy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy handler
 			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
-			if err != nil {
-				t.Fatalf("Failed to create handler: %v", err)
-			}
+			require.NoError(t, err)
 
 			// Create test request
 			var body io.Reader
@@ -165,21 +163,15 @@ func TestHTTPProxy(t *testing.T) {
 			handler.ServeHTTP(rr, req)
 
 			// Check status code
-			if rr.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
-			}
+			assert.Equal(t, tt.expectedStatus, rr.Code)
 
 			// Check response body
-			if rr.Body.String() != tt.expectedBody {
-				t.Errorf("expected body %q, got %q", tt.expectedBody, rr.Body.String())
-			}
+			assert.Equal(t, tt.expectedBody, rr.Body.String())
 
 			// Check headers
 			for key, expected := range tt.checkHeaders {
 				actual := rr.Header().Get(key)
-				if actual != expected {
-					t.Errorf("expected header %s=%q, got %q", key, expected, actual)
-				}
+				assert.Equal(t, expected, actual, "header %s mismatch", key)
 			}
 		})
 	}
@@ -192,9 +184,7 @@ func TestUnixSocketProxy(t *testing.T) {
 
 	// Create unix socket server
 	listener, err := net.Listen("unix", socketPath)
-	if err != nil {
-		t.Fatalf("failed to create unix socket: %v", err)
-	}
+	require.NoError(t, err, "failed to create unix socket")
 	defer listener.Close()
 
 	// Start HTTP server on unix socket
@@ -242,9 +232,7 @@ func TestUnixSocketProxy(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy handler for unix socket
 			handler, err := newTestHandler("unix://"+socketPath, defaultTestTransportConfig(), nil)
-			if err != nil {
-				t.Fatalf("Failed to create handler: %v", err)
-			}
+			require.NoError(t, err)
 
 			// Create test request
 			req := httptest.NewRequest("GET", tt.path, nil)
@@ -254,19 +242,13 @@ func TestUnixSocketProxy(t *testing.T) {
 			handler.ServeHTTP(rr, req)
 
 			// Check status
-			if rr.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
-			}
+			assert.Equal(t, tt.expectedStatus, rr.Code)
 
 			// Check body
-			if rr.Body.String() != tt.expectedBody {
-				t.Errorf("expected body %q, got %q", tt.expectedBody, rr.Body.String())
-			}
+			assert.Equal(t, tt.expectedBody, rr.Body.String())
 
 			// Check unix socket header
-			if rr.Header().Get("X-Unix-Socket") != "true" {
-				t.Error("expected X-Unix-Socket header")
-			}
+			assert.Equal(t, "true", rr.Header().Get("X-Unix-Socket"), "expected X-Unix-Socket header")
 		})
 	}
 }
@@ -309,9 +291,7 @@ func TestProxyWithTimeouts(t *testing.T) {
 			transportConfig := defaultTestTransportConfig()
 			transportConfig.ResponseHeaderTimeout = tt.timeout
 			handler, err := newTestHandler(backend.URL, transportConfig, nil)
-			if err != nil {
-				t.Fatalf("Failed to create handler: %v", err)
-			}
+			require.NoError(t, err)
 
 			// Create request
 			req := httptest.NewRequest("GET", "/?delay="+tt.delay, nil)
@@ -322,17 +302,11 @@ func TestProxyWithTimeouts(t *testing.T) {
 
 			if tt.expectTimeout {
 				// Should get a timeout error
-				if rr.Code != http.StatusGatewayTimeout {
-					t.Errorf("expected timeout status 504, got %d", rr.Code)
-				}
+				assert.Equal(t, http.StatusGatewayTimeout, rr.Code)
 			} else {
 				// Should succeed
-				if rr.Code != http.StatusOK {
-					t.Errorf("expected status 200, got %d", rr.Code)
-				}
-				if rr.Body.String() != "response after delay" {
-					t.Errorf("unexpected response: %q", rr.Body.String())
-				}
+				assert.Equal(t, http.StatusOK, rr.Code)
+				assert.Equal(t, "response after delay", rr.Body.String())
 			}
 		})
 	}
@@ -370,8 +344,8 @@ func TestProxyErrorHandling(t *testing.T) {
 						http.Error(w, "Bad Gateway", http.StatusBadGateway)
 					}),
 				}
-			} else if err != nil {
-				t.Fatalf("Failed to create handler: %v", err)
+			} else {
+				require.NoError(t, err)
 			}
 
 			// Create test request
@@ -382,14 +356,10 @@ func TestProxyErrorHandling(t *testing.T) {
 			handler.ServeHTTP(rr, req)
 
 			// Check status
-			if rr.Code != tt.expectedStatus {
-				t.Errorf("expected status %d, got %d", tt.expectedStatus, rr.Code)
-			}
+			assert.Equal(t, tt.expectedStatus, rr.Code)
 
 			// Check error message
-			if !strings.Contains(rr.Body.String(), tt.expectedError) {
-				t.Errorf("expected error containing %q, got %q", tt.expectedError, rr.Body.String())
-			}
+			assert.Contains(t, rr.Body.String(), tt.expectedError)
 		})
 	}
 }
@@ -414,9 +384,7 @@ func TestProxyHeaderHandling(t *testing.T) {
 
 	// Create proxy
 	handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
-	if err != nil {
-		t.Fatalf("Failed to create handler: %v", err)
-	}
+	require.NoError(t, err)
 
 	// Create request with headers
 	req := httptest.NewRequest("GET", "/", nil)
@@ -431,20 +399,12 @@ func TestProxyHeaderHandling(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	// Check that headers were passed through
-	if rr.Header().Get("X-Echo-Authorization") != "Bearer test-token" {
-		t.Error("Authorization header not passed through")
-	}
-	if rr.Header().Get("X-Echo-Content-Type") != "application/json" {
-		t.Error("Content-Type header not passed through")
-	}
+	assert.Equal(t, "Bearer test-token", rr.Header().Get("X-Echo-Authorization"), "Authorization header not passed through")
+	assert.Equal(t, "application/json", rr.Header().Get("X-Echo-Content-Type"), "Content-Type header not passed through")
 
 	// Check forwarding headers were added
-	if rr.Header().Get("X-Forwarded-For") == "" {
-		t.Error("X-Forwarded-For header not added")
-	}
-	if rr.Header().Get("X-Real-IP") == "" {
-		t.Error("X-Real-IP header not added")
-	}
+	assert.NotEmpty(t, rr.Header().Get("X-Forwarded-For"), "X-Forwarded-For header not added")
+	assert.NotEmpty(t, rr.Header().Get("X-Real-IP"), "X-Real-IP header not added")
 }
 
 func TestXForwardedForSecurity(t *testing.T) {
@@ -490,9 +450,7 @@ func TestXForwardedForSecurity(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy
 			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
-			if err != nil {
-				t.Fatalf("Failed to create handler: %v", err)
-			}
+			require.NoError(t, err)
 
 			// Create request with potentially spoofed X-Forwarded-For
 			req := httptest.NewRequest("GET", "/", nil)
@@ -508,14 +466,10 @@ func TestXForwardedForSecurity(t *testing.T) {
 
 			// Check that proxy set correct forwarding headers
 			actualForwardedFor := rr.Header().Get("X-Echo-Forwarded-For")
-			if actualForwardedFor != tt.expectedForwardedFor {
-				t.Errorf("X-Forwarded-For: expected %q, got %q", tt.expectedForwardedFor, actualForwardedFor)
-			}
+			assert.Equal(t, tt.expectedForwardedFor, actualForwardedFor, "X-Forwarded-For mismatch")
 
 			actualRealIP := rr.Header().Get("X-Echo-Real-IP")
-			if actualRealIP != tt.expectedRealIP {
-				t.Errorf("X-Real-IP: expected %q, got %q", tt.expectedRealIP, actualRealIP)
-			}
+			assert.Equal(t, tt.expectedRealIP, actualRealIP, "X-Real-IP mismatch")
 		})
 	}
 }
@@ -599,9 +553,7 @@ func TestXForwardedForWithTrustedProxies(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create proxy with trusted proxies
 			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), tt.trustedProxies)
-			if err != nil {
-				t.Fatalf("Failed to create handler: %v", err)
-			}
+			require.NoError(t, err)
 
 			// Create request
 			req := httptest.NewRequest("GET", "/", nil)
@@ -617,14 +569,10 @@ func TestXForwardedForWithTrustedProxies(t *testing.T) {
 
 			// Check that proxy set correct forwarding headers
 			actualForwardedFor := rr.Header().Get("X-Echo-Forwarded-For")
-			if actualForwardedFor != tt.expectedForwardedFor {
-				t.Errorf("X-Forwarded-For: expected %q, got %q", tt.expectedForwardedFor, actualForwardedFor)
-			}
+			assert.Equal(t, tt.expectedForwardedFor, actualForwardedFor, "X-Forwarded-For mismatch")
 
 			actualRealIP := rr.Header().Get("X-Echo-Real-IP")
-			if actualRealIP != tt.expectedRealIP {
-				t.Errorf("X-Real-IP: expected %q, got %q", tt.expectedRealIP, actualRealIP)
-			}
+			assert.Equal(t, tt.expectedRealIP, actualRealIP, "X-Real-IP mismatch")
 		})
 	}
 }
@@ -681,23 +629,14 @@ func TestNewHandlerWithErrors(t *testing.T) {
 			handler, err := newTestHandler(tt.backendAddr, defaultTestTransportConfig(), tt.trustedProxies)
 
 			if tt.wantErr {
-				if err == nil {
-					t.Errorf("NewHandler() expected error but got nil")
-					return
+				require.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
 				}
-				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
-					t.Errorf("NewHandler() error = %v, want error containing %q", err, tt.errContains)
-				}
-				if handler != nil {
-					t.Errorf("NewHandler() returned non-nil handler with error")
-				}
+				assert.Nil(t, handler, "NewHandler() should return nil handler with error")
 			} else {
-				if err != nil {
-					t.Errorf("NewHandler() unexpected error: %v", err)
-				}
-				if handler == nil {
-					t.Errorf("NewHandler() returned nil handler without error")
-				}
+				require.NoError(t, err)
+				require.NotNil(t, handler, "NewHandler() should return non-nil handler without error")
 			}
 		})
 	}
@@ -721,9 +660,7 @@ func TestProxyErrorTypes(t *testing.T) {
 				transportConfig := defaultTestTransportConfig()
 				transportConfig.ResponseHeaderTimeout = 100 * time.Millisecond
 				handler, err := newTestHandler(backend.URL, transportConfig, nil)
-				if err != nil {
-					t.Fatalf("Failed to create handler: %v", err)
-				}
+				require.NoError(t, err)
 				return handler
 			},
 			wantStatus: http.StatusGatewayTimeout,
@@ -733,9 +670,7 @@ func TestProxyErrorTypes(t *testing.T) {
 			setupProxy: func() http.Handler {
 				// Use an invalid address that will refuse connection
 				handler, err := newTestHandler("http://127.0.0.1:99999", defaultTestTransportConfig(), nil)
-				if err != nil {
-					t.Fatalf("Failed to create handler: %v", err)
-				}
+				require.NoError(t, err)
 				return handler
 			},
 			wantStatus: http.StatusBadGateway,
@@ -751,9 +686,7 @@ func TestProxyErrorTypes(t *testing.T) {
 
 			handler.ServeHTTP(w, req)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("status code = %d, want %d", w.Code, tt.wantStatus)
-			}
+			assert.Equal(t, tt.wantStatus, w.Code)
 		})
 	}
 }
@@ -822,9 +755,7 @@ func TestErrorHandlerUsesCorrectStatus(t *testing.T) {
 
 			errorHandler(w, req, tt.err)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("status code = %d, want %d", w.Code, tt.wantStatus)
-			}
+			assert.Equal(t, tt.wantStatus, w.Code)
 		})
 	}
 }
@@ -903,9 +834,7 @@ func TestImprovedTimeoutDetection(t *testing.T) {
 
 			// Create proxy handler
 			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), nil)
-			if err != nil {
-				t.Fatalf("Failed to create handler: %v", err)
-			}
+			require.NoError(t, err)
 
 			// Get the httpHandler to access the error handler
 			h := handler.(*httpHandler)
@@ -917,9 +846,7 @@ func TestImprovedTimeoutDetection(t *testing.T) {
 			// Call the error handler directly with our test error
 			h.proxy.ErrorHandler(w, req, tt.err)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("Expected status %d for error %v, got %d", tt.wantStatus, tt.err, w.Code)
-			}
+			assert.Equal(t, tt.wantStatus, w.Code, "Expected status for error %v", tt.err)
 		})
 	}
 }

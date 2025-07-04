@@ -81,8 +81,7 @@ func TestE2EShutdownWithActiveRequests(t *testing.T) {
 	assert.Less(t, shutdownDuration, 3*time.Second, "shutdown took too long")
 
 	// Verify shutdown happened - at least one of these messages should appear
-	if !strings.Contains(output, "shutdown complete") && !strings.Contains(output, "shutting down") {
-		t.Error("did not see shutdown messages")
-		t.Logf("Output:\n%s", output)
-	}
+	shutdownComplete := strings.Contains(output, "shutdown complete")
+	shuttingDown := strings.Contains(output, "shutting down")
+	assert.True(t, shutdownComplete || shuttingDown, "did not see shutdown messages in output:\n%s", output)
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/jtdowney/tsbridge/test/integration/helpers"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestInMemoryMetricsCollection was removed - this behavior is already tested in:
@@ -87,9 +88,8 @@ func TestMetricsEndpointWithRealServer(t *testing.T) {
 	cmd.Env = append(os.Environ(), "TSBRIDGE_TEST_MODE=1")
 
 	// Start in background
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("failed to start tsbridge: %v", err)
-	}
+	err := cmd.Start()
+	require.NoError(t, err, "failed to start tsbridge")
 
 	// Wait for service to be ready
 	time.Sleep(2 * time.Second)
@@ -97,7 +97,6 @@ func TestMetricsEndpointWithRealServer(t *testing.T) {
 	// Try to access metrics endpoint
 	metricsURL := "http://localhost:9999/metrics"
 	var resp *http.Response
-	var err error
 
 	// Retry a few times in case startup is slow
 	for i := 0; i < 5; i++ {
@@ -117,16 +116,12 @@ func TestMetricsEndpointWithRealServer(t *testing.T) {
 
 	// Read metrics
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("failed to read metrics: %v", err)
-	}
+	require.NoError(t, err, "failed to read metrics")
 
 	metricsStr := string(body)
 
 	// Verify Prometheus format
-	if !strings.Contains(metricsStr, "# HELP") {
-		t.Error("metrics response doesn't contain Prometheus help text")
-	}
+	assert.Contains(t, metricsStr, "# HELP", "metrics response doesn't contain Prometheus help text")
 
 	// In test mode, verify we at least get some metrics
 	// The custom tsbridge metrics may not be initialized
@@ -156,8 +151,6 @@ func TestMetricsEndpointWithRealServer(t *testing.T) {
 		t.Log("Note: tsbridge metrics not found, verifying basic Prometheus format")
 
 		// Should at least have Go runtime metrics
-		if !strings.Contains(metricsStr, "go_") {
-			t.Error("expected Go runtime metrics in response")
-		}
+		assert.Contains(t, metricsStr, "go_", "expected Go runtime metrics in response")
 	}
 }

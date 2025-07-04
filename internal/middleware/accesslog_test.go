@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -207,7 +208,7 @@ func TestAccessLogWebSocketSupport(t *testing.T) {
 			assert.True(t, ok, "ResponseWriter should implement http.Hijacker for WebSocket support")
 
 			conn, bufrw, err := hijacker.Hijack()
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			defer conn.Close()
 
 			// Write WebSocket upgrade response
@@ -240,7 +241,7 @@ func TestAccessLogWebSocketSupport(t *testing.T) {
 
 		// Create WebSocket upgrade request
 		req, err := http.NewRequest("GET", server.URL, nil)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		req.Header.Set("Upgrade", "websocket")
 		req.Header.Set("Connection", "Upgrade")
 		req.Header.Set("Sec-WebSocket-Version", "13")
@@ -249,7 +250,7 @@ func TestAccessLogWebSocketSupport(t *testing.T) {
 		// Make the request
 		client := &http.Client{}
 		resp, err := client.Do(req)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		defer resp.Body.Close()
 
 		// Should get 101 Switching Protocols
