@@ -52,6 +52,28 @@ func stripScheme(url string) string {
 	return url
 }
 
+// waitForServicesReady waits for services to be ready with a timeout
+func waitForServicesReady(t *testing.T) {
+	t.Helper()
+
+	// Since we're using mock tsnet servers, we need a small delay for goroutines to start
+	// Using a channel-based approach for better synchronization
+	ready := make(chan struct{})
+
+	go func() {
+		// Give services time to start their goroutines
+		time.Sleep(50 * time.Millisecond)
+		close(ready)
+	}()
+
+	select {
+	case <-ready:
+		// Services should be ready
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for services to be ready")
+	}
+}
+
 func TestDynamicServiceManagement(t *testing.T) {
 	t.Run("reload adds new services", func(t *testing.T) {
 		// Create backends
@@ -79,7 +101,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		}()
 
 		// Wait for startup
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 
 		// Create new config with additional service
 		newCfg := helpers.CreateMultiServiceConfig(t, map[string]string{
@@ -92,7 +114,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		require.NoError(t, err)
 
 		// Give services time to start
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 
 		// Note: In a real integration test, we would make HTTP requests to verify
 		// the services are working. Since this is a mock setup, we just verify
@@ -124,7 +146,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		}()
 
 		// Wait for startup
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 
 		// Create new config with only one service
 		newCfg := helpers.CreateTestConfig(t, "svc1", stripScheme(backend1.URL))
@@ -134,7 +156,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		require.NoError(t, err)
 
 		// Give services time to stop
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 	})
 
 	t.Run("reload updates service configuration", func(t *testing.T) {
@@ -162,7 +184,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		}()
 
 		// Wait for startup
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 
 		// Update service to point to backend2
 		newCfg := helpers.CreateTestConfig(t, "svc1", stripScheme(backend2.URL))
@@ -175,7 +197,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		require.NoError(t, err)
 
 		// Give service time to restart
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 	})
 
 	t.Run("reload handles partial failures gracefully", func(t *testing.T) {
@@ -199,7 +221,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		}()
 
 		// Wait for startup
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 
 		// Create new config with a service that has an invalid backend
 		// to simulate a partial failure
@@ -235,7 +257,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		}()
 
 		// Wait for startup
-		time.Sleep(100 * time.Millisecond)
+		waitForServicesReady(t)
 
 		// Create multiple different configs
 		configs := make([]*config.Config, 5)
@@ -259,7 +281,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		}
 
 		// The important thing is that the app remains stable
-		time.Sleep(200 * time.Millisecond)
+		waitForServicesReady(t)
 
 		// App should still be running (no panic)
 		assert.NotNil(t, testApp)

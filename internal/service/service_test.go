@@ -1024,7 +1024,7 @@ func TestShutdownIdempotency(t *testing.T) {
 			},
 		},
 		services: make(map[string]*Service),
-		mu:       sync.Mutex{},
+		mu:       sync.RWMutex{},
 	}
 
 	// Add a simple service

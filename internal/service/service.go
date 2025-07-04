@@ -28,7 +28,7 @@ type Registry struct {
 	services         map[string]*Service
 	metricsCollector *metrics.Collector
 	whoisCache       *middleware.WhoisCache
-	mu               sync.Mutex
+	mu               sync.RWMutex
 }
 
 // Service represents a single service instance
@@ -77,8 +77,8 @@ func (r *Registry) SetMetricsCollector(collector *metrics.Collector) {
 
 // GetService returns a service by name
 func (r *Registry) GetService(name string) (*Service, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	svc, exists := r.services[name]
 	return svc, exists
 }
@@ -268,8 +268,30 @@ func (s *Service) isAccessLogEnabled() bool {
 // Stop gracefully stops the service
 func (s *Service) Stop(ctx context.Context) error {
 	if s.server != nil {
-		return s.server.Shutdown(ctx)
+		if err := s.server.Shutdown(ctx); err != nil {
+			return err
+		}
 	}
+
+	// Close the listener (may already be closed by server.Shutdown)
+	if s.listener != nil {
+		if err := s.listener.Close(); err != nil {
+			// Only log if it's not an "already closed" error
+			if !errors.Is(err, net.ErrClosed) {
+				slog.Warn("failed to close listener", "service", s.Config.Name, "error", err)
+			}
+		}
+	}
+
+	// Close the handler if it implements Close
+	if s.handler != nil {
+		if closer, ok := s.handler.(io.Closer); ok {
+			if err := closer.Close(); err != nil {
+				slog.Warn("failed to close handler", "service", s.Config.Name, "error", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -285,7 +307,7 @@ func (r *Registry) Shutdown(ctx context.Context) error {
 		wg.Add(1)
 		go func(s *Service) {
 			defer wg.Done()
-			if err := s.server.Shutdown(ctx); err != nil {
+			if err := s.Stop(ctx); err != nil {
 				errCh <- tserrors.WrapInternal(err, fmt.Sprintf("shutting down service %q", s.Config.Name))
 			}
 		}(svc)
@@ -339,28 +361,12 @@ func (r *Registry) RemoveService(name string) error {
 		return fmt.Errorf("service %s not found", name)
 	}
 
-	// Stop the service
+	// Stop the service (this will close listener and handler)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := svc.Stop(ctx); err != nil {
 		return fmt.Errorf("failed to stop service %s: %w", name, err)
-	}
-
-	// Close the listener
-	if svc.listener != nil {
-		if err := svc.listener.Close(); err != nil {
-			slog.Warn("failed to close listener", "service", name, "error", err)
-		}
-	}
-
-	// Close the handler if it implements Close
-	if svc.handler != nil {
-		if closer, ok := svc.handler.(io.Closer); ok {
-			if err := closer.Close(); err != nil {
-				slog.Warn("failed to close handler", "service", name, "error", err)
-			}
-		}
 	}
 
 	// Remove from registry
