@@ -1086,6 +1086,35 @@ func TestProvider_Load(t *testing.T) {
 		assert.True(t, serviceNames["web"])
 	})
 
+	t.Run("container with both enable and enabled labels is not duplicated", func(t *testing.T) {
+		mockClient := newMockDockerClient()
+
+		tsbridgeContainer := createTsbridgeContainer("tsbridge123")
+		// Service with BOTH "enable" and "enabled" labels
+		dualLabelService := createTestContainer("svc1", "api", map[string]string{
+			"tsbridge.enable":               "true", // Both labels set
+			"tsbridge.enabled":              "true", // Both labels set
+			"tsbridge.service.name":         "api",
+			"tsbridge.service.backend_addr": "localhost:8080",
+		})
+
+		mockClient.containers = []container.Summary{tsbridgeContainer, dualLabelService}
+
+		provider := &Provider{
+			client:      mockClient,
+			labelPrefix: "tsbridge",
+		}
+
+		ctx := context.Background()
+		cfg, err := provider.Load(ctx)
+
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+		// Should only have 1 service, not 2
+		assert.Len(t, cfg.Services, 1)
+		assert.Equal(t, "api", cfg.Services[0].Name)
+	})
+
 	t.Run("malformed service labels", func(t *testing.T) {
 		mockClient := newMockDockerClient()
 
@@ -1455,6 +1484,64 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			t.Fatal("Expected configuration update after container start event")
 		}
 	})
+}
+
+func TestProvider_isContainerEnabled(t *testing.T) {
+	provider := &Provider{labelPrefix: "tsbridge"}
+
+	tests := []struct {
+		name     string
+		labels   map[string]string
+		expected bool
+	}{
+		{
+			name:     "enabled label true",
+			labels:   map[string]string{"tsbridge.enabled": "true"},
+			expected: true,
+		},
+		{
+			name:     "enable label true",
+			labels:   map[string]string{"tsbridge.enable": "true"},
+			expected: true,
+		},
+		{
+			name:     "both labels true",
+			labels:   map[string]string{"tsbridge.enabled": "true", "tsbridge.enable": "true"},
+			expected: true,
+		},
+		{
+			name:     "enabled label false",
+			labels:   map[string]string{"tsbridge.enabled": "false"},
+			expected: false,
+		},
+		{
+			name:     "enable label false",
+			labels:   map[string]string{"tsbridge.enable": "false"},
+			expected: false,
+		},
+		{
+			name:     "no labels",
+			labels:   map[string]string{},
+			expected: false,
+		},
+		{
+			name:     "other labels only",
+			labels:   map[string]string{"other.label": "true"},
+			expected: false,
+		},
+		{
+			name:     "custom prefix",
+			labels:   map[string]string{"custom.enabled": "true"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.isContainerEnabled(tt.labels)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
 }
 
 func TestProvider_SimpleMethods(t *testing.T) {

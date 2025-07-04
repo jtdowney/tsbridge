@@ -312,6 +312,14 @@ func (p *Provider) handleContainerEvent(ctx context.Context, configCh chan<- *co
 	return false
 }
 
+// isContainerEnabled checks if a container has either the enabled or enable label set to true
+func (p *Provider) isContainerEnabled(labels map[string]string) bool {
+	enabledLabel := fmt.Sprintf("%s.enabled", p.labelPrefix)
+	enableLabel := fmt.Sprintf("%s.enable", p.labelPrefix)
+
+	return labels[enabledLabel] == "true" || labels[enableLabel] == "true"
+}
+
 // Name returns the provider name
 func (p *Provider) Name() string {
 	return "docker"
@@ -365,28 +373,45 @@ func (p *Provider) findSelfContainer(ctx context.Context) (*container.Summary, e
 
 // findServiceContainers finds all containers with tsbridge.enabled=true or tsbridge.enable=true
 func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summary, error) {
-	// Get all running containers
-	opts := container.ListOptions{
+	// Query for containers with enabled=true
+	enabledOpts := container.ListOptions{
 		Filters: filters.NewArgs(
 			filters.Arg("status", "running"),
+			filters.Arg("label", fmt.Sprintf("%s.enabled=true", p.labelPrefix)),
 		),
 	}
 
-	containers, err := p.client.ContainerList(ctx, opts)
+	enabledContainers, err := p.client.ContainerList(ctx, enabledOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter containers that have either enabled=true or enable=true
-	var serviceContainers []container.Summary
-	for _, c := range containers {
-		enabledLabel := fmt.Sprintf("%s.enabled", p.labelPrefix)
-		enableLabel := fmt.Sprintf("%s.enable", p.labelPrefix)
+	// Query for containers with enable=true
+	enableOpts := container.ListOptions{
+		Filters: filters.NewArgs(
+			filters.Arg("status", "running"),
+			filters.Arg("label", fmt.Sprintf("%s.enable=true", p.labelPrefix)),
+		),
+	}
 
-		// Check if either label is set to "true"
-		if c.Labels[enabledLabel] == "true" || c.Labels[enableLabel] == "true" {
-			serviceContainers = append(serviceContainers, c)
-		}
+	enableContainers, err := p.client.ContainerList(ctx, enableOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge results and remove duplicates
+	containerMap := make(map[string]container.Summary)
+	for _, c := range enabledContainers {
+		containerMap[c.ID] = c
+	}
+	for _, c := range enableContainers {
+		containerMap[c.ID] = c
+	}
+
+	// Convert map back to slice
+	var serviceContainers []container.Summary
+	for _, c := range containerMap {
+		serviceContainers = append(serviceContainers, c)
 	}
 
 	return serviceContainers, nil
