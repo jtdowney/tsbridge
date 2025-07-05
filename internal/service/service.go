@@ -120,11 +120,6 @@ func (r *Registry) StartServices() error {
 		r.metricsCollector.SetActiveServices(len(r.services))
 	}
 
-	// If no services were configured, return a simple error
-	if totalServices == 0 {
-		return tserrors.NewInternalError("no services configured")
-	}
-
 	// Create ServiceStartupError if any services failed
 	failedCount := len(failedServices)
 	if failedCount > 0 {

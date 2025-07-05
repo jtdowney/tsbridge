@@ -160,7 +160,7 @@ func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
 			name:             "no services configured",
 			services:         []config.Service{},
 			expectedServices: 0,
-			expectError:      true, // Still error if no services configured
+			expectError:      false, // No error when no services configured
 		},
 	}
 
@@ -205,7 +205,7 @@ func TestRegistry_StartServices_WithBackendHealthCheck(t *testing.T) {
 }
 
 func TestServiceRegistryErrorTypes(t *testing.T) {
-	t.Run("no services started returns internal error", func(t *testing.T) {
+	t.Run("no services started succeeds with zero services", func(t *testing.T) {
 		// Create a minimal config with no services
 		cfg := &config.Config{
 			Global:   config.Global{},
@@ -216,10 +216,29 @@ func TestServiceRegistryErrorTypes(t *testing.T) {
 		registry := NewRegistry(cfg, nil)
 
 		err := registry.StartServices()
-		require.Error(t, err, "expected error when no services configured")
+		require.NoError(t, err, "expected no error when no services configured")
 
-		// Should be an internal error
-		assert.True(t, errors.IsInternal(err), "expected internal error, got %v", err)
+		// Should have zero services
+		assert.Len(t, registry.services, 0)
+	})
+
+	t.Run("docker provider zero services scenario", func(t *testing.T) {
+		// This test verifies the Docker provider use case where tsbridge
+		// starts with zero services and dynamically adds them as containers
+		// with tsbridge labels are started.
+		cfg := &config.Config{
+			Global:   config.Global{},
+			Services: []config.Service{}, // No initial services
+		}
+
+		registry := NewRegistry(cfg, nil)
+
+		// Start services should succeed with zero services
+		err := registry.StartServices()
+		require.NoError(t, err, "Docker provider should start successfully with zero services")
+
+		// Verify registry has zero services
+		assert.Len(t, registry.services, 0, "registry should have zero services")
 	})
 }
 
