@@ -13,6 +13,12 @@ import (
 	"tailscale.com/client/tailscale/apitype"
 )
 
+var headerCleaner = strings.NewReplacer("\r", "", "\n", "")
+
+func sanitizeHeaderValue(v string) string {
+	return headerCleaner.Replace(v)
+}
+
 type WhoisClient interface {
 	WhoIs(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error)
 }
@@ -95,11 +101,15 @@ func addUserHeaders(r *http.Request, resp *apitype.WhoIsResponse) {
 	}
 
 	if resp.UserProfile.LoginName != "" {
-		r.Header.Set("X-Tailscale-User", resp.UserProfile.LoginName)
-		r.Header.Set("X-Tailscale-Login", resp.UserProfile.LoginName)
+		loginName := sanitizeHeaderValue(resp.UserProfile.LoginName)
+		r.Header.Set("X-Tailscale-User", loginName)
+		r.Header.Set("X-Tailscale-Login", loginName)
 	}
 	if resp.UserProfile.DisplayName != "" {
-		r.Header.Set("X-Tailscale-Name", resp.UserProfile.DisplayName)
+		r.Header.Set("X-Tailscale-Name", sanitizeHeaderValue(resp.UserProfile.DisplayName))
+	}
+	if resp.UserProfile.ProfilePicURL != "" {
+		r.Header.Set("X-Tailscale-Profile-Picture", sanitizeHeaderValue(resp.UserProfile.ProfilePicURL))
 	}
 }
 
