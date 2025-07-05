@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -148,7 +149,7 @@ func TestServiceConfigEqual(t *testing.T) {
 				BackendAddr: "http://localhost:8080",
 				Tags:        []string{"prod", "api"},
 			},
-			expected: false, // Order matters for simplicity
+			expected: true, // Order doesn't matter for tags
 		},
 		{
 			name: "different upstream headers",
@@ -361,6 +362,141 @@ func TestServiceConfigEqual(t *testing.T) {
 			result := ServiceConfigEqual(tt.a, tt.b)
 			assert.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestStringSliceEqualUnordered(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        []string
+		b        []string
+		expected bool
+	}{
+		{
+			name:     "both nil",
+			a:        nil,
+			b:        nil,
+			expected: true,
+		},
+		{
+			name:     "both empty",
+			a:        []string{},
+			b:        []string{},
+			expected: true,
+		},
+		{
+			name:     "nil and empty",
+			a:        nil,
+			b:        []string{},
+			expected: true,
+		},
+		{
+			name:     "same order",
+			a:        []string{"a", "b", "c"},
+			b:        []string{"a", "b", "c"},
+			expected: true,
+		},
+		{
+			name:     "different order",
+			a:        []string{"a", "b", "c"},
+			b:        []string{"c", "a", "b"},
+			expected: true,
+		},
+		{
+			name:     "different order reverse",
+			a:        []string{"a", "b"},
+			b:        []string{"b", "a"},
+			expected: true,
+		},
+		{
+			name:     "different lengths",
+			a:        []string{"a", "b"},
+			b:        []string{"a", "b", "c"},
+			expected: false,
+		},
+		{
+			name:     "different elements",
+			a:        []string{"a", "b"},
+			b:        []string{"a", "c"},
+			expected: false,
+		},
+		{
+			name:     "duplicates same order",
+			a:        []string{"a", "a", "b"},
+			b:        []string{"a", "a", "b"},
+			expected: true,
+		},
+		{
+			name:     "duplicates different order",
+			a:        []string{"a", "a", "b"},
+			b:        []string{"b", "a", "a"},
+			expected: true,
+		},
+		{
+			name:     "different duplicate counts",
+			a:        []string{"a", "a", "b"},
+			b:        []string{"a", "b", "b"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stringSliceEqualUnordered(tt.a, tt.b)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestServiceConfigEqualCoversAllFields uses reflection to ensure all fields
+// of the Service struct are compared in ServiceConfigEqual function.
+// This test prevents bugs when new fields are added but not included in comparison.
+func TestServiceConfigEqualCoversAllFields(t *testing.T) {
+	// Use reflection to get all fields of Service struct
+	serviceType := reflect.TypeOf(Service{})
+
+	// List of fields we expect to be compared in ServiceConfigEqual
+	comparedFields := map[string]bool{
+		"Name":                  true,
+		"BackendAddr":           true,
+		"WhoisEnabled":          true,
+		"WhoisTimeout":          true,
+		"TLSMode":               true,
+		"Tags":                  true,
+		"ReadHeaderTimeout":     true,
+		"WriteTimeout":          true,
+		"IdleTimeout":           true,
+		"ResponseHeaderTimeout": true,
+		"AccessLog":             true,
+		"FunnelEnabled":         true,
+		"Ephemeral":             true,
+		"FlushInterval":         true,
+		"UpstreamHeaders":       true,
+		"DownstreamHeaders":     true,
+		"RemoveUpstream":        true,
+		"RemoveDownstream":      true,
+	}
+
+	// Check that all struct fields are in our comparison
+	for i := 0; i < serviceType.NumField(); i++ {
+		field := serviceType.Field(i)
+		if !comparedFields[field.Name] {
+			t.Errorf("Field %s is not compared in ServiceConfigEqual", field.Name)
+		}
+	}
+
+	// Also check that we don't have extra fields in our expected list
+	// that don't actually exist in the struct
+	actualFields := make(map[string]bool)
+	for i := 0; i < serviceType.NumField(); i++ {
+		field := serviceType.Field(i)
+		actualFields[field.Name] = true
+	}
+
+	for fieldName := range comparedFields {
+		if !actualFields[fieldName] {
+			t.Errorf("Expected field %s does not exist in Service struct", fieldName)
+		}
 	}
 }
 

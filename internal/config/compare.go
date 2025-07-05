@@ -3,6 +3,7 @@ package config
 
 import (
 	"reflect"
+	"slices"
 )
 
 // ServiceConfigEqual compares two service configurations and returns true if they are equal.
@@ -55,7 +56,7 @@ func ServiceConfigEqual(a, b Service) bool {
 	}
 
 	// Compare slice fields
-	if !stringSliceEqual(a.Tags, b.Tags) {
+	if !stringSliceEqualUnordered(a.Tags, b.Tags) {
 		return false
 	}
 	if !stringSliceEqual(a.RemoveUpstream, b.RemoveUpstream) {
@@ -114,6 +115,27 @@ func stringSliceEqual(a, b []string) bool {
 	}
 
 	return true
+}
+
+// stringSliceEqualUnordered compares two string slices, ignoring order.
+// Treats nil and empty slices as equal.
+func stringSliceEqualUnordered(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	if len(a) == 0 {
+		return true
+	}
+
+	// Create copies to avoid modifying the original slices
+	aCopy := slices.Clone(a)
+	bCopy := slices.Clone(b)
+
+	slices.Sort(aCopy)
+	slices.Sort(bCopy)
+
+	return slices.Equal(aCopy, bCopy)
 }
 
 // stringMapEqual compares two string maps

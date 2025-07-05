@@ -2408,3 +2408,86 @@ backend_addr = "localhost:8080"
 		assert.True(t, cfg2.Services[0].WriteTimeout.IsSet)
 	})
 }
+
+func TestValidateWithProvider(t *testing.T) {
+	t.Run("no services with docker provider is allowed", func(t *testing.T) {
+		cfg := &Config{
+			Tailscale: Tailscale{
+				OAuthClientID:     "test-id",
+				OAuthClientSecret: "test-secret",
+			},
+			Global: Global{
+				ReadHeaderTimeout: makeDuration(5 * time.Second),
+				WriteTimeout:      makeDuration(10 * time.Second),
+				IdleTimeout:       makeDuration(120 * time.Second),
+				ShutdownTimeout:   makeDuration(15 * time.Second),
+			},
+			Services: []Service{},
+		}
+
+		// Should fail with no provider specified
+		err := cfg.Validate()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "at least one service must be defined")
+
+		// Should fail with file provider
+		err = cfg.ValidateWithProvider("file")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "at least one service must be defined")
+
+		// Should succeed with docker provider
+		err = cfg.ValidateWithProvider("docker")
+		assert.NoError(t, err)
+	})
+
+	t.Run("no services with non-docker provider fails", func(t *testing.T) {
+		cfg := &Config{
+			Tailscale: Tailscale{
+				OAuthClientID:     "test-id",
+				OAuthClientSecret: "test-secret",
+			},
+			Global: Global{
+				ReadHeaderTimeout: makeDuration(5 * time.Second),
+				WriteTimeout:      makeDuration(10 * time.Second),
+				IdleTimeout:       makeDuration(120 * time.Second),
+				ShutdownTimeout:   makeDuration(15 * time.Second),
+			},
+			Services: []Service{},
+		}
+
+		providers := []string{"", "file", "kubernetes", "consul"}
+		for _, provider := range providers {
+			err := cfg.ValidateWithProvider(provider)
+			assert.Error(t, err, "provider: %s", provider)
+			assert.Contains(t, err.Error(), "at least one service must be defined")
+		}
+	})
+
+	t.Run("services present works for all providers", func(t *testing.T) {
+		cfg := &Config{
+			Tailscale: Tailscale{
+				OAuthClientID:     "test-id",
+				OAuthClientSecret: "test-secret",
+			},
+			Global: Global{
+				ReadHeaderTimeout: makeDuration(5 * time.Second),
+				WriteTimeout:      makeDuration(10 * time.Second),
+				IdleTimeout:       makeDuration(120 * time.Second),
+				ShutdownTimeout:   makeDuration(15 * time.Second),
+			},
+			Services: []Service{
+				{
+					Name:        "test-service",
+					BackendAddr: "localhost:8080",
+					Tags:        []string{"tag:test"},
+				},
+			},
+		}
+
+		providers := []string{"", "file", "docker", "kubernetes", "consul"}
+		for _, provider := range providers {
+			err := cfg.ValidateWithProvider(provider)
+			assert.NoError(t, err, "provider: %s", provider)
+		}
+	})
+}

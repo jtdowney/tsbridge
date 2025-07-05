@@ -8,8 +8,13 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+
+	"log/slog"
 
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
@@ -18,7 +23,6 @@ import (
 	"github.com/jtdowney/tsbridge/internal/middleware"
 	"github.com/jtdowney/tsbridge/internal/proxy"
 	"github.com/jtdowney/tsbridge/internal/tailscale"
-	"log/slog"
 )
 
 // Registry manages all services
@@ -75,6 +79,13 @@ func (r *Registry) SetMetricsCollector(collector *metrics.Collector) {
 	r.metricsCollector = collector
 }
 
+// GetMetricsCollector returns the metrics collector for the registry
+func (r *Registry) GetMetricsCollector() *metrics.Collector {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.metricsCollector
+}
+
 // GetService returns a service by name
 func (r *Registry) GetService(name string) (*Service, bool) {
 	r.mu.RLock()
@@ -102,6 +113,11 @@ func (r *Registry) StartServices() error {
 		r.services[svcCfg.Name] = svc
 		slog.Info("started service", "service", svcCfg.Name)
 		successfulCount++
+	}
+
+	// Update active services count if metrics collector is available
+	if r.metricsCollector != nil {
+		r.metricsCollector.SetActiveServices(len(r.services))
 	}
 
 	// If no services were configured, return a simple error
@@ -329,35 +345,58 @@ func (r *Registry) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// AddService starts a new service and adds it to the registry
+// AddService dynamically starts and registers a new service.
+// Returns an error if the service already exists or fails to start.
+// Thread-safe.
 func (r *Registry) AddService(svcCfg config.Service) error {
+	start := time.Now()
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	// Check if service already exists
 	if _, exists := r.services[svcCfg.Name]; exists {
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("add", false, time.Since(start))
+		}
 		return fmt.Errorf("service %s already exists", svcCfg.Name)
 	}
 
 	// Start the service
 	svc, err := r.startService(svcCfg)
 	if err != nil {
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("add", false, time.Since(start))
+		}
 		return fmt.Errorf("failed to start service %s: %w", svcCfg.Name, err)
 	}
 
 	// Add to registry
 	r.services[svcCfg.Name] = svc
+
+	// Record metrics
+	if r.metricsCollector != nil {
+		r.metricsCollector.RecordServiceOperation("add", true, time.Since(start))
+		r.metricsCollector.SetActiveServices(len(r.services))
+	}
+
 	slog.Info("added service", "service", svcCfg.Name)
 	return nil
 }
 
-// RemoveService stops and removes a service from the registry
+// RemoveService stops and removes a service from the registry.
+// Returns an error if the service is not found or fails to stop.
 func (r *Registry) RemoveService(name string) error {
+	start := time.Now()
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	svc, exists := r.services[name]
 	if !exists {
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("remove", false, time.Since(start))
+		}
 		return fmt.Errorf("service %s not found", name)
 	}
 
@@ -366,39 +405,180 @@ func (r *Registry) RemoveService(name string) error {
 	defer cancel()
 
 	if err := svc.Stop(ctx); err != nil {
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("remove", false, time.Since(start))
+		}
 		return fmt.Errorf("failed to stop service %s: %w", name, err)
+	}
+
+	// Close the tsnet server for this service
+	if r.tsServer != nil {
+		if err := r.tsServer.CloseService(name); err != nil {
+			slog.Error("failed to close tsnet server for service", "service", name, "error", err)
+			// Continue with removal even if tsnet close fails
+		}
 	}
 
 	// Remove from registry
 	delete(r.services, name)
+
+	// Record metrics
+	if r.metricsCollector != nil {
+		r.metricsCollector.RecordServiceOperation("remove", true, time.Since(start))
+		r.metricsCollector.SetActiveServices(len(r.services))
+	}
+
 	slog.Info("removed service", "service", name)
 	return nil
 }
 
-// UpdateService updates an existing service with new configuration
+// validateServiceConfig checks service config for common errors before updating.
+//
+// Validates:
+//   - Non-empty service name and backend address
+//   - Absolute unix socket paths (unix://)
+//   - TLS mode is off, auto, or on
+//   - Non-negative timeouts
+//
+// Returns error if invalid.
+func (r *Registry) validateServiceConfig(cfg config.Service) error {
+	// Validate service name
+	if cfg.Name == "" {
+		return fmt.Errorf("service name is required")
+	}
+
+	// Validate backend address
+	if cfg.BackendAddr == "" {
+		return fmt.Errorf("backend address is required")
+	}
+
+	// Validate backend address format
+	path, unix := strings.CutPrefix(cfg.BackendAddr, "unix://")
+	if unix {
+		// Unix socket path validation
+		if !filepath.IsAbs(path) {
+			return fmt.Errorf("unix socket path must be absolute: %s", path)
+		}
+	} else {
+		// TCP address validation
+		if _, err := url.Parse(cfg.BackendAddr); err != nil {
+			return fmt.Errorf("invalid backend address: %w", err)
+		}
+	}
+
+	// Validate TLS mode
+	switch cfg.TLSMode {
+	case "off", "auto", "on":
+		// Valid modes
+	default:
+		return fmt.Errorf("invalid TLS mode: %s (must be 'off', 'auto', or 'on')", cfg.TLSMode)
+	}
+
+	// Validate timeout values
+	if cfg.ReadHeaderTimeout.Duration < 0 {
+		return fmt.Errorf("read header timeout must be non-negative")
+	}
+	if cfg.WriteTimeout.Duration < 0 {
+		return fmt.Errorf("write timeout must be non-negative")
+	}
+	if cfg.IdleTimeout.Duration < 0 {
+		return fmt.Errorf("idle timeout must be non-negative")
+	}
+	if cfg.ResponseHeaderTimeout.Duration < 0 {
+		return fmt.Errorf("response header timeout must be non-negative")
+	}
+
+	return nil
+}
+
+// UpdateService updates an existing service with new configuration at runtime.
+// Minimizes downtime by validating config before stopping the old service.
+// Thread-safe. Returns error if service not found, config invalid, stop/start fails.
 func (r *Registry) UpdateService(name string, newCfg config.Service) error {
-	// For now, implement as remove + add
-	// Later can optimize to avoid downtime if needed
+	start := time.Now()
 
-	// First check if the service exists
 	r.mu.Lock()
-	_, exists := r.services[name]
-	r.mu.Unlock()
+	defer r.mu.Unlock()
 
+	// Check if service exists
+	oldSvc, exists := r.services[name]
 	if !exists {
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("update", false, time.Since(start))
+		}
 		return fmt.Errorf("service %s not found", name)
 	}
 
-	// Remove the old service
-	if err := r.RemoveService(name); err != nil {
-		return fmt.Errorf("failed to remove old service: %w", err)
+	// Validate the new configuration as much as possible before stopping the old service
+	// This helps minimize downtime by catching configuration errors early
+	if err := r.validateServiceConfig(newCfg); err != nil {
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("update", false, time.Since(start))
+		}
+		return fmt.Errorf("invalid service configuration: %w", err)
 	}
 
-	// Add the new service
-	if err := r.AddService(newCfg); err != nil {
-		return fmt.Errorf("failed to add new service: %w", err)
+	// Store old service config for logging/debugging
+	oldConfig := oldSvc.Config
+
+	// Stop the old service
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := oldSvc.Stop(ctx); err != nil {
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("update", false, time.Since(start))
+		}
+		return fmt.Errorf("failed to stop service %s: %w", name, err)
 	}
 
-	slog.Info("updated service", "service", name)
+	// Close the tsnet server for this service
+	if r.tsServer != nil {
+		if err := r.tsServer.CloseService(name); err != nil {
+			slog.Error("failed to close tsnet server for service", "service", name, "error", err)
+			// Continue with update even if tsnet close fails
+		}
+	}
+
+	// Start the new service configuration
+	newSvc, err := r.startService(newCfg)
+	if err != nil {
+		// If we fail to start the new service, remove it from registry
+		// to avoid leaving a stopped service in the registry
+		delete(r.services, name)
+
+		// Record failure metric
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("update", false, time.Since(start))
+			r.metricsCollector.SetActiveServices(len(r.services))
+		}
+
+		// Log detailed error information to help with troubleshooting
+		slog.Error("service update failed",
+			"service", name,
+			"error", err,
+			"old_backend", oldConfig.BackendAddr,
+			"new_backend", newCfg.BackendAddr,
+			"old_tls_mode", oldConfig.TLSMode,
+			"new_tls_mode", newCfg.TLSMode,
+		)
+
+		return fmt.Errorf("failed to start updated service %s: %w", name, err)
+	}
+
+	// Replace in registry
+	r.services[name] = newSvc
+
+	// Record success metric
+	if r.metricsCollector != nil {
+		r.metricsCollector.RecordServiceOperation("update", true, time.Since(start))
+		// Active services count doesn't change on update
+	}
+
+	slog.Info("updated service",
+		"service", name,
+		"old_backend", oldConfig.BackendAddr,
+		"new_backend", newCfg.BackendAddr,
+	)
 	return nil
 }

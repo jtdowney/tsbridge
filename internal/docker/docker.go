@@ -37,11 +37,13 @@ const (
 
 // Provider implements config.Provider for Docker label-based configuration
 type Provider struct {
-	client      DockerClient
-	labelPrefix string
-	socketPath  string
-	mu          sync.RWMutex
-	lastConfig  *config.Config
+	client        DockerClient
+	labelPrefix   string
+	socketPath    string
+	mu            sync.RWMutex
+	lastConfig    *config.Config
+	debounceTimer *time.Timer
+	debounceMu    sync.Mutex
 }
 
 // Options contains configuration options for the Docker provider
@@ -66,9 +68,7 @@ func validateDockerAccess(socketPath string) error {
 
 	// Extract the actual file path from unix:// URLs
 	path := socketPath
-	if strings.HasPrefix(socketPath, "unix://") {
-		path = strings.TrimPrefix(socketPath, "unix://")
-	}
+	path, _ = strings.CutPrefix(socketPath, "unix://")
 
 	// Check if the socket exists and is accessible
 	info, err := osStat(path)
@@ -171,21 +171,10 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 		cfg.Services = append(cfg.Services, *svc)
 	}
 
-	// Apply standard configuration processing but skip full validation if no services
-	// For Docker provider, services can be added dynamically via container events
-	if len(cfg.Services) == 0 {
-		// Just validate OAuth credentials and apply defaults
-		if err := config.ProcessLoadedConfigWithProvider(cfg, "docker"); err != nil {
-			// If error is about missing services, ignore it for Docker provider
-			if !strings.Contains(err.Error(), "at least one service must be defined") {
-				return nil, err
-			}
-		}
-	} else {
-		// Full validation when services exist
-		if err := config.ProcessLoadedConfigWithProvider(cfg, "docker"); err != nil {
-			return nil, err
-		}
+	// Apply standard configuration processing
+	// Docker provider allows zero services at startup
+	if err := config.ProcessLoadedConfigWithProvider(cfg, "docker"); err != nil {
+		return nil, err
 	}
 
 	p.lastConfig = cfg
@@ -225,21 +214,30 @@ func (p *Provider) createEventOptions() events.ListOptions {
 
 // watchLoop runs the main event watching loop with reconnection
 func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) {
+	backoff := time.Second
+	const maxBackoff = 5 * time.Minute
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
+			// processEventStream returns true if context is cancelled
 			if p.processEventStream(ctx, configCh, eventOptions) {
 				return // Context cancelled
 			}
 
-			// Event stream closed, wait before reconnecting
+			// Event stream closed, wait before reconnecting with backoff
+			slog.Debug("Docker event stream closed, reconnecting...", "backoff", backoff)
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(time.Second):
-				slog.Debug("Reconnecting to Docker events stream")
+			case <-time.After(backoff):
+				// Increase backoff for next time, up to the max
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
 			}
 		}
 	}
@@ -266,7 +264,10 @@ func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *conf
 	}
 }
 
-// handleContainerEvent processes a single container event
+// handleContainerEvent processes a Docker container event.
+// For stop/die, removes the associated service immediately to avoid race conditions.
+// For other events, triggers a debounced config reload.
+// Returns true if context was cancelled, false otherwise.
 func (p *Provider) handleContainerEvent(ctx context.Context, configCh chan<- *config.Config, event events.Message) bool {
 	if event.Type != "container" {
 		return false
@@ -282,31 +283,55 @@ func (p *Provider) handleContainerEvent(ctx context.Context, configCh chan<- *co
 		"container_name", event.Actor.Attributes["name"],
 		"container_id", containerID)
 
-	// Save the old config before loading new one
-	oldConfig := p.getLastConfig()
-
-	// Load new configuration when container event occurs
-	newConfig, err := p.Load(ctx)
-	if err != nil {
-		slog.Error("failed to reload configuration after Docker event", "error", err)
-		return false
-	}
-
-	// Check if configuration has changed
-	if !p.configEqual(oldConfig, newConfig) {
-		slog.Info("Docker configuration changed due to container event",
+	// For critical events like stop/die, handle immediately to avoid race conditions
+	// For other events, use debounced reload to batch rapid changes
+	if event.Action == "stop" || event.Action == "die" {
+		// Handle stop/die events immediately to avoid Docker API race conditions
+		slog.Debug("Handling stop/die event immediately (no debouncing)",
 			"action", event.Action,
 			"container_name", event.Actor.Attributes["name"])
 
-		select {
-		case configCh <- newConfig:
-			// Update lastConfig after successfully sending the new config
-			p.mu.Lock()
-			p.lastConfig = newConfig
-			p.mu.Unlock()
-		case <-ctx.Done():
-			return true
+		// Save the old config before loading new one
+		oldConfig := p.getLastConfig()
+
+		// Load new configuration when container event occurs
+		newConfig, err := p.Load(ctx)
+		if err != nil {
+			slog.Error("failed to reload configuration after Docker event", "error", err)
+			return false
 		}
+
+		// Manually remove the service associated with the stopped container
+		// This handles the Docker API race condition where a container might still appear as "running"
+		// briefly after the stop event is received
+		containerName := event.Actor.Attributes["name"]
+		if containerName != "" {
+			newConfig = p.removeServiceByContainerName(newConfig, containerName)
+		}
+
+		// Check if configuration has changed
+		if !p.configEqual(oldConfig, newConfig) {
+			slog.Info("Docker configuration changed due to container event",
+				"action", event.Action,
+				"container_name", event.Actor.Attributes["name"])
+
+			select {
+			case configCh <- newConfig:
+				// Update lastConfig after successfully sending the new config
+				p.mu.Lock()
+				p.lastConfig = newConfig
+				p.mu.Unlock()
+			case <-ctx.Done():
+				return true
+			}
+		}
+	} else {
+		// For start and other events, use debounced reload
+		slog.Debug("Triggering debounced configuration reload due to container event",
+			"action", event.Action,
+			"container_name", event.Actor.Attributes["name"])
+
+		p.debouncedReload(ctx, configCh)
 	}
 
 	return false
@@ -325,8 +350,56 @@ func (p *Provider) Name() string {
 	return "docker"
 }
 
+// debouncedReload debounces configuration reloads to prevent thundering herd issues
+func (p *Provider) debouncedReload(ctx context.Context, configCh chan<- *config.Config) {
+	p.debounceMu.Lock()
+	defer p.debounceMu.Unlock()
+
+	// Cancel existing timer if any
+	if p.debounceTimer != nil {
+		p.debounceTimer.Stop()
+	}
+
+	// Set new timer
+	p.debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+		// Check if context is still valid
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		// Load and send new config
+		newConfig, err := p.Load(ctx)
+		if err != nil {
+			slog.Error("failed to reload configuration after debounce", "error", err)
+			return
+		}
+
+		// Try to send config, but don't block if channel is closed or context cancelled
+		select {
+		case configCh <- newConfig:
+			p.mu.Lock()
+			p.lastConfig = newConfig
+			p.mu.Unlock()
+		case <-ctx.Done():
+			return
+		default:
+			// Channel might be closed, just log and return
+			slog.Debug("could not send debounced config - channel closed or full")
+		}
+	})
+}
+
 // Close closes the Docker client connection
 func (p *Provider) Close() error {
+	// Stop debounce timer
+	p.debounceMu.Lock()
+	if p.debounceTimer != nil {
+		p.debounceTimer.Stop()
+	}
+	p.debounceMu.Unlock()
+
 	if p.client != nil {
 		return p.client.Close()
 	}
@@ -447,29 +520,90 @@ func (p *Provider) getHostname() (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
+// removeServiceByContainerName removes services whose backend hostname matches the given container name.
+// Used to handle Docker API race conditions on stop/die events.
+// Returns a new config with the service removed, or the original config if no match.
+func (p *Provider) removeServiceByContainerName(cfg *config.Config, containerName string) *config.Config {
+	if cfg == nil || containerName == "" {
+		return cfg
+	}
+
+	// Create a new config with the same global settings
+	newCfg := &config.Config{
+		Tailscale: cfg.Tailscale,
+		Global:    cfg.Global,
+		Services:  make([]config.Service, 0, len(cfg.Services)),
+	}
+
+	// Copy all services except those matching the container name
+	removed := false
+	for _, svc := range cfg.Services {
+		// Parse the backend address to extract the hostname part
+		// Backend addresses are typically in format: "container-name:port" or "docker-container-name:port"
+		hostPort := svc.BackendAddr
+
+		// Extract just the hostname part (before the port)
+		var hostname string
+		if idx := strings.LastIndex(hostPort, ":"); idx > 0 {
+			hostname = hostPort[:idx]
+		} else {
+			hostname = hostPort
+		}
+
+		// Check for exact match only to prevent false positives
+		// Backend addresses should exactly match the container name (excluding port)
+		if hostname == containerName {
+			slog.Debug("removing service from stopped container",
+				"service", svc.Name,
+				"container", containerName,
+				"backend", svc.BackendAddr,
+				"matched_hostname", hostname)
+			removed = true
+			continue
+		}
+
+		newCfg.Services = append(newCfg.Services, svc)
+	}
+
+	if removed {
+		slog.Info("removed service associated with stopped container",
+			"container", containerName,
+			"remaining_services", len(newCfg.Services))
+	}
+
+	return newCfg
+}
+
 // configEqual compares two configurations for equality
 func (p *Provider) configEqual(a, b *config.Config) bool {
 	if a == nil || b == nil {
 		return a == b
 	}
 
-	// Simple comparison - could be enhanced with deep equality check
 	if len(a.Services) != len(b.Services) {
 		return false
 	}
 
-	// Compare service names
-	aNames := make(map[string]bool)
-	for _, svc := range a.Services {
-		aNames[svc.Name] = true
+	// Create a map of new services for efficient lookup
+	bServices := make(map[string]config.Service, len(b.Services))
+	for _, svc := range b.Services {
+		bServices[svc.Name] = svc
 	}
 
-	for _, svc := range b.Services {
-		if !aNames[svc.Name] {
+	// Compare each service from the old config with the new one
+	for _, aSvc := range a.Services {
+		bSvc, ok := bServices[aSvc.Name]
+		if !ok {
+			// A service was removed
+			return false
+		}
+		if !config.ServiceConfigEqual(aSvc, bSvc) {
+			// A service's configuration has changed
 			return false
 		}
 	}
 
+	// Note: This assumes global/tailscale config doesn't change dynamically
 	return true
 }
 

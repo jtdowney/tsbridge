@@ -189,6 +189,28 @@ func (s *Server) Close() error {
 	return nil
 }
 
+// CloseService closes and removes the tsnet server for a specific service
+func (s *Server) CloseService(serviceName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	server, exists := s.serviceServers[serviceName]
+	if !exists {
+		// Service not found, nothing to do
+		return nil
+	}
+
+	// Close the tsnet server
+	if err := server.Close(); err != nil {
+		return tserrors.WrapResource(err, fmt.Sprintf("closing tsnet server for service %q", serviceName))
+	}
+
+	// Remove from the map
+	delete(s.serviceServers, serviceName)
+
+	return nil
+}
+
 // ValidateTailscaleSecrets validates that either auth key or OAuth credentials are present.
 // The actual validation and resolution is done by the config package.
 func ValidateTailscaleSecrets(cfg config.Tailscale) error {

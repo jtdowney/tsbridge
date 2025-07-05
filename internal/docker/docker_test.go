@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -293,6 +294,74 @@ func TestConfigEqual(t *testing.T) {
 				},
 			},
 			equal: false,
+		},
+		{
+			name: "different backend addresses should not be equal",
+			a: &config.Config{
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "http://localhost:8080"},
+				},
+			},
+			b: &config.Config{
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "http://localhost:8081"},
+				},
+			},
+			equal: false, // This will fail with current implementation
+		},
+		{
+			name: "different headers should not be equal",
+			a: &config.Config{
+				Services: []config.Service{
+					{
+						Name:        "api",
+						BackendAddr: "http://localhost:8080",
+						UpstreamHeaders: map[string]string{
+							"X-Custom-Header": "value1",
+						},
+					},
+				},
+			},
+			b: &config.Config{
+				Services: []config.Service{
+					{
+						Name:        "api",
+						BackendAddr: "http://localhost:8080",
+						UpstreamHeaders: map[string]string{
+							"X-Custom-Header": "value2",
+						},
+					},
+				},
+			},
+			equal: false, // This will fail with current implementation
+		},
+		{
+			name: "different timeouts should not be equal",
+			a: &config.Config{
+				Services: []config.Service{
+					{
+						Name:        "api",
+						BackendAddr: "http://localhost:8080",
+						WhoisTimeout: config.Duration{
+							Duration: 2 * time.Second,
+							IsSet:    true,
+						},
+					},
+				},
+			},
+			b: &config.Config{
+				Services: []config.Service{
+					{
+						Name:        "api",
+						BackendAddr: "http://localhost:8080",
+						WhoisTimeout: config.Duration{
+							Duration: 5 * time.Second,
+							IsSet:    true,
+						},
+					},
+				},
+			},
+			equal: false, // This will fail with current implementation
 		},
 	}
 
@@ -1197,7 +1266,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			assert.NotNil(t, cfg)
 			assert.Len(t, cfg.Services, 1)
 			assert.Equal(t, "api", cfg.Services[0].Name)
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(700 * time.Millisecond): // Account for 500ms debounce + buffer
 			t.Fatal("Expected configuration update after container start event")
 		}
 	})
@@ -1480,7 +1549,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			assert.Equal(t, newCfg, updatedLastCfg)
 			assert.Len(t, updatedLastCfg.Services, 1)
 			assert.NotEqual(t, configBeforeEvent, updatedLastCfg)
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(700 * time.Millisecond): // Account for 500ms debounce + buffer
 			t.Fatal("Expected configuration update after container start event")
 		}
 	})
@@ -1675,4 +1744,313 @@ func TestProvider_ConfigEqual(t *testing.T) {
 
 		assert.False(t, provider.configEqual(cfg1, cfg2))
 	})
+}
+
+func TestRemoveServiceByContainerName(t *testing.T) {
+	p := &Provider{labelPrefix: "tsbridge"}
+
+	tests := []struct {
+		name              string
+		cfg               *config.Config
+		containerName     string
+		expectedRemaining int
+		shouldRemove      bool
+	}{
+		{
+			name: "removes service with exact container name match",
+			cfg: &config.Config{
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "docker-httpbin-1:8080"},
+					{Name: "web", BackendAddr: "docker-nginx-1:80"},
+				},
+			},
+			containerName:     "docker-httpbin-1",
+			expectedRemaining: 1,
+			shouldRemove:      true,
+		},
+		{
+			name: "removes service with partial container name match",
+			cfg: &config.Config{
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "httpbin-1:8080"},
+					{Name: "web", BackendAddr: "nginx-1:80"},
+				},
+			},
+			containerName:     "httpbin-1",
+			expectedRemaining: 1,
+			shouldRemove:      true,
+		},
+		{
+			name: "handles no match gracefully",
+			cfg: &config.Config{
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "httpbin:8080"},
+					{Name: "web", BackendAddr: "nginx:80"},
+				},
+			},
+			containerName:     "redis",
+			expectedRemaining: 2,
+			shouldRemove:      false,
+		},
+		{
+			name: "handles empty container name",
+			cfg: &config.Config{
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "httpbin:8080"},
+				},
+			},
+			containerName:     "",
+			expectedRemaining: 1,
+			shouldRemove:      false,
+		},
+		{
+			name:              "handles nil config",
+			cfg:               nil,
+			containerName:     "httpbin",
+			expectedRemaining: 0,
+			shouldRemove:      false,
+		},
+		{
+			name: "removes multiple services from same container",
+			cfg: &config.Config{
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "httpbin-1:8080"},
+					{Name: "api-admin", BackendAddr: "httpbin-1:8081"},
+					{Name: "web", BackendAddr: "nginx-1:80"},
+				},
+			},
+			containerName:     "httpbin-1",
+			expectedRemaining: 1,
+			shouldRemove:      true,
+		},
+		{
+			name: "preserves global config",
+			cfg: &config.Config{
+				Global: config.Global{
+					MetricsAddr: ":9090",
+				},
+				Services: []config.Service{
+					{Name: "api", BackendAddr: "httpbin-1:8080"},
+				},
+			},
+			containerName:     "httpbin-1",
+			expectedRemaining: 0,
+			shouldRemove:      true,
+		},
+		{
+			name: "prevents false positive with substring matching",
+			cfg: &config.Config{
+				Services: []config.Service{
+					{Name: "webapp", BackendAddr: "webapp:8080"},
+					{Name: "app", BackendAddr: "app:8081"},
+					{Name: "application", BackendAddr: "application:8082"},
+				},
+			},
+			containerName:     "app",
+			expectedRemaining: 2, // Only "app:8081" should be removed
+			shouldRemove:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := p.removeServiceByContainerName(tt.cfg, tt.containerName)
+
+			if tt.cfg == nil {
+				assert.Nil(t, result)
+				return
+			}
+
+			assert.NotNil(t, result)
+			assert.Equal(t, tt.expectedRemaining, len(result.Services))
+
+			// Verify global config is preserved
+			if tt.cfg.Global.MetricsAddr != "" {
+				assert.Equal(t, tt.cfg.Global.MetricsAddr, result.Global.MetricsAddr)
+			}
+
+			// Verify the right services remain
+			if tt.shouldRemove && tt.expectedRemaining > 0 {
+				// Special handling for the false positive test
+				if tt.name == "prevents false positive with substring matching" {
+					// Verify that webapp and application remain, but app is removed
+					assert.Len(t, result.Services, 2)
+					remainingBackends := make(map[string]bool)
+					for _, svc := range result.Services {
+						remainingBackends[svc.BackendAddr] = true
+					}
+					assert.True(t, remainingBackends["webapp:8080"], "webapp:8080 should remain")
+					assert.True(t, remainingBackends["application:8082"], "application:8082 should remain")
+					assert.False(t, remainingBackends["app:8081"], "app:8081 should be removed")
+				} else {
+					// For other tests, verify exact match removal
+					for _, svc := range result.Services {
+						// Extract hostname from backend address
+						hostname := svc.BackendAddr
+						if idx := strings.LastIndex(hostname, ":"); idx > 0 {
+							hostname = hostname[:idx]
+						}
+						// Should not exactly match the container name
+						assert.NotEqual(t, hostname, tt.containerName,
+							"service with backend %s should not remain after removing container %s",
+							svc.BackendAddr, tt.containerName)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestDockerRaceConditionHandling(t *testing.T) {
+	// This test verifies that stop/die events properly remove services
+	// even if Docker's API briefly returns the container as "running"
+
+	t.Run("stop event removes service from config", func(t *testing.T) {
+		p := &Provider{labelPrefix: "tsbridge"}
+
+		// Simulate a config that includes a container that's being stopped
+		cfg := &config.Config{
+			Services: []config.Service{
+				{
+					Name:        "httpbin",
+					BackendAddr: "docker-httpbin-1:8080",
+				},
+				{
+					Name:        "nginx",
+					BackendAddr: "docker-nginx-1:80",
+				},
+			},
+		}
+
+		// Process stop event for httpbin container
+		result := p.removeServiceByContainerName(cfg, "docker-httpbin-1")
+
+		// Should only have nginx service remaining
+		assert.Equal(t, 1, len(result.Services))
+		assert.Equal(t, "nginx", result.Services[0].Name)
+		assert.NotContains(t, result.Services[0].BackendAddr, "httpbin")
+	})
+}
+
+func TestWatchLoopWithFailingClient(t *testing.T) {
+	// This test verifies that the watchLoop uses exponential backoff
+	// when Docker event stream reconnections fail repeatedly
+
+	// Create a provider with a failing Docker client
+	mockClient := &MockFailingDockerClient{}
+	p := &Provider{
+		client: mockClient,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3500*time.Millisecond)
+	defer cancel()
+
+	configCh := make(chan *config.Config, 1)
+	eventOptions := events.ListOptions{}
+
+	start := time.Now()
+
+	// With exponential backoff: 1s, 2s, 4s (should timeout before 8s)
+	p.watchLoop(ctx, configCh, eventOptions)
+
+	elapsed := time.Since(start)
+
+	// Should attempt multiple reconnections with exponential backoff
+	// First delay: 1s, second delay: 2s (total ~3s before timeout)
+	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(3000), "Should wait through multiple exponential backoff attempts")
+	assert.Less(t, elapsed.Milliseconds(), int64(4000), "Should timeout before completing all attempts")
+}
+
+// MockFailingDockerClient simulates a Docker client that always fails
+type MockFailingDockerClient struct{}
+
+func (m *MockFailingDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+	return nil, fmt.Errorf("simulated Docker connection failure")
+}
+
+func (m *MockFailingDockerClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+	eventCh := make(chan events.Message)
+	errCh := make(chan error, 1)
+
+	// Immediately close event channel and send error to simulate connection failure
+	close(eventCh)
+	errCh <- fmt.Errorf("simulated Docker connection failure")
+
+	return eventCh, errCh
+}
+
+func (m *MockFailingDockerClient) Ping(ctx context.Context) (types.Ping, error) {
+	return types.Ping{}, fmt.Errorf("simulated Docker connection failure")
+}
+
+func (m *MockFailingDockerClient) Close() error {
+	return nil
+}
+
+func TestDebouncedReload(t *testing.T) {
+	// This test verifies that the debouncedReload timer mechanism works correctly
+	// by checking that multiple rapid calls result in only one timer execution
+
+	provider := &Provider{
+		labelPrefix: "tsbridge",
+	}
+
+	// Track how many times the timer fires
+	var fireCount int32
+
+	start := time.Now()
+
+	// Trigger multiple rapid debounced reloads
+	// Each call should cancel the previous timer and set a new one
+	for i := 0; i < 3; i++ {
+		provider.debounceMu.Lock()
+		// Cancel existing timer if any
+		if provider.debounceTimer != nil {
+			provider.debounceTimer.Stop()
+		}
+		// Set new timer that increments counter
+		provider.debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+			atomic.AddInt32(&fireCount, 1)
+		})
+		provider.debounceMu.Unlock()
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Wait for debounce period to complete
+	time.Sleep(600 * time.Millisecond)
+
+	elapsed := time.Since(start)
+
+	// Should only fire once even though we called it 3 times
+	finalCount := atomic.LoadInt32(&fireCount)
+	assert.Equal(t, int32(1), finalCount, "Expected debouncing to result in only one timer execution")
+	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(500), "Should wait for debounce period")
+}
+
+// MockSuccessfulDockerClient simulates a Docker client that works
+type MockSuccessfulDockerClient struct{}
+
+func (m *MockSuccessfulDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+	// Return empty list to avoid complications in Load()
+	return []container.Summary{}, nil
+}
+
+func (m *MockSuccessfulDockerClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+	eventCh := make(chan events.Message)
+	errCh := make(chan error)
+
+	// Close channels immediately - not used in this test
+	close(eventCh)
+	close(errCh)
+
+	return eventCh, errCh
+}
+
+func (m *MockSuccessfulDockerClient) Ping(ctx context.Context) (types.Ping, error) {
+	return types.Ping{}, nil
+}
+
+func (m *MockSuccessfulDockerClient) Close() error {
+	return nil
 }

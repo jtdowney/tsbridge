@@ -1574,21 +1574,9 @@ func TestRegistry_RemoveService(t *testing.T) {
 
 // TestRegistry_RemoveService_VerifyStop verifies that RemoveService properly stops the service
 func TestRegistry_RemoveService_VerifyStop(t *testing.T) {
-	// Create a channel to track server state
-	serverRunning := make(chan bool, 1)
-	serverRunning <- true
-
-	// Create a test handler that tracks when server stops
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-serverRunning:
-			// Server is running
-		default:
-			// Server has been stopped
-			t.Error("handler called after server stop")
-		}
-		w.WriteHeader(http.StatusOK)
-	})
+	// Create a channel to verify server shutdown
+	serverStopped := make(chan struct{})
+	listenerClosed := make(chan struct{})
 
 	cfg := &config.Config{
 		Global: config.Global{
@@ -1611,47 +1599,62 @@ func TestRegistry_RemoveService_VerifyStop(t *testing.T) {
 	err = registry.StartServices()
 	require.NoError(t, err)
 
-	// Get the service and replace its handler for testing
+	// Get the service to verify it exists
 	svc, exists := registry.GetService("test-service")
 	require.True(t, exists)
 	require.NotNil(t, svc)
+	require.NotNil(t, svc.server)
+	require.NotNil(t, svc.listener)
 
-	// Store original server reference
-	originalServer := svc.server
+	// Store references to verify they're properly closed
+	originalListener := svc.listener
 
-	// Create a custom server with our test handler
-	svc.server = &http.Server{
-		Handler:           handler,
-		ReadHeaderTimeout: 30 * time.Second,
-	}
+	// Replace the server's Shutdown method to detect when it's called
+	// Create a wrapper goroutine to monitor the original Serve goroutine
+	go func() {
+		// Wait for the original Serve goroutine to exit
+		// This happens when server.Shutdown is called
+		for {
+			time.Sleep(10 * time.Millisecond)
+			// Check if the listener is closed
+			conn, err := net.Dial("tcp", originalListener.Addr().String())
+			if err != nil {
+				// Listener is closed
+				close(listenerClosed)
+				break
+			}
+			conn.Close()
+		}
+	}()
+
+	// Monitor server state
+	go func() {
+		// The server.Shutdown will be called by RemoveService
+		// We can't directly intercept it, but we know it will close the listener
+		<-listenerClosed
+		close(serverStopped)
+	}()
 
 	// Remove the service
 	err = registry.RemoveService("test-service")
 	require.NoError(t, err)
 
-	// Signal that server should be stopped
-	close(serverRunning)
-
-	// Verify the service's HTTP server was shut down
-	// Try to use the server - it should fail
-	testReq := httptest.NewRequest("GET", "/", nil)
-	testRec := httptest.NewRecorder()
-
-	// This should not panic or cause issues because server is properly shut down
-	// We can't directly test server.Serve() but we verified Shutdown was called
-	_ = testReq
-	_ = testRec
+	// Verify the server was stopped
+	select {
+	case <-serverStopped:
+		// Good, server was stopped
+	case <-time.After(1 * time.Second):
+		t.Fatal("server was not stopped within timeout")
+	}
 
 	// Verify service is removed from registry
 	svc, exists = registry.GetService("test-service")
 	assert.False(t, exists)
 	assert.Nil(t, svc)
 
-	// Restore original server for proper cleanup
-	if originalServer != nil {
-		ctx := context.Background()
-		_ = originalServer.Shutdown(ctx)
-	}
+	// Verify we can't connect to the original listener
+	_, err = net.Dial("tcp", originalListener.Addr().String())
+	assert.Error(t, err, "should not be able to connect to closed listener")
 }
 
 // TestRegistry_UpdateService verifies the UpdateService method
@@ -1709,6 +1712,51 @@ func TestRegistry_UpdateService(t *testing.T) {
 			expectError:   true,
 			errorContains: "not found",
 		},
+		{
+			name: "fail early on invalid backend address",
+			initialService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8001",
+				TLSMode:     "off",
+			},
+			updatedService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "", // empty backend address
+				TLSMode:     "off",
+			},
+			expectError:   true,
+			errorContains: "backend address is required",
+		},
+		{
+			name: "fail early on invalid TLS mode",
+			initialService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8001",
+				TLSMode:     "off",
+			},
+			updatedService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:9001",
+				TLSMode:     "invalid", // invalid TLS mode
+			},
+			expectError:   true,
+			errorContains: "invalid TLS mode",
+		},
+		{
+			name: "fail early on invalid unix socket path",
+			initialService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8001",
+				TLSMode:     "off",
+			},
+			updatedService: config.Service{
+				Name:        "test-service",
+				BackendAddr: "unix://relative/path/socket", // relative path
+				TLSMode:     "off",
+			},
+			expectError:   true,
+			errorContains: "unix socket path must be absolute",
+		},
 	}
 
 	for _, tt := range tests {
@@ -1761,6 +1809,60 @@ func TestRegistry_UpdateService(t *testing.T) {
 			_ = registry.Shutdown(ctx)
 		})
 	}
+}
+
+// TestRegistry_UpdateService_ValidationFailureKeepsOldService verifies that when
+// a service update fails due to configuration validation, the old service continues running
+func TestRegistry_UpdateService_ValidationFailureKeepsOldService(t *testing.T) {
+	// Create initial config
+	initialService := config.Service{
+		Name:        "test-service",
+		BackendAddr: "localhost:8001",
+		TLSMode:     "off",
+	}
+
+	cfg := &config.Config{
+		Global: config.Global{
+			ShutdownTimeout: config.Duration{Duration: 5 * time.Second},
+		},
+		Services: []config.Service{initialService},
+		Tailscale: config.Tailscale{
+			AuthKey: "test-key",
+		},
+	}
+
+	// Create tailscale server
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create registry and start service
+	registry := NewRegistry(cfg, tsServer)
+	err = registry.StartServices()
+	require.NoError(t, err)
+
+	// Verify initial service is running
+	svc, exists := registry.GetService("test-service")
+	require.True(t, exists)
+	require.NotNil(t, svc)
+	assert.Equal(t, "localhost:8001", svc.Config.BackendAddr)
+
+	// Attempt to update with invalid configuration
+	invalidUpdate := config.Service{
+		Name:        "test-service",
+		BackendAddr: "", // Invalid: empty backend address
+		TLSMode:     "off",
+	}
+
+	// Update should fail with validation error
+	err = registry.UpdateService("test-service", invalidUpdate)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "backend address is required")
+
+	// Verify original service is still in the registry and unchanged
+	svc, exists = registry.GetService("test-service")
+	require.True(t, exists)
+	require.NotNil(t, svc)
+	assert.Equal(t, "localhost:8001", svc.Config.BackendAddr) // Original config preserved
 }
 
 // TestRegistry_UpdateService_Concurrent verifies concurrent updates don't cause issues

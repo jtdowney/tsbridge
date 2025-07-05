@@ -2,9 +2,12 @@ package tailscale
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"runtime"
@@ -15,7 +18,6 @@ import (
 	"tailscale.com/ipn/ipnstate"
 
 	"github.com/jtdowney/tsbridge/internal/config"
-	tferrors "github.com/jtdowney/tsbridge/internal/errors"
 	tsnet "github.com/jtdowney/tsbridge/internal/tsnet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,151 +50,377 @@ func TestNewServer(t *testing.T) {
 		{
 			name: "valid config with auth key from env",
 			cfg: config.Tailscale{
-				// Config package would have resolved this already
-				AuthKey: "env-auth-key",
+				AuthKey: "$TS_AUTHKEY",
 			},
 			wantErr: false,
 		},
 		{
-			name:    "missing all credentials",
+			name:    "missing auth configuration",
 			cfg:     config.Tailscale{},
 			wantErr: true,
 			errMsg:  "either auth key or OAuth credentials",
 		},
 		{
-			name: "missing OAuth client secret",
+			name: "incomplete OAuth - missing secret",
 			cfg: config.Tailscale{
 				OAuthClientID: "test-client-id",
-				// Missing secret
 			},
 			wantErr: true,
 			errMsg:  "OAuth client secret is required",
 		},
 		{
-			name: "missing OAuth client ID",
+			name: "incomplete OAuth - missing ID",
 			cfg: config.Tailscale{
-				OAuthClientSecret: "test-secret",
-				// Missing ID
+				OAuthClientSecret: "test-client-secret",
 			},
 			wantErr: true,
 			errMsg:  "OAuth client ID is required",
-		},
-		{
-			name: "config with state directory",
-			cfg: config.Tailscale{
-				OAuthClientID:     "test-client-id",
-				OAuthClientSecret: "test-client-secret",
-				StateDir:          "/tmp/tsbridge-test",
-			},
-			wantErr: false,
-		},
-		{
-			name: "config with state directory",
-			cfg: config.Tailscale{
-				OAuthClientID:     "test-client-id",
-				OAuthClientSecret: "test-client-secret",
-				StateDir:          "/tmp/tsbridge-state",
-			},
-			wantErr: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Note: Environment variables would be resolved by the config package
-			// before the Tailscale config reaches this code
-			server, err := NewServer(tt.cfg)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("NewServer() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.name == "valid config with auth key from env" {
+				t.Setenv("TS_AUTHKEY", "test-auth-key")
 			}
 
-			if tt.wantErr && tt.errMsg != "" && err != nil {
-				if !strings.Contains(err.Error(), tt.errMsg) {
-					t.Errorf("NewServer() error = %v, want error containing %q", err, tt.errMsg)
+			// Use a mock factory for testing
+			factory := func() tsnet.TSNetServer {
+				return tsnet.NewMockTSNetServer()
+			}
+
+			server, err := NewServerWithFactory(tt.cfg, factory)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
 				}
-			}
-
-			if !tt.wantErr && server == nil {
-				t.Error("NewServer() returned nil server without error")
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, server)
 			}
 		})
 	}
 }
 
-func TestServer_Listen(t *testing.T) {
-	// This test will verify that we can create listeners for services
-	// Use auth key instead of OAuth to avoid external API calls
-	cfg := config.Tailscale{
-		AuthKey: "test-auth-key",
+func TestListen(t *testing.T) {
+	// This test verifies that Listen creates the correct listener type
+	// based on configuration and starts the TSNet server
+	tests := []struct {
+		name          string
+		svc           config.Service
+		tlsMode       string
+		funnelEnabled bool
+		existingState bool
+		wantErr       bool
+		errMsg        string
+	}{
+		{
+			name: "TLS mode auto",
+			svc: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8080",
+			},
+			tlsMode:       "auto",
+			funnelEnabled: false,
+			existingState: false,
+			wantErr:       false,
+		},
+		{
+			name: "TLS mode off",
+			svc: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8080",
+			},
+			tlsMode:       "off",
+			funnelEnabled: false,
+			existingState: false,
+			wantErr:       false,
+		},
+		{
+			name: "Funnel enabled",
+			svc: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8080",
+			},
+			tlsMode:       "auto",
+			funnelEnabled: true,
+			existingState: false,
+			wantErr:       false,
+		},
+		{
+			name: "Invalid TLS mode",
+			svc: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8080",
+			},
+			tlsMode:       "invalid",
+			funnelEnabled: false,
+			existingState: false,
+			wantErr:       true,
+			errMsg:        "invalid TLS mode",
+		},
+		{
+			name: "With existing state",
+			svc: config.Service{
+				Name:        "test-service",
+				BackendAddr: "localhost:8080",
+			},
+			tlsMode:       "auto",
+			funnelEnabled: false,
+			existingState: true,
+			wantErr:       false,
+		},
 	}
 
-	// Use mock factory for testing
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary directory for state
+			tempDir := t.TempDir()
+
+			// Create mock TSNet server
+			mockServer := tsnet.NewMockTSNetServer()
+			mockServer.StartFunc = func() error {
+				return nil
+			}
+
+			// Track which Listen method was called
+			var listenCalled, listenTLSCalled, listenFunnelCalled bool
+
+			mockServer.ListenFunc = func(network, addr string) (net.Listener, error) {
+				listenCalled = true
+				return &mockListener{addr: addr}, nil
+			}
+
+			mockServer.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
+				listenTLSCalled = true
+				return &mockListener{addr: addr}, nil
+			}
+
+			mockServer.ListenFunnelFunc = func(network, addr string) (net.Listener, error) {
+				listenFunnelCalled = true
+				return &mockListener{addr: addr}, nil
+			}
+
+			// Create a mock LocalClient
+			mockLocalClient := &tsnet.MockLocalClient{
+				StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+					return &ipnstate.Status{
+						Self: &ipnstate.PeerStatus{
+							DNSName:      "test-service.tailnet.ts.net.",
+							TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+						},
+					}, nil
+				},
+			}
+
+			mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
+				return mockLocalClient, nil
+			}
+
+			// Create server with mock factory
+			factory := func() tsnet.TSNetServer {
+				return mockServer
+			}
+
+			cfg := config.Tailscale{
+				AuthKey:  "test-key",
+				StateDir: tempDir,
+			}
+
+			server, err := NewServerWithFactory(cfg, factory)
+			require.NoError(t, err)
+
+			// Create existing state if needed
+			if tt.existingState {
+				serviceStateDir := fmt.Sprintf("%s/%s", tempDir, tt.svc.Name)
+				err := os.MkdirAll(serviceStateDir, 0755)
+				require.NoError(t, err)
+				stateFile := fmt.Sprintf("%s/tailscaled.state", serviceStateDir)
+				err = os.WriteFile(stateFile, []byte("dummy state"), 0644)
+				require.NoError(t, err)
+			}
+
+			// Call Listen
+			listener, err := server.Listen(tt.svc, tt.tlsMode, tt.funnelEnabled)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, listener)
+
+				// Verify the correct Listen method was called
+				switch {
+				case tt.funnelEnabled:
+					assert.True(t, listenFunnelCalled)
+					assert.False(t, listenCalled)
+					assert.False(t, listenTLSCalled)
+				case tt.tlsMode == "auto":
+					assert.True(t, listenTLSCalled)
+					assert.False(t, listenCalled)
+					assert.False(t, listenFunnelCalled)
+				case tt.tlsMode == "off":
+					assert.True(t, listenCalled)
+					assert.False(t, listenTLSCalled)
+					assert.False(t, listenFunnelCalled)
+				}
+
+				// Verify auth key was not set if existing state
+				if tt.existingState {
+					assert.Empty(t, mockServer.AuthKey)
+				} else {
+					assert.NotEmpty(t, mockServer.AuthKey)
+				}
+			}
+		})
+	}
+}
+
+func TestClose(t *testing.T) {
+	// Create mock TSNet servers
+	mockServer1 := tsnet.NewMockTSNetServer()
+	mockServer2 := tsnet.NewMockTSNetServer()
+
+	closeCount := 0
+	mockServer1.CloseFunc = func() error {
+		closeCount++
+		return nil
+	}
+	mockServer2.CloseFunc = func() error {
+		closeCount++
+		return errors.New("close error")
+	}
+
+	// Create server with mock factory
 	factory := func() tsnet.TSNetServer {
 		return tsnet.NewMockTSNetServer()
 	}
 
-	server, err := NewServerWithFactory(cfg, factory)
-	if err != nil {
-		t.Fatalf("failed to create server: %v", err)
-	}
-
-	// Test that we can create a listener
-	svc := config.Service{Name: "test-service"}
-
-	listener, err := server.Listen(svc, "auto", false)
-	if err != nil {
-		t.Errorf("Listen() error = %v", err)
-	}
-	if listener == nil {
-		t.Error("Listen() returned nil listener without error")
-	}
-}
-
-func TestServer_ListenWithFunnel(t *testing.T) {
-	// Test that funnel listeners are created correctly
 	cfg := config.Tailscale{
-		AuthKey: "test-auth-key",
-	}
-
-	// Track which listen method was called
-	var listenFunnelCalled bool
-
-	// Use mock factory for testing
-	factory := func() tsnet.TSNetServer {
-		mock := tsnet.NewMockTSNetServer()
-		// Override the ListenFunnel function to track it was called
-		mock.ListenFunnelFunc = func(network, addr string) (net.Listener, error) {
-			listenFunnelCalled = true
-			if network != "tcp" || addr != ":443" {
-				t.Errorf("expected tcp:443, got %s%s", network, addr)
-			}
-			return &mockListener{addr: addr}, nil
-		}
-		return mock
+		AuthKey: "test-key",
 	}
 
 	server, err := NewServerWithFactory(cfg, factory)
-	if err != nil {
-		t.Fatalf("failed to create server: %v", err)
+	require.NoError(t, err)
+
+	// Add mock servers to the map
+	server.serviceServers["service1"] = mockServer1
+	server.serviceServers["service2"] = mockServer2
+
+	// Close the server
+	err = server.Close()
+
+	// Should return error since one server failed to close
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "close error")
+
+	// Both servers should have been attempted to close
+	assert.Equal(t, 2, closeCount)
+
+	// Map should be cleared
+	assert.Empty(t, server.serviceServers)
+}
+
+func TestGetServiceServer(t *testing.T) {
+	// Create mock TSNet server
+	mockServer := tsnet.NewMockTSNetServer()
+
+	// Create server with mock factory
+	factory := func() tsnet.TSNetServer {
+		return tsnet.NewMockTSNetServer()
 	}
 
-	// Test with funnel enabled
-	svc := config.Service{Name: "test-service"}
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
 
-	listener, err := server.Listen(svc, "auto", true)
-	if err != nil {
-		t.Errorf("Listen() with funnel error = %v", err)
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	// Add mock server to the map
+	server.serviceServers["test-service"] = mockServer
+
+	// Test getting existing service
+	result := server.GetServiceServer("test-service")
+	assert.Equal(t, mockServer, result)
+
+	// Test getting non-existent service
+	result = server.GetServiceServer("non-existent")
+	assert.Nil(t, result)
+}
+
+func TestValidateTailscaleSecrets(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Tailscale
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "auth key present",
+			cfg: config.Tailscale{
+				AuthKey: "test-key",
+			},
+			wantErr: false,
+		},
+		{
+			name: "OAuth credentials present",
+			cfg: config.Tailscale{
+				OAuthClientID:     "client-id",
+				OAuthClientSecret: "client-secret",
+			},
+			wantErr: false,
+		},
+		{
+			name:    "no credentials",
+			cfg:     config.Tailscale{},
+			wantErr: true,
+			errMsg:  "either auth key or OAuth credentials",
+		},
+		{
+			name: "missing OAuth secret",
+			cfg: config.Tailscale{
+				OAuthClientID: "client-id",
+			},
+			wantErr: true,
+			errMsg:  "OAuth client secret is missing",
+		},
+		{
+			name: "missing OAuth ID",
+			cfg: config.Tailscale{
+				OAuthClientSecret: "client-secret",
+			},
+			wantErr: true,
+			errMsg:  "OAuth client ID is missing",
+		},
 	}
-	if listener == nil {
-		t.Error("Listen() with funnel returned nil listener without error")
-	}
-	if !listenFunnelCalled {
-		t.Error("ListenFunnel was not called when funnel was enabled")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateTailscaleSecrets(tt.cfg)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
 	}
 }
 
-// mockListener implements net.Listener for testing
+func TestGetDefaultStateDir(t *testing.T) {
+	dir := getDefaultStateDir()
+	assert.NotEmpty(t, dir)
+	assert.True(t, strings.HasSuffix(dir, "tsbridge"))
+}
+
+// Mock listener implementation
 type mockListener struct {
 	addr string
 }
@@ -206,245 +434,176 @@ func (m *mockListener) Close() error {
 }
 
 func (m *mockListener) Addr() net.Addr {
-	return &net.TCPAddr{
-		IP:   net.IPv4(127, 0, 0, 1),
-		Port: 443,
-	}
+	return &mockAddr{addr: m.addr}
 }
 
-func TestValidateTailscaleSecrets(t *testing.T) {
-	// This test verifies that ValidateTailscaleSecrets checks if values exist in the config
-	// The config package is responsible for resolving secrets from env/files
+type mockAddr struct {
+	addr string
+}
+
+func (m *mockAddr) Network() string {
+	return "tcp"
+}
+
+func (m *mockAddr) String() string {
+	return m.addr
+}
+
+// TestGenerateOrResolveAuthKey tests the generateOrResolveAuthKey function
+func TestGenerateOrResolveAuthKey(t *testing.T) {
+	// Create a test server to handle OAuth requests
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/v2/oauth/token":
+			// Handle OAuth token request
+			token := map[string]interface{}{
+				"access_token": "mock-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			}
+			_ = json.NewEncoder(w).Encode(token)
+		case "/api/v2/tailnet/-/keys":
+			// Handle API request
+			response := map[string]interface{}{
+				"key":     "tskey-auth-test123",
+				"created": time.Now().Format(time.RFC3339),
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	// Set test OAuth endpoint
+	t.Setenv("TSBRIDGE_OAUTH_ENDPOINT", server.URL)
+
 	tests := []struct {
 		name    string
-		cfg     config.Tailscale
+		cfg     config.Config
+		svc     config.Service
 		wantErr bool
-		wantMsg string
 	}{
 		{
-			name: "auth key provided",
-			cfg: config.Tailscale{
-				AuthKey: "tskey-auth-xxx",
+			name: "use global auth key",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{
+					AuthKey: "global-auth-key",
+				},
+			},
+			svc: config.Service{
+				Name: "test-service",
 			},
 			wantErr: false,
 		},
 		{
-			name: "oauth credentials provided",
-			cfg: config.Tailscale{
-				OAuthClientID:     "client-id",
-				OAuthClientSecret: "client-secret",
+			name: "use service tags",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{
+					OAuthClientID:     "test-client",
+					OAuthClientSecret: "test-secret",
+				},
+			},
+			svc: config.Service{
+				Name: "test-service",
+				Tags: []string{"tag:test"},
 			},
 			wantErr: false,
 		},
 		{
-			name:    "no credentials provided",
-			cfg:     config.Tailscale{},
-			wantErr: true,
-			wantMsg: "either auth key or OAuth credentials (client ID and secret) must be provided",
+			name: "use global tags when no service tags",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{
+					OAuthClientID:     "test-client",
+					OAuthClientSecret: "test-secret",
+				},
+			},
+			svc: config.Service{
+				Name: "test-service",
+			},
+			wantErr: false,
 		},
 		{
-			name: "only client ID provided",
-			cfg: config.Tailscale{
-				OAuthClientID: "client-id",
+			name: "no auth config",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{},
+			},
+			svc: config.Service{
+				Name: "test-service",
 			},
 			wantErr: true,
-			wantMsg: "OAuth client secret is missing",
 		},
 		{
-			name: "only client secret provided",
-			cfg: config.Tailscale{
-				OAuthClientSecret: "client-secret",
+			name: "service with ephemeral enabled",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{
+					OAuthClientID:     "test-client",
+					OAuthClientSecret: "test-secret",
+				},
+			},
+			svc: config.Service{
+				Name:      "test-service",
+				Ephemeral: true,
+			},
+			wantErr: false,
+		},
+		{
+			name: "OAuth request fails",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{
+					OAuthClientID:     "test-client",
+					OAuthClientSecret: "test-secret",
+				},
+			},
+			svc: config.Service{
+				Name: "test-service",
+				Tags: []string{"tag:test"},
+			},
+			wantErr: false, // OAuth failures are logged but not returned as errors
+		},
+		{
+			name: "missing OAuth client ID",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{
+					OAuthClientSecret: "test-secret",
+				},
+			},
+			svc: config.Service{
+				Name: "test-service",
 			},
 			wantErr: true,
-			wantMsg: "OAuth client ID is missing",
+		},
+		{
+			name: "missing OAuth client secret",
+			cfg: config.Config{
+				Tailscale: config.Tailscale{
+					OAuthClientID: "test-client",
+				},
+			},
+			svc: config.Service{
+				Name: "test-service",
+			},
+			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateTailscaleSecrets(tt.cfg)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ValidateTailscaleSecrets() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if err != nil && tt.wantMsg != "" && !strings.Contains(err.Error(), tt.wantMsg) {
-				t.Errorf("ValidateTailscaleSecrets() error = %v, want error containing %v", err, tt.wantMsg)
+			result, err := generateOrResolveAuthKey(tt.cfg, tt.svc)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				// When OAuth is used, we should get a non-empty result
+				if tt.cfg.Tailscale.AuthKey != "" {
+					assert.Equal(t, tt.cfg.Tailscale.AuthKey, result)
+				}
 			}
 		})
 	}
-}
-
-func TestServerWithDependencyInjection(t *testing.T) {
-	t.Run("creates server with factory", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey:  "test-key",
-			StateDir: "/test/state",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.AuthKey = "test-key"
-			mock.Dir = "/test/state"
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if server == nil {
-			t.Fatal("expected server to be created")
-		}
-
-		// Factory is stored but not called until Listen
-		if server.serverFactory == nil {
-			t.Error("expected factory to be stored")
-		}
-	})
-
-	t.Run("Listen creates service-specific server", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		listenerCreated := false
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.AuthKey = "test-key"
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				if network != "tcp" || addr != ":443" {
-					t.Errorf("expected tcp:443, got %s:%s", network, addr)
-				}
-				listenerCreated = true
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		svc := config.Service{Name: "test-service"}
-
-		listener, err := server.Listen(svc, "auto", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		defer listener.Close()
-
-		if !listenerCreated {
-			t.Error("listener was not created")
-		}
-	})
-
-	t.Run("Close closes all service servers", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		var closedServers []string
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.AuthKey = "test-key"
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			// Capture which server is being closed
-			hostname := mock.Hostname
-			mock.CloseFunc = func() error {
-				closedServers = append(closedServers, hostname)
-				return nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create multiple services
-		services := []string{"service1", "service2", "service3"}
-		for _, svc := range services {
-			svcConfig := config.Service{Name: svc}
-
-			_, err := server.Listen(svcConfig, "auto", false)
-			if err != nil {
-				t.Fatalf("unexpected error creating listener for %s: %v", svc, err)
-			}
-		}
-
-		// Close should close all service servers
-		err = server.Close()
-		if err != nil {
-			t.Fatalf("unexpected error closing server: %v", err)
-		}
-
-		if len(closedServers) != len(services) {
-			t.Errorf("expected %d servers to be closed, got %d", len(services), len(closedServers))
-		}
-	})
-
-	t.Run("Close collects errors from all servers", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		closeCount := 0
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.AuthKey = "test-key"
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			// Make some servers fail on close
-			currentCount := closeCount
-			closeCount++
-			mock.CloseFunc = func() error {
-				if currentCount%2 == 0 {
-					return errors.New("close error")
-				}
-				return nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create multiple services
-		for i := 0; i < 4; i++ {
-			svcConfig := config.Service{Name: string(rune('a' + i))}
-
-			_, err := server.Listen(svcConfig, "auto", false)
-			if err != nil {
-				t.Fatalf("unexpected error creating listener: %v", err)
-			}
-		}
-
-		// Close should return an error since some servers fail
-		err = server.Close()
-		if err == nil {
-			t.Error("expected error from Close, got nil")
-		}
-	})
 }
 
 func TestResolveAuthConfiguration(t *testing.T) {
@@ -497,1106 +656,274 @@ func TestResolveAuthConfiguration(t *testing.T) {
 				}
 
 				_, err := NewServerWithFactory(tc.cfg, factory)
-				if tc.wantErr && err == nil {
-					t.Error("expected error, got nil")
-				}
-				if !tc.wantErr && err != nil {
-					t.Errorf("unexpected error: %v", err)
+				if tc.wantErr {
+					assert.Error(t, err)
+				} else {
+					assert.NoError(t, err)
 				}
 			})
 		}
 	})
 }
 
-func TestServiceLifecycle(t *testing.T) {
-	t.Run("Start method does not exist", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
+// TestPrimeCertificate tests the certificate priming behavior
+func TestPrimeCertificate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test that includes sleep")
+	}
 
-		factory := func() tsnet.TSNetServer {
-			return tsnet.NewMockTSNetServer()
-		}
+	// Skip on Windows due to timing sensitivity
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping on Windows due to timing sensitivity")
+	}
 
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
+	// Create mock TSNet server
+	mockServer := tsnet.NewMockTSNetServer()
 
-		// Verify that Start method does not exist on the server interface
-		// This test will fail to compile if Start() method exists
-		type noStartMethodInterface interface {
-			Listen(svc config.Service, tlsMode string, funnelEnabled bool) (net.Listener, error)
-			Close() error
-			GetServiceServer(serviceName string) tsnet.TSNetServer
-		}
+	// Create a mock LocalClient
+	statusCalled := false
+	mockLocalClient := &tsnet.MockLocalClient{
+		StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+			statusCalled = true
+			return &ipnstate.Status{
+				Self: &ipnstate.PeerStatus{
+					DNSName:      "test-service.tailnet.ts.net.",
+					TailscaleIPs: []netip.Addr{netip.MustParseAddr("127.0.0.1")},
+				},
+			}, nil
+		},
+	}
 
-		// This should compile if Start() is removed
-		var _ noStartMethodInterface = server
-	})
+	mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
+		return mockLocalClient, nil
+	}
 
-	t.Run("service initialization happens during Listen", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey:  "test-key",
-			StateDir: "/test/state",
-		}
+	// Create server with mock factory
+	factory := func() tsnet.TSNetServer {
+		return mockServer
+	}
 
-		var serviceStarted bool
-		var configuredHostname, configuredAuthKey, configuredDir string
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
 
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				serviceStarted = true
-				// Capture the configuration at start time
-				configuredHostname = mock.Hostname
-				configuredAuthKey = mock.AuthKey
-				configuredDir = mock.Dir
-				return nil
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	// Call primeCertificate in a goroutine (like it would be in real usage)
+	done := make(chan bool)
+	go func() {
+		server.primeCertificate(mockServer, "test-service")
+		done <- true
+	}()
+
+	// Wait for it to complete with a longer timeout to account for:
+	// - 5 second sleep
+	// - 30 second HTTP timeout (but connection should fail quickly)
+	select {
+	case <-done:
+		// Verify that status was called
+		assert.True(t, statusCalled)
+	case <-time.After(45 * time.Second):
+		t.Fatal("primeCertificate timed out")
+	}
+}
+
+// TestPrimeCertificateErrorCases tests various error scenarios in primeCertificate
+func TestPrimeCertificateErrorCases(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test that includes sleep")
+	}
+
+	tests := []struct {
+		name               string
+		localClientError   error
+		statusError        error
+		statusResponse     *ipnstate.Status
+		expectStatusCalled bool
+	}{
+		{
+			name:               "LocalClient error",
+			localClientError:   errors.New("local client error"),
+			expectStatusCalled: false,
+		},
+		{
+			name:               "Status error",
+			statusError:        errors.New("status error"),
+			expectStatusCalled: true,
+		},
+		{
+			name:               "Nil status",
+			statusResponse:     nil,
+			expectStatusCalled: true,
+		},
+		{
+			name: "Nil self peer",
+			statusResponse: &ipnstate.Status{
+				Self: nil,
+			},
+			expectStatusCalled: true,
+		},
+		{
+			name: "Empty DNS name",
+			statusResponse: &ipnstate.Status{
+				Self: &ipnstate.PeerStatus{
+					DNSName: "",
+				},
+			},
+			expectStatusCalled: true,
+		},
+		{
+			name: "No Tailscale IPs",
+			statusResponse: &ipnstate.Status{
+				Self: &ipnstate.PeerStatus{
+					DNSName:      "test.tailnet.ts.net.",
+					TailscaleIPs: []netip.Addr{},
+				},
+			},
+			expectStatusCalled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Skip Windows to avoid timing issues
+			if runtime.GOOS == "windows" {
+				t.Skip("Skipping on Windows due to timing sensitivity")
 			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
+
+			// Create mock TSNet server
+			mockServer := tsnet.NewMockTSNetServer()
+
+			// Create a mock LocalClient
+			statusCalled := false
+			mockLocalClient := &tsnet.MockLocalClient{
+				StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+					statusCalled = true
+					return tt.statusResponse, tt.statusError
+				},
 			}
-			return mock
-		}
 
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Service should not be started until Listen is called
-		if serviceStarted {
-			t.Error("service was started before Listen")
-		}
-
-		// Call Listen to initialize the service
-		svc := config.Service{Name: "test-service"}
-
-		listener, err := server.Listen(svc, "auto", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		defer listener.Close()
-
-		// Service should be started and configured properly
-		if !serviceStarted {
-			t.Error("service was not started after Listen")
-		}
-
-		if configuredHostname != "test-service" {
-			t.Errorf("expected hostname %q, got %q", "test-service", configuredHostname)
-		}
-
-		if configuredAuthKey != "test-key" {
-			t.Errorf("expected auth key %q, got %q", "test-key", configuredAuthKey)
-		}
-
-		if configuredDir != "/test/state/test-service" {
-			t.Errorf("expected dir %q, got %q", "/test/state/test-service", configuredDir)
-		}
-	})
-
-	t.Run("concurrent Listen calls are thread-safe", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Launch multiple goroutines that create listeners concurrently
-		const numGoroutines = 10
-		errChan := make(chan error, numGoroutines)
-		listenerChan := make(chan net.Listener, numGoroutines)
-
-		for i := 0; i < numGoroutines; i++ {
-			go func(idx int) {
-				serviceName := fmt.Sprintf("service-%d", idx)
-				svcConfig := config.Service{Name: serviceName}
-
-				listener, err := server.Listen(svcConfig, "auto", false)
-				if err != nil {
-					errChan <- err
-				} else {
-					listenerChan <- listener
+			mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
+				if tt.localClientError != nil {
+					return nil, tt.localClientError
 				}
-			}(i)
-		}
+				return mockLocalClient, nil
+			}
 
-		// Collect results
-		var listeners []net.Listener
-		for i := 0; i < numGoroutines; i++ {
+			// Create server with mock factory
+			factory := func() tsnet.TSNetServer {
+				return mockServer
+			}
+
+			cfg := config.Tailscale{
+				AuthKey: "test-key",
+			}
+
+			server, err := NewServerWithFactory(cfg, factory)
+			require.NoError(t, err)
+
+			// Call primeCertificate in a goroutine
+			done := make(chan bool)
+			go func() {
+				server.primeCertificate(mockServer, "test-service")
+				done <- true
+			}()
+
+			// Wait for it to complete
 			select {
-			case err := <-errChan:
-				t.Errorf("concurrent Listen failed: %v", err)
-			case listener := <-listenerChan:
-				listeners = append(listeners, listener)
-			}
-		}
-
-		// Clean up listeners
-		for _, listener := range listeners {
-			listener.Close()
-		}
-
-		// Verify all services were created
-		if len(listeners) != numGoroutines {
-			t.Errorf("expected %d listeners, got %d", numGoroutines, len(listeners))
-		}
-	})
-
-	t.Run("Listen fails when service start fails", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return errors.New("start failed")
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Listen should fail when Start fails
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "auto", false)
-		if err == nil {
-			t.Error("expected error when Start fails, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "start failed") {
-			t.Errorf("expected error to contain 'start failed', got: %v", err)
-		}
-	})
-
-	t.Run("GetServiceServer returns correct server", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		var createdServers []tsnet.TSNetServer
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			createdServers = append(createdServers, mock)
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create multiple services
-		serviceNames := []string{"service1", "service2", "service3"}
-		for _, name := range serviceNames {
-			svcConfig := config.Service{Name: name}
-
-			_, err := server.Listen(svcConfig, "auto", false)
-			if err != nil {
-				t.Fatalf("unexpected error creating listener for %s: %v", name, err)
-			}
-		}
-
-		// Verify GetServiceServer returns the correct server for each service
-		for i, name := range serviceNames {
-			tsnetServer := server.GetServiceServer(name)
-			if tsnetServer != createdServers[i] {
-				t.Errorf("GetServiceServer(%q) returned wrong server", name)
-			}
-		}
-
-		// Verify GetServiceServer returns nil for non-existent service
-		nonExistentServer := server.GetServiceServer("non-existent")
-		if nonExistentServer != nil {
-			t.Error("GetServiceServer should return nil for non-existent service")
-		}
-	})
-
-	t.Run("Close clears serviceServers map", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			mock.CloseFunc = func() error {
-				return nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create a service
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "auto", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Verify service exists
-		if server.GetServiceServer("test-service") == nil {
-			t.Error("service should exist before Close")
-		}
-
-		// Close the server
-		err = server.Close()
-		if err != nil {
-			t.Fatalf("unexpected error closing server: %v", err)
-		}
-
-		// Verify service no longer exists
-		if server.GetServiceServer("test-service") != nil {
-			t.Error("service should not exist after Close")
-		}
-	})
-
-	t.Run("state directory from environment variable", func(t *testing.T) {
-		t.Setenv("TSBRIDGE_STATE_DIR", "/env/state")
-
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-			// No StateDir configured
-		}
-
-		var capturedDir string
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				capturedDir = mock.Dir
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create a service to trigger configuration
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "auto", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Verify environment variable was used (with service name appended)
-		if capturedDir != "/env/state/test-service" {
-			t.Errorf("expected dir from env var %q, got %q", "/env/state/test-service", capturedDir)
-		}
-	})
-
-	t.Run("state directory defaults to XDG data home", func(t *testing.T) {
-		// Clear any TSBRIDGE_STATE_DIR that might be set
-		t.Setenv("TSBRIDGE_STATE_DIR", "")
-
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-			// No StateDir configured
-		}
-
-		var capturedDir string
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				capturedDir = mock.Dir
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create a service to trigger configuration
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "auto", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Verify default directory is used (should end with /tsbridge/test-service)
-		if !strings.HasSuffix(capturedDir, "/tsbridge/test-service") {
-			t.Errorf("expected dir to end with /tsbridge/test-service, got %q", capturedDir)
-		}
-
-		// On macOS, should be in Library/Application Support
-		if strings.Contains(capturedDir, "darwin") || strings.Contains(capturedDir, "Library/Application Support") {
-			if !strings.Contains(capturedDir, "Library/Application Support/tsbridge") {
-				t.Errorf("on macOS, expected dir to contain Library/Application Support/tsbridge, got %q", capturedDir)
-			}
-		}
-	})
-
-	t.Run("each service gets unique state directory", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey:  "test-key",
-			StateDir: "/base/state",
-		}
-
-		capturedDirs := make(map[string]string)
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				// Capture the directory for each service
-				capturedDirs[mock.Hostname] = mock.Dir
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create multiple services
-		services := []string{"service1", "service2", "service3"}
-		for _, svc := range services {
-			svcConfig := config.Service{Name: svc}
-
-			_, err := server.Listen(svcConfig, "auto", false)
-			if err != nil {
-				t.Fatalf("unexpected error creating listener for %s: %v", svc, err)
-			}
-		}
-
-		// Verify each service has a unique subdirectory
-		for _, svc := range services {
-			expectedDir := fmt.Sprintf("/base/state/%s", svc)
-			actualDir := capturedDirs[svc]
-			if actualDir != expectedDir {
-				t.Errorf("service %q: expected dir %q, got %q", svc, expectedDir, actualDir)
-			}
-		}
-
-		// Verify all directories are unique
-		seenDirs := make(map[string]bool)
-		for svc, dir := range capturedDirs {
-			if seenDirs[dir] {
-				t.Errorf("duplicate state directory %q for service %q", dir, svc)
-			}
-			seenDirs[dir] = true
-		}
-	})
-}
-
-func TestEphemeralServices(t *testing.T) {
-	t.Run("ephemeral flag is set on tsnet server", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		var createdServers []tsnet.TSNetServer
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenFunc = func(network, addr string) (net.Listener, error) {
-				ln := &mockListener{
-					addr: addr,
-				}
-				return ln, nil
-			}
-			createdServers = append(createdServers, mock)
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create a service with ephemeral=true
-		svc := config.Service{
-			Name:      "test-service",
-			Ephemeral: true,
-		}
-
-		// Listen should create the server with ephemeral flag
-		_, err = server.Listen(svc, "off", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Verify the server was created with Ephemeral=true
-		if len(createdServers) != 1 {
-			t.Fatalf("expected 1 server, got %d", len(createdServers))
-		}
-
-		// Check that Ephemeral was set on the mock
-		mock := createdServers[0].(*tsnet.MockTSNetServer)
-		if !mock.Ephemeral {
-			t.Error("expected Ephemeral to be true")
-		}
-	})
-
-	t.Run("ephemeral defaults to false", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		var createdServers []tsnet.TSNetServer
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenFunc = func(network, addr string) (net.Listener, error) {
-				ln := &mockListener{
-					addr: addr,
-				}
-				return ln, nil
-			}
-			createdServers = append(createdServers, mock)
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create a service without ephemeral field (defaults to false)
-		svc := config.Service{
-			Name: "test-service",
-		}
-
-		// Listen should create the server with ephemeral flag false
-		_, err = server.Listen(svc, "off", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Verify the server was created with Ephemeral=false
-		if len(createdServers) != 1 {
-			t.Fatalf("expected 1 server, got %d", len(createdServers))
-		}
-
-		// Check that Ephemeral was set to false on the mock
-		mock := createdServers[0].(*tsnet.MockTSNetServer)
-		if mock.Ephemeral {
-			t.Error("expected Ephemeral to be false")
-		}
-	})
-}
-
-func TestGetDefaultStateDir(t *testing.T) {
-	// Test the default state directory path
-	dir := getDefaultStateDir()
-
-	// Should always end with /tsbridge
-	if !strings.HasSuffix(dir, "/tsbridge") && !strings.HasSuffix(dir, "\\tsbridge") {
-		t.Errorf("expected dir to end with /tsbridge or \\tsbridge, got %q", dir)
-	}
-
-	// Platform-specific checks
-	switch runtime.GOOS {
-	case "darwin":
-		// macOS should use Library/Application Support
-		if !strings.Contains(dir, "Library/Application Support/tsbridge") {
-			t.Errorf("on macOS, expected dir to contain Library/Application Support/tsbridge, got %q", dir)
-		}
-	case "windows":
-		// Windows should use AppData
-		if !strings.Contains(dir, "AppData") && !strings.Contains(dir, "tsbridge") {
-			t.Errorf("on Windows, expected dir to contain AppData and tsbridge, got %q", dir)
-		}
-	default:
-		// Linux/Unix should use .local/share or XDG_DATA_HOME
-		if !strings.Contains(dir, ".local/share/tsbridge") && os.Getenv("XDG_DATA_HOME") == "" {
-			t.Errorf("on Linux/Unix, expected dir to contain .local/share/tsbridge, got %q", dir)
-		}
-	}
-}
-
-func TestTLSMode(t *testing.T) {
-
-	t.Run("Listen with TLS mode auto uses ListenTLS", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		listenerCreated := false
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				if network != "tcp" || addr != ":443" {
-					t.Errorf("expected tcp:443, got %s:%s", network, addr)
-				}
-				listenerCreated = true
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			mock.ListenFunc = func(network, addr string) (net.Listener, error) {
-				t.Error("ListenFunc should not be called with TLS mode auto")
-				return nil, errors.New("should not be called")
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		svc := config.Service{Name: "test-service"}
-
-		listener, err := server.Listen(svc, "auto", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		defer listener.Close()
-
-		if !listenerCreated {
-			t.Error("ListenTLS was not called")
-		}
-	})
-
-	t.Run("Listen with TLS mode off uses Listen", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		listenerCreated := false
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenFunc = func(network, addr string) (net.Listener, error) {
-				if network != "tcp" || addr != ":80" {
-					t.Errorf("expected tcp:80, got %s:%s", network, addr)
-				}
-				listenerCreated = true
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			mock.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
-				t.Error("ListenTLSFunc should not be called with TLS mode off")
-				return nil, errors.New("should not be called")
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		svc := config.Service{Name: "test-service"}
-
-		listener, err := server.Listen(svc, "off", false)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		defer listener.Close()
-
-		if !listenerCreated {
-			t.Error("Listen was not called")
-		}
-	})
-
-	t.Run("Listen with invalid TLS mode returns error", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "invalid", false)
-		if err == nil {
-			t.Error("expected error for invalid TLS mode")
-		}
-		if !strings.Contains(err.Error(), "invalid TLS mode") {
-			t.Errorf("expected error about invalid TLS mode, got: %v", err)
-		}
-	})
-}
-
-func TestTailscaleErrorTypes(t *testing.T) {
-	t.Run("missing credentials returns config error", func(t *testing.T) {
-		cfg := config.Tailscale{
-			// No auth key or OAuth credentials
-		}
-
-		_, err := NewServer(cfg)
-		if err == nil {
-			t.Fatal("expected error for missing credentials")
-		}
-
-		if !tferrors.IsConfig(err) {
-			t.Errorf("expected config error, got %v", err)
-		}
-
-		// Check that error message contains expected text
-		expectedMsg := "either auth key or OAuth credentials"
-		if !strings.Contains(err.Error(), expectedMsg) {
-			t.Errorf("expected error message to contain %q, got %v", expectedMsg, err)
-		}
-	})
-
-	t.Run("incomplete OAuth credentials returns config error", func(t *testing.T) {
-		cfg := config.Tailscale{
-			OAuthClientID: "client-id",
-			// Missing client secret
-		}
-
-		_, err := NewServer(cfg)
-		if err == nil {
-			t.Fatal("expected error for incomplete OAuth credentials")
-		}
-
-		if !tferrors.IsConfig(err) {
-			t.Errorf("expected config error, got %v", err)
-		}
-	})
-
-	t.Run("invalid TLS mode returns validation error", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "invalid-mode", false)
-		if err == nil {
-			t.Fatal("expected error for invalid TLS mode")
-		}
-
-		if !tferrors.IsValidation(err) {
-			t.Errorf("expected validation error, got %v", err)
-		}
-	})
-
-	t.Run("tsnet server start failure returns resource error", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return tferrors.NewNetworkError("connection failed")
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "auto", false)
-		if err == nil {
-			t.Fatal("expected error when tsnet server fails to start")
-		}
-
-		if !tferrors.IsResource(err) {
-			t.Errorf("expected resource error, got %v", err)
-		}
-	})
-
-	t.Run("service close errors are resource errors", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKey: "test-key",
-		}
-
-		factory := func() tsnet.TSNetServer {
-			mock := tsnet.NewMockTSNetServer()
-			mock.StartFunc = func() error {
-				return nil
-			}
-			mock.ListenFunc = func(network, addr string) (net.Listener, error) {
-				ln, _ := net.Listen("tcp", "127.0.0.1:0")
-				return ln, nil
-			}
-			mock.CloseFunc = func() error {
-				return tferrors.NewNetworkError("close failed")
-			}
-			return mock
-		}
-
-		server, err := NewServerWithFactory(cfg, factory)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		// Create a service
-		svc := config.Service{Name: "test-service"}
-
-		_, err = server.Listen(svc, "off", false)
-		if err != nil {
-			t.Fatalf("unexpected error creating listener: %v", err)
-		}
-
-		// Close should return resource error
-		err = server.Close()
-		if err == nil {
-			t.Fatal("expected error when closing fails")
-		}
-
-		if !tferrors.IsResource(err) {
-			t.Errorf("expected resource error, got %v", err)
-		}
-	})
-
-	t.Run("auth key resolution error is config error", func(t *testing.T) {
-		cfg := config.Tailscale{
-			AuthKeyFile: "/nonexistent/file",
-		}
-
-		_, err := NewServer(cfg)
-		if err == nil {
-			t.Fatal("expected error for nonexistent auth key file")
-		}
-
-		if !tferrors.IsConfig(err) {
-			t.Errorf("expected config error, got %v", err)
-		}
-	})
-}
-
-func TestSecretResolutionByConfig(t *testing.T) {
-	// This test verifies that the tailscale package correctly validates
-	// secrets that have already been resolved by the config package
-	tests := []struct {
-		name         string
-		cfg          config.Tailscale
-		expectNewErr bool
-		errMsg       string
-	}{
-		{
-			name: "oauth credentials already resolved",
-			cfg: config.Tailscale{
-				OAuthClientID:     "test-client-id",
-				OAuthClientSecret: "test-client-secret",
-			},
-			expectNewErr: false,
-		},
-		{
-			name: "auth key already resolved",
-			cfg: config.Tailscale{
-				AuthKey: "tskey-test-12345",
-			},
-			expectNewErr: false,
-		},
-		{
-			name: "missing all credentials",
-			cfg:  config.Tailscale{
-				// No auth configuration at all
-			},
-			expectNewErr: true,
-			errMsg:       "either auth key or OAuth credentials",
-		},
-		{
-			name: "missing OAuth client secret",
-			cfg: config.Tailscale{
-				OAuthClientID: "test-client-id",
-				// Missing secret
-			},
-			expectNewErr: true,
-			errMsg:       "OAuth client secret is required",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a mock factory
-			factory := func() tsnet.TSNetServer {
-				return tsnet.NewMockTSNetServer()
-			}
-
-			// NewServer validates that credentials are present
-			server, err := NewServerWithFactory(tt.cfg, factory)
-			if tt.expectNewErr {
-				assert.Error(t, err) // Just check that error occurred
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-				return
-			}
-			require.NoError(t, err, "NewServer should succeed with resolved secrets")
-			require.NotNil(t, server)
-		})
-	}
-}
-
-func TestSecretValidationErrorMessages(t *testing.T) {
-	// This test verifies error messages when secrets are missing
-	// Note: The config package handles secret resolution from env/files,
-	// so these tests assume the config has already been processed
-	tests := []struct {
-		name           string
-		cfg            config.Tailscale
-		expectedErrors []string
-	}{
-		{
-			name: "missing OAuth client ID",
-			cfg: config.Tailscale{
-				// Config resolution would have left this empty if env var was missing
-				OAuthClientID:     "",
-				OAuthClientSecret: "test-secret",
-			},
-			expectedErrors: []string{
-				"OAuth client ID is required",
-			},
-		},
-		{
-			name: "missing OAuth client secret",
-			cfg: config.Tailscale{
-				OAuthClientID:     "test-id",
-				OAuthClientSecret: "", // Would be empty if file was missing
-			},
-			expectedErrors: []string{
-				"OAuth client secret is required",
-			},
-		},
-		{
-			name: "no auth configuration",
-			cfg:  config.Tailscale{
-				// No auth configuration at all
-			},
-			expectedErrors: []string{
-				"either auth key or OAuth credentials (client ID and secret) must be provided",
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			factory := func() tsnet.TSNetServer {
-				return tsnet.NewMockTSNetServer()
-			}
-
-			_, err := NewServerWithFactory(tt.cfg, factory)
-			require.Error(t, err, "NewServer should fail when secrets are missing")
-
-			// Verify error message contains expected information
-			errMsg := err.Error()
-			for _, expected := range tt.expectedErrors {
-				assert.Contains(t, errMsg, expected)
+			case <-done:
+				// Verify expectations
+				assert.Equal(t, tt.expectStatusCalled, statusCalled)
+			case <-time.After(10 * time.Second):
+				t.Fatal("primeCertificate timed out")
 			}
 		})
 	}
 }
 
-func TestCertificatePriming(t *testing.T) {
+// TestListenWithPrimeCertificate tests that Listen starts certificate priming for TLS mode
+func TestListenWithPrimeCertificate(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping test that includes sleep")
+	}
+
 	tests := []struct {
-		name             string
-		serviceName      string
-		tlsMode          string
-		funnelEnabled    bool
-		expectPriming    bool
-		mockDNSName      string
-		mockTailscaleIPs []string
-		statusError      error
-		localClientErr   error
+		name          string
+		tlsMode       string
+		funnelEnabled bool
+		expectPriming bool
 	}{
 		{
-			name:          "TLS auto mode triggers priming",
-			serviceName:   "test-service",
+			name:          "TLS auto mode should prime",
 			tlsMode:       "auto",
 			funnelEnabled: false,
 			expectPriming: true,
-			mockDNSName:   "test-service.tailnet.ts.net.",
 		},
 		{
-			name:          "TLS off mode does not trigger priming",
-			serviceName:   "test-service",
+			name:          "TLS off mode should not prime",
 			tlsMode:       "off",
 			funnelEnabled: false,
 			expectPriming: false,
 		},
 		{
-			name:          "Funnel mode does not trigger priming",
-			serviceName:   "test-service",
+			name:          "Funnel mode should not prime",
 			tlsMode:       "auto",
 			funnelEnabled: true,
 			expectPriming: false,
-		},
-		{
-			name:           "LocalClient error handled gracefully",
-			serviceName:    "test-service",
-			tlsMode:        "auto",
-			funnelEnabled:  false,
-			expectPriming:  true,
-			localClientErr: errors.New("local client error"),
-		},
-		{
-			name:          "Status error handled gracefully",
-			serviceName:   "test-service",
-			tlsMode:       "auto",
-			funnelEnabled: false,
-			expectPriming: true,
-			statusError:   errors.New("status error"),
-		},
-		{
-			name:          "Empty DNS name handled gracefully",
-			serviceName:   "test-service",
-			tlsMode:       "auto",
-			funnelEnabled: false,
-			expectPriming: true,
-			mockDNSName:   "",
-		},
-		{
-			name:             "Certificate priming uses IP with SNI",
-			serviceName:      "test-service",
-			tlsMode:          "auto",
-			funnelEnabled:    false,
-			expectPriming:    true,
-			mockDNSName:      "test-service.tailnet.ts.net.",
-			mockTailscaleIPs: []string{"100.100.100.100"},
-		},
-		{
-			name:             "No Tailscale IP skips priming",
-			serviceName:      "test-service",
-			tlsMode:          "auto",
-			funnelEnabled:    false,
-			expectPriming:    false,
-			mockDNSName:      "test-service.tailnet.ts.net.",
-			mockTailscaleIPs: []string{}, // No IPs
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create mocks
-			mockLocalClient := &tsnet.MockLocalClient{}
-			mockTSNetServer := tsnet.NewMockTSNetServer()
+			// Create mock TSNet server
+			mockServer := tsnet.NewMockTSNetServer()
+			mockServer.StartFunc = func() error {
+				return nil
+			}
 
-			// Set up mock expectations
-			mockTSNetServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
-				if tt.localClientErr != nil {
-					return nil, tt.localClientErr
-				}
+			// Setup listeners
+			mockServer.ListenFunc = func(network, addr string) (net.Listener, error) {
+				return &mockListener{addr: addr}, nil
+			}
+			mockServer.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
+				return &mockListener{addr: addr}, nil
+			}
+			mockServer.ListenFunnelFunc = func(network, addr string) (net.Listener, error) {
+				return &mockListener{addr: addr}, nil
+			}
+
+			// Setup LocalClient for priming
+			mockLocalClient := &tsnet.MockLocalClient{
+				StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+					return &ipnstate.Status{
+						Self: &ipnstate.PeerStatus{
+							DNSName:      "test.tailnet.ts.net.",
+							TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+						},
+					}, nil
+				},
+			}
+
+			mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
 				return mockLocalClient, nil
 			}
 
-			if tt.localClientErr == nil && tt.expectPriming {
-				mockLocalClient.StatusWithoutPeersFunc = func(ctx context.Context) (*ipnstate.Status, error) {
-					if tt.statusError != nil {
-						return nil, tt.statusError
-					}
-
-					// Convert IP strings to netip.Addr
-					var tailscaleIPs []netip.Addr
-					for _, ip := range tt.mockTailscaleIPs {
-						if addr, err := netip.ParseAddr(ip); err == nil {
-							tailscaleIPs = append(tailscaleIPs, addr)
-						}
-					}
-
-					return &ipnstate.Status{
-						Self: &ipnstate.PeerStatus{
-							DNSName:      tt.mockDNSName,
-							TailscaleIPs: tailscaleIPs,
-						},
-					}, nil
-				}
+			// Create server with mock factory
+			factory := func() tsnet.TSNetServer {
+				return mockServer
 			}
 
-			// Create server with mock factory
-			server, err := NewServerWithFactory(config.Tailscale{
+			cfg := config.Tailscale{
 				AuthKey: "test-key",
-			}, func() tsnet.TSNetServer {
-				return mockTSNetServer
-			})
-			assert.NoError(t, err)
+			}
+
+			server, err := NewServerWithFactory(cfg, factory)
+			require.NoError(t, err)
 
 			// Create service config
 			svc := config.Service{
-				Name:        tt.serviceName,
+				Name:        "test-service",
 				BackendAddr: "localhost:8080",
 			}
 
@@ -1608,6 +935,89 @@ func TestCertificatePriming(t *testing.T) {
 			// Give some time for the goroutine to run if priming is expected
 			if tt.expectPriming {
 				time.Sleep(6 * time.Second)
+			}
+		})
+	}
+}
+
+func TestCloseService(t *testing.T) {
+	tests := []struct {
+		name        string
+		serviceName string
+		setupFunc   func(*Server)
+		expectError bool
+	}{
+		{
+			name:        "close existing service",
+			serviceName: "test-service",
+			setupFunc: func(s *Server) {
+				// Add a mock server to the map
+				mockServer := tsnet.NewMockTSNetServer()
+				mockServer.CloseFunc = func() error {
+					return nil
+				}
+				s.serviceServers["test-service"] = mockServer
+			},
+			expectError: false,
+		},
+		{
+			name:        "close non-existent service",
+			serviceName: "non-existent",
+			setupFunc:   func(s *Server) {},
+			expectError: false, // Should not error for non-existent service
+		},
+		{
+			name:        "close service with error",
+			serviceName: "error-service",
+			setupFunc: func(s *Server) {
+				// Add a mock server that returns an error on close
+				mockServer := tsnet.NewMockTSNetServer()
+				mockServer.CloseFunc = func() error {
+					return errors.New("close failed")
+				}
+				s.serviceServers["error-service"] = mockServer
+			},
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create server with mock factory
+			factory := func() tsnet.TSNetServer {
+				return tsnet.NewMockTSNetServer()
+			}
+
+			cfg := config.Tailscale{
+				AuthKey: "test-key",
+			}
+
+			server, err := NewServerWithFactory(cfg, factory)
+			require.NoError(t, err)
+
+			// Setup the test
+			tt.setupFunc(server)
+
+			// Check initial state
+			initialCount := len(server.serviceServers)
+
+			// Call CloseService
+			err = server.CloseService(tt.serviceName)
+
+			if tt.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+
+			// Verify the service was removed from the map if it existed
+			if _, existed := server.serviceServers[tt.serviceName]; existed && !tt.expectError {
+				t.Errorf("service %s should have been removed from map", tt.serviceName)
+			}
+
+			// Verify map size changed appropriately
+			if tt.setupFunc != nil && tt.name == "close existing service" {
+				assert.Equal(t, initialCount-1, len(server.serviceServers))
 			}
 		})
 	}

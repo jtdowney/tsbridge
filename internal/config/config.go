@@ -181,8 +181,8 @@ func durationDecodeHook() mapstructure.DecodeHookFunc {
 	return func(
 		from reflect.Type,
 		to reflect.Type,
-		data interface{},
-	) (interface{}, error) {
+		data any,
+	) (any, error) {
 		// Check if we're converting to Duration
 		if to != reflect.TypeOf(Duration{}) {
 			return data, nil
@@ -314,8 +314,8 @@ func ProcessLoadedConfigWithProvider(cfg *Config, provider string) error {
 	// Normalize configuration (copy global values to services)
 	cfg.Normalize()
 
-	// Validate the configuration
-	if err := cfg.Validate(); err != nil {
+	// Validate the configuration with provider context
+	if err := cfg.ValidateWithProvider(provider); err != nil {
 		return errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "validating config")
 	}
 
@@ -440,6 +440,12 @@ func (c *Config) Normalize() {
 
 // Validate validates the configuration
 func (c *Config) Validate() error {
+	// Call ValidateWithProvider with empty provider for backward compatibility
+	return c.ValidateWithProvider("")
+}
+
+// ValidateWithProvider validates the configuration with provider context
+func (c *Config) ValidateWithProvider(provider string) error {
 	// Validate OAuth credentials
 	if err := c.validateOAuth(); err != nil {
 		return err
@@ -450,8 +456,8 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	// Validate services
-	if len(c.Services) == 0 {
+	// Validate services - Docker provider allows zero services at startup
+	if len(c.Services) == 0 && provider != "docker" {
 		return errors.NewValidationError("at least one service must be defined in the [[services]] array")
 	}
 

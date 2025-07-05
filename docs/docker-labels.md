@@ -209,13 +209,47 @@ When running in Docker, use `tsbridge.service.port` instead of `tsbridge.service
 
 ## Dynamic Updates
 
-The Docker provider watches for container events and updates the configuration automatically:
+The Docker provider enables true dynamic service management by monitoring Docker container lifecycle events in real-time. This allows tsbridge to automatically adjust its configuration as containers start, stop, or change, without requiring manual intervention or restarts.
 
-- New containers with `tsbridge.enabled=true` are added as services
-- Stopped containers are removed from the configuration
-- Label changes trigger service updates
+### How It Works
 
-Updates are checked every 5 seconds by default.
+tsbridge subscribes to Docker's event stream and responds to specific container events:
+
+- **Container Start**: When a container with `tsbridge.enabled=true` starts, tsbridge automatically:
+  - Detects the new container
+  - Parses its labels to extract service configuration
+  - Creates and starts a new proxy service
+  - Makes it available at `https://<service-name>.<tailnet>.ts.net`
+- **Container Stop/Die**: When a labeled container stops or crashes, tsbridge automatically:
+  - Detects the container state change
+  - Gracefully stops the associated proxy service
+  - Removes it from the active service registry
+  - Cleans up all associated resources
+
+- **Container Pause/Unpause**: Services are temporarily unavailable during pause and restored on unpause
+
+### Event-Based Architecture
+
+Unlike polling-based systems, tsbridge uses Docker's event stream for immediate responsiveness:
+
+```yaml
+# Example: Rolling deployment with zero downtime
+# 1. Start new version of your service
+docker-compose up -d api-v2  # tsbridge detects and adds the service
+
+# 2. Verify new version is working
+curl https://api-v2.example.ts.net/health
+
+# 3. Stop old version
+docker-compose stop api-v1   # tsbridge detects and removes the service
+```
+
+### Important Notes
+
+- There's no polling interval - updates happen immediately when Docker events occur
+- Services must have unique names to avoid conflicts
+- Stopping tsbridge itself will stop all proxy services, but won't affect your containers
+- Container restarts (with same name) are handled gracefully with minimal downtime
 
 ## Network Considerations
 

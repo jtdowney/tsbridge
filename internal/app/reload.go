@@ -7,15 +7,17 @@ import (
 	"github.com/jtdowney/tsbridge/internal/errors"
 )
 
-// serviceRegistryOps defines the minimal interface needed for reload operations
+// serviceRegistryOps is the minimal interface for dynamic config reloads.
+// It supports adding, removing, and updating services at runtime.
 type serviceRegistryOps interface {
 	AddService(svcCfg config.Service) error
 	RemoveService(name string) error
 	UpdateService(name string, newCfg config.Service) error
 }
 
-// reloadConfigWithRegistry performs config reload using the provided registry
-// This function is extracted to make testing easier
+// reloadConfigWithRegistry reloads services in the registry to match newCfg.
+// Removes, adds, and updates services as needed, in that order.
+// Continues on errors and returns a ReloadError if any occur.
 func reloadConfigWithRegistry(oldCfg, newCfg *config.Config, registry serviceRegistryOps) error {
 	// Find services to remove (in old but not in new)
 	toRemove := findServicesToRemove(oldCfg, newCfg)

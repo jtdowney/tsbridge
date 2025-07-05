@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
 	tserrors "github.com/jtdowney/tsbridge/internal/errors"
@@ -258,6 +259,8 @@ func (a *App) watchConfigChanges(ctx context.Context, configCh <-chan *config.Co
 // ReloadConfig reloads the configuration and restarts affected services
 // This method is exported for testing purposes
 func (a *App) ReloadConfig(newCfg *config.Config) error {
+	start := time.Now()
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -266,6 +269,14 @@ func (a *App) ReloadConfig(newCfg *config.Config) error {
 	// Use the extracted reload logic
 	err := reloadConfigWithRegistry(oldCfg, newCfg, a.registry)
 
+	// Record reload metrics if collector is available
+	if a.registry != nil {
+		if collector := a.registry.GetMetricsCollector(); collector != nil {
+			success := err == nil
+			collector.RecordConfigReload(success, time.Since(start))
+		}
+	}
+
 	// Always update the config, even if some operations failed
 	// This ensures we're working with the latest intended configuration
 	a.cfg = newCfg
@@ -273,7 +284,7 @@ func (a *App) ReloadConfig(newCfg *config.Config) error {
 	return err
 }
 
-// findServicesToRemove returns service names that exist in old config but not in new config
+// findServicesToRemove returns names of services in old config not present in new config.
 func findServicesToRemove(old, new *config.Config) []string {
 	newServices := make(map[string]bool)
 	for _, svc := range new.Services {
@@ -289,7 +300,7 @@ func findServicesToRemove(old, new *config.Config) []string {
 	return toRemove
 }
 
-// findServicesToAdd returns services that exist in new config but not in old config
+// findServicesToAdd returns services in new config but not in old.
 func findServicesToAdd(old, new *config.Config) []config.Service {
 	oldServices := make(map[string]bool)
 	for _, svc := range old.Services {
@@ -305,7 +316,7 @@ func findServicesToAdd(old, new *config.Config) []config.Service {
 	return toAdd
 }
 
-// findServicesToUpdate returns services that exist in both configs but have changed
+// findServicesToUpdate returns services present in both configs with changed configuration.
 func findServicesToUpdate(old, new *config.Config) []config.Service {
 	oldServices := make(map[string]config.Service)
 	for _, svc := range old.Services {

@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/errors"
@@ -30,6 +31,13 @@ type Collector struct {
 	ConnectionPoolActive *prometheus.GaugeVec
 	ConnectionPoolIdle   *prometheus.GaugeVec
 	ConnectionPoolWait   *prometheus.GaugeVec
+
+	// Service lifecycle metrics
+	ServiceOperations    *prometheus.CounterVec
+	ServiceOpDuration    *prometheus.HistogramVec
+	ServicesActive       prometheus.Gauge
+	ConfigReloads        *prometheus.CounterVec
+	ConfigReloadDuration prometheus.Histogram
 }
 
 // NewCollector creates a new metrics collector with all required metrics
@@ -107,6 +115,41 @@ func NewCollector() *Collector {
 			},
 			[]string{"service"},
 		),
+		ServiceOperations: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tsbridge_service_operations_total",
+				Help: "Total number of service lifecycle operations",
+			},
+			[]string{"operation", "status"},
+		),
+		ServiceOpDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "tsbridge_service_operation_duration_seconds",
+				Help:    "Duration of service lifecycle operations in seconds",
+				Buckets: []float64{0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10},
+			},
+			[]string{"operation"},
+		),
+		ServicesActive: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "tsbridge_services_active",
+				Help: "Number of active services",
+			},
+		),
+		ConfigReloads: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tsbridge_config_reloads_total",
+				Help: "Total number of configuration reloads",
+			},
+			[]string{"status"},
+		),
+		ConfigReloadDuration: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "tsbridge_config_reload_duration_seconds",
+				Help:    "Duration of configuration reloads in seconds",
+				Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30},
+			},
+		),
 	}
 }
 
@@ -123,6 +166,11 @@ func (c *Collector) Register(reg prometheus.Registerer) error {
 		c.ConnectionPoolActive,
 		c.ConnectionPoolIdle,
 		c.ConnectionPoolWait,
+		c.ServiceOperations,
+		c.ServiceOpDuration,
+		c.ServicesActive,
+		c.ConfigReloads,
+		c.ConfigReloadDuration,
 	}
 
 	for _, collector := range collectors {
@@ -158,6 +206,31 @@ func (c *Collector) UpdateConnectionPoolMetrics(service string, active, idle, wa
 	c.ConnectionPoolActive.WithLabelValues(service).Set(float64(active))
 	c.ConnectionPoolIdle.WithLabelValues(service).Set(float64(idle))
 	c.ConnectionPoolWait.WithLabelValues(service).Set(float64(wait))
+}
+
+// RecordServiceOperation records a service lifecycle operation
+func (c *Collector) RecordServiceOperation(operation string, success bool, duration time.Duration) {
+	status := "success"
+	if !success {
+		status = "failure"
+	}
+	c.ServiceOperations.WithLabelValues(operation, status).Inc()
+	c.ServiceOpDuration.WithLabelValues(operation).Observe(duration.Seconds())
+}
+
+// SetActiveServices sets the number of active services
+func (c *Collector) SetActiveServices(count int) {
+	c.ServicesActive.Set(float64(count))
+}
+
+// RecordConfigReload records a configuration reload operation
+func (c *Collector) RecordConfigReload(success bool, duration time.Duration) {
+	status := "success"
+	if !success {
+		status = "failure"
+	}
+	c.ConfigReloads.WithLabelValues(status).Inc()
+	c.ConfigReloadDuration.Observe(duration.Seconds())
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code
@@ -237,6 +310,7 @@ type Server struct {
 	listener          net.Listener
 	registry          *prometheus.Registry
 	readHeaderTimeout time.Duration
+	mu                sync.RWMutex
 }
 
 // NewServer creates a new metrics server with a custom registry
@@ -258,7 +332,11 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return errors.WrapResource(err, fmt.Sprintf("failed to listen on %s", s.addr))
 	}
+
+	// Set listener with lock
+	s.mu.Lock()
 	s.listener = listener
+	s.mu.Unlock()
 
 	// Create server
 	timeout := s.readHeaderTimeout
@@ -283,6 +361,9 @@ func (s *Server) Start(ctx context.Context) error {
 
 // Addr returns the actual address the server is listening on
 func (s *Server) Addr() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	if s.listener == nil {
 		return ""
 	}

@@ -249,7 +249,9 @@ docker run -v /path/to/config:/config \
   -config /config/tsbridge.toml
 ```
 
-#### With Docker Labels (Dynamic Configuration)
+#### With Docker Labels (Dynamic Service Management)
+
+tsbridge can automatically manage services based on Docker container lifecycle events. When using the Docker provider, services are dynamically added when containers start and removed when they stop - no manual configuration needed!
 
 ```yaml
 services:
@@ -297,6 +299,11 @@ When `metrics_addr` is configured, tsbridge exposes metrics at `/metrics`:
 - `tsbridge_backend_connections_total` - Backend connection attempts
 - `tsbridge_whois_duration_seconds` - Whois lookup latency
 - `tsbridge_connection_pool_active` - Active requests per service (tracks in-flight requests to backends)
+- `tsbridge_service_operations_total` - Service lifecycle operations (add/remove/update) with status
+- `tsbridge_service_operation_duration_seconds` - Duration of service lifecycle operations
+- `tsbridge_services_active` - Current number of active services
+- `tsbridge_config_reloads_total` - Configuration reload operations with status
+- `tsbridge_config_reload_duration_seconds` - Duration of configuration reloads
 - `tsbridge_connection_pool_idle` - Idle connections (always 0, reserved for future use)
 - `tsbridge_connection_pool_wait` - Requests waiting for connection (always 0, reserved for future use)
 
