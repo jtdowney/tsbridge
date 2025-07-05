@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
 	"golang.org/x/oauth2"
 )
@@ -394,6 +395,16 @@ func TestGenerateOrResolveAuthKeyWithServiceTags(t *testing.T) {
 	if len(req.Tags) != 2 || req.Tags[0] != "tag:api" || req.Tags[1] != "tag:prod" {
 		t.Errorf("expected service tags [tag:api tag:prod], got %v", req.Tags)
 	}
+
+	// Verify expiry is set to 5 minutes
+	if req.ExpirySeconds != constants.AuthKeyExpirySeconds {
+		t.Errorf("expected expiry=%d seconds, got %d", constants.AuthKeyExpirySeconds, req.ExpirySeconds)
+	}
+
+	// Verify reusable is false
+	if req.Capabilities.Devices.Create.Reusable != false {
+		t.Errorf("expected reusable=false, got %v", req.Capabilities.Devices.Create.Reusable)
+	}
 }
 
 func TestOAuthEphemeralFlag(t *testing.T) {
@@ -524,6 +535,11 @@ func TestAuthKeyNonReusable(t *testing.T) {
 	// Verify reusable flag is false for better security
 	if req.Capabilities.Devices.Create.Reusable != false {
 		t.Errorf("expected reusable=false for single-use auth keys, got %v", req.Capabilities.Devices.Create.Reusable)
+	}
+
+	// Verify expiry is set to 5 minutes
+	if req.ExpirySeconds != constants.AuthKeyExpirySeconds {
+		t.Errorf("expected expiry=%d seconds, got %d", constants.AuthKeyExpirySeconds, req.ExpirySeconds)
 	}
 }
 
