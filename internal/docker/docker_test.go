@@ -794,6 +794,124 @@ func TestDockerProvider_WatchWithEvents(t *testing.T) {
 	})
 }
 
+// TestDockerProvider_BackoffBehavior verifies the backoff reset logic
+// by testing the processEventStream return values
+func TestDockerProvider_BackoffBehavior(t *testing.T) {
+	t.Run("processEventStream indicates stream established after event", func(t *testing.T) {
+		// This test verifies that processEventStream returns streamEstablished=true
+		// when it successfully receives an event, which triggers backoff reset
+
+		// Create a mock client that will provide controlled channels
+		eventsCh := make(chan events.Message, 1)
+		errorsCh := make(chan error, 1)
+
+		mockClient := &testEventStreamClient{
+			eventsCh: eventsCh,
+			errorsCh: errorsCh,
+		}
+
+		provider := &Provider{
+			client:      mockClient,
+			labelPrefix: "tsbridge",
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		configCh := make(chan *config.Config, 1)
+
+		// Pre-send an event so processEventStream receives it immediately
+		eventsCh <- events.Message{
+			Type:   "container",
+			Action: "start",
+			Actor: events.Actor{
+				ID: "test123",
+				Attributes: map[string]string{
+					"tsbridge.enabled": "true",
+				},
+			},
+		}
+
+		// Run processEventStream in goroutine
+		done := make(chan struct{})
+		var cancelled, streamEstablished bool
+
+		go func() {
+			defer close(done)
+			cancelled, streamEstablished = provider.processEventStream(ctx, configCh, provider.createEventOptions())
+		}()
+
+		// Wait a moment then cancel - the pre-sent event should be processed immediately
+		go func() {
+			// This goroutine ensures we cancel after giving processEventStream
+			// a chance to start, but we don't need precise timing
+			<-time.After(1 * time.Millisecond)
+			cancel()
+		}()
+
+		// Wait for completion
+		<-done
+
+		assert.True(t, cancelled, "should be cancelled by context")
+		assert.True(t, streamEstablished, "stream should be marked as established after receiving event")
+	})
+
+	t.Run("processEventStream indicates no stream on immediate error", func(t *testing.T) {
+		// This test verifies that processEventStream returns streamEstablished=false
+		// when it encounters an error before receiving any events
+
+		mockClient := newMockDockerClient()
+		provider := &Provider{
+			client:      mockClient,
+			labelPrefix: "tsbridge",
+		}
+
+		ctx := context.Background()
+		configCh := make(chan *config.Config, 1)
+
+		// Configure mock to return error immediately
+		mockClient.eventsError = fmt.Errorf("connection error")
+
+		// processEventStream should return quickly with error
+		cancelled, streamEstablished := provider.processEventStream(ctx, configCh, provider.createEventOptions())
+
+		assert.False(t, cancelled, "should not be cancelled (error exit)")
+		assert.False(t, streamEstablished, "stream should not be established on error")
+	})
+}
+
+// testEventStreamClient is a simple test client that returns pre-configured channels
+type testEventStreamClient struct {
+	eventsCh chan events.Message
+	errorsCh chan error
+}
+
+func (t *testEventStreamClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+	return t.eventsCh, t.errorsCh
+}
+
+func (t *testEventStreamClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+	// Return minimal container for test
+	return []container.Summary{
+		{
+			ID:    "tsbridge123",
+			Names: []string{"/tsbridge"},
+			Labels: map[string]string{
+				"tsbridge.name": "tsbridge",
+			},
+			State: "running",
+		},
+	}, nil
+}
+
+func (t *testEventStreamClient) Ping(ctx context.Context) (types.Ping, error) {
+	return types.Ping{}, nil
+}
+
+func (t *testEventStreamClient) Close() error {
+	return nil
+}
+
 // mockFileInfo implements os.FileInfo for testing
 type mockFileInfo struct {
 	mode os.FileMode

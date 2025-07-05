@@ -221,9 +221,15 @@ func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config
 		case <-ctx.Done():
 			return
 		default:
-			// processEventStream returns true if context is cancelled
-			if p.processEventStream(ctx, configCh, eventOptions) {
+			// processEventStream returns true if context is cancelled, false if stream closed
+			cancelled, streamEstablished := p.processEventStream(ctx, configCh, eventOptions)
+			if cancelled {
 				return // Context cancelled
+			}
+
+			// Reset backoff if we successfully established a stream and received events
+			if streamEstablished {
+				backoff = time.Second
 			}
 
 			// Event stream closed, wait before reconnecting with backoff
@@ -243,21 +249,27 @@ func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config
 }
 
 // processEventStream processes a single event stream connection
-func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) bool {
+// Returns (cancelled, streamEstablished) where:
+// - cancelled is true if context was cancelled
+// - streamEstablished is true if we successfully received at least one event
+func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) (bool, bool) {
 	events, errs := p.client.Events(ctx, eventOptions)
+	streamEstablished := false
 
 	for {
 		select {
 		case <-ctx.Done():
-			return true
+			return true, streamEstablished
 		case err := <-errs:
 			if err != nil {
 				slog.Error("Docker events stream error", "error", err)
-				return false // Return to restart event stream
+				return false, streamEstablished // Return to restart event stream
 			}
 		case event := <-events:
+			// Mark stream as established after receiving first event
+			streamEstablished = true
 			if p.handleContainerEvent(ctx, configCh, event) {
-				return true // Context cancelled
+				return true, streamEstablished // Context cancelled
 			}
 		}
 	}
