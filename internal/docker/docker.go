@@ -67,8 +67,7 @@ func validateDockerAccess(socketPath string) error {
 	}
 
 	// Extract the actual file path from unix:// URLs
-	path := socketPath
-	path, _ = strings.CutPrefix(socketPath, "unix://")
+	path, _ := strings.CutPrefix(socketPath, "unix://")
 
 	// Check if the socket exists and is accessible
 	info, err := osStat(path)
