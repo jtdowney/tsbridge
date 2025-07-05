@@ -774,9 +774,10 @@ func TestDockerProvider_WatchWithEvents(t *testing.T) {
 		assert.Contains(t, events, "pause")
 		assert.Contains(t, events, "unpause")
 
+		// We no longer filter by labels in the event stream
+		// Label checking is done client-side to support both "enabled" and "enable"
 		labels := options.Filters.Get("label")
-		assert.Contains(t, labels, "tsbridge.enabled=true")
-		assert.Contains(t, labels, "tsbridge.enable=true")
+		assert.Empty(t, labels, "should not filter by labels in event stream")
 	})
 
 	t.Run("watch event filtering configuration", func(t *testing.T) {
@@ -1369,7 +1370,8 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			Actor: events.Actor{
 				ID: "svc1",
 				Attributes: map[string]string{
-					"name": "api",
+					"name":             "api",
+					"tsbridge.enabled": "true",
 				},
 			},
 		}
@@ -1426,7 +1428,8 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			Actor: events.Actor{
 				ID: "svc1",
 				Attributes: map[string]string{
-					"name": "api",
+					"name":             "api",
+					"tsbridge.enabled": "true",
 				},
 			},
 		}
@@ -1582,7 +1585,8 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			Actor: events.Actor{
 				ID: "svc1",
 				Attributes: map[string]string{
-					"name": "api",
+					"name":             "api",
+					"tsbridge.enabled": "true",
 				},
 			},
 		}
@@ -1642,7 +1646,8 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			Actor: events.Actor{
 				ID: "svc1",
 				Attributes: map[string]string{
-					"name": "api",
+					"name":             "api",
+					"tsbridge.enabled": "true",
 				},
 			},
 		}

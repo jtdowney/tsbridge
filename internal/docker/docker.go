@@ -202,9 +202,9 @@ func (p *Provider) createEventOptions() events.ListOptions {
 	eventFilters.Add("event", "die")
 	eventFilters.Add("event", "pause")
 	eventFilters.Add("event", "unpause")
-	// Accept both "enabled" and "enable" for compatibility
-	eventFilters.Add("label", p.labelPrefix+".enabled=true")
-	eventFilters.Add("label", p.labelPrefix+".enable=true")
+	// Note: We don't filter by label here because Docker treats multiple
+	// label filters as AND conditions. We'll check labels client-side
+	// to support both "enabled" and "enable" labels.
 
 	return events.ListOptions{
 		Filters: eventFilters,
@@ -281,6 +281,19 @@ func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *conf
 // Returns true if context was cancelled, false otherwise.
 func (p *Provider) handleContainerEvent(ctx context.Context, configCh chan<- *config.Config, event events.Message) bool {
 	if event.Type != "container" {
+		return false
+	}
+
+	// Check if this container has tsbridge enabled (either "enabled" or "enable" label)
+	enabledLabel := fmt.Sprintf("%s.enabled", p.labelPrefix)
+	enableLabel := fmt.Sprintf("%s.enable", p.labelPrefix)
+
+	// Docker events include labels in the Actor.Attributes map
+	isEnabled := event.Actor.Attributes[enabledLabel] == "true" ||
+		event.Actor.Attributes[enableLabel] == "true"
+
+	if !isEnabled {
+		// Not a tsbridge-enabled container, ignore this event
 		return false
 	}
 
