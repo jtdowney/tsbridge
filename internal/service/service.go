@@ -228,6 +228,12 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 	// Wrap with request ID middleware - this should be early in the chain
 	httpHandler = middleware.RequestID(httpHandler)
 
+	// Apply request body size limit
+	maxBodySize := s.getMaxRequestBodySize()
+	if maxBodySize > 0 {
+		httpHandler = middleware.MaxBytesHandler(maxBodySize)(httpHandler)
+	}
+
 	// Wrap with whois middleware if enabled
 	whoisEnabled := s.Config.WhoisEnabled != nil && *s.Config.WhoisEnabled
 	if whoisEnabled && s.tsServer != nil {
@@ -274,6 +280,20 @@ func (s *Service) isAccessLogEnabled() bool {
 	}
 	// Default to true
 	return true
+}
+
+// getMaxRequestBodySize returns the max request body size for this service
+// It returns the service-specific override if set, otherwise the global value
+// A negative value means no limit should be applied
+func (s *Service) getMaxRequestBodySize() int64 {
+	if s.Config.MaxRequestBodySize != nil {
+		return s.Config.MaxRequestBodySize.Value
+	}
+	if s.globalConfig != nil {
+		return s.globalConfig.Global.MaxRequestBodySize.Value
+	}
+	// Default if no config available
+	return constants.DefaultMaxRequestBodySize
 }
 
 // Stop gracefully stops the service
@@ -456,7 +476,12 @@ func (r *Registry) validateServiceConfig(cfg config.Service) error {
 		}
 	} else {
 		// TCP address validation
-		if _, err := url.Parse(cfg.BackendAddr); err != nil {
+		// Add scheme if missing, consistent with proxy.parseBackendURL
+		addr := cfg.BackendAddr
+		if !strings.Contains(addr, "://") {
+			addr = "http://" + addr
+		}
+		if _, err := url.Parse(addr); err != nil {
 			return fmt.Errorf("invalid backend address: %w", err)
 		}
 	}

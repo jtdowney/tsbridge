@@ -132,6 +132,13 @@ func (p *labelParser) getDuration(key string) config.Duration {
 	return result
 }
 
+// getByteSize gets a ByteSize pointer from labels
+func (p *labelParser) getByteSize(key string) *config.ByteSize {
+	value := p.getString(key)
+	result, _ := parseByteSize(value)
+	return result
+}
+
 // getStringSlice gets a string slice from labels
 func (p *labelParser) getStringSlice(key, separator string) []string {
 	value := p.getString(key)
@@ -213,6 +220,11 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 		FlushInterval:            parser.getDuration("global.flush_interval"),
 	}
 
+	// Handle MaxRequestBodySize separately since it's a ByteSize type
+	if bs := parser.getByteSize("global.max_request_body_size"); bs != nil {
+		cfg.Global.MaxRequestBodySize = *bs
+	}
+
 	return nil
 }
 
@@ -281,6 +293,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.DownstreamHeaders = parser.getHeaders("service.downstream_headers")
 	svc.RemoveUpstream = parser.getStringSlice("service.remove_upstream", ",")
 	svc.RemoveDownstream = parser.getStringSlice("service.remove_downstream", ",")
+	svc.MaxRequestBodySize = parser.getByteSize("service.max_request_body_size")
 
 	// Handle ephemeral (non-pointer bool)
 	if ephemeral := parser.getBool("service.ephemeral"); ephemeral != nil {
@@ -348,4 +361,16 @@ func parseStringSlice(value, separator string) []string {
 		parts[i] = strings.TrimSpace(parts[i])
 	}
 	return parts
+}
+
+// parseByteSize parses a byte size string and returns a pointer to ByteSize
+func parseByteSize(value string) (*config.ByteSize, error) {
+	if value == "" {
+		return nil, nil
+	}
+	var b config.ByteSize
+	if err := b.UnmarshalText([]byte(value)); err != nil {
+		return nil, err
+	}
+	return &b, nil
 }

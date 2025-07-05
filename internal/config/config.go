@@ -52,6 +52,7 @@ type Global struct {
 	WriteTimeout          Duration `mapstructure:"write_timeout"`           // Max duration for writing response
 	IdleTimeout           Duration `mapstructure:"idle_timeout"`            // Max time to wait for next request
 	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`     // Time allowed to read request headers
+	MaxRequestBodySize    ByteSize `mapstructure:"max_request_body_size"`   // Maximum request body size in bytes
 	// Transport timeouts
 	DialTimeout              Duration `mapstructure:"dial_timeout"`                // Max time for connection dial
 	KeepAliveTimeout         Duration `mapstructure:"keep_alive_timeout"`          // Keep-alive probe interval
@@ -70,35 +71,20 @@ type Service struct {
 	TLSMode      string   `mapstructure:"tls_mode"`      // "auto" (default), "off"
 	Tags         []string `mapstructure:"tags"`          // Service-specific tags
 	// Optional overrides
-	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`     // Override global read header timeout
-	WriteTimeout          Duration `mapstructure:"write_timeout"`           // Override global write timeout
-	IdleTimeout           Duration `mapstructure:"idle_timeout"`            // Override global idle timeout
-	ResponseHeaderTimeout Duration `mapstructure:"response_header_timeout"` // Override global response header timeout
-	AccessLog             *bool    `mapstructure:"access_log"`              // Override global access_log setting
-	FunnelEnabled         *bool    `mapstructure:"funnel_enabled"`          // Expose service via Tailscale Funnel
-	Ephemeral             bool     `mapstructure:"ephemeral"`               // Create ephemeral nodes
-	FlushInterval         Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
+	ReadHeaderTimeout     Duration  `mapstructure:"read_header_timeout"`     // Override global read header timeout
+	WriteTimeout          Duration  `mapstructure:"write_timeout"`           // Override global write timeout
+	IdleTimeout           Duration  `mapstructure:"idle_timeout"`            // Override global idle timeout
+	ResponseHeaderTimeout Duration  `mapstructure:"response_header_timeout"` // Override global response header timeout
+	AccessLog             *bool     `mapstructure:"access_log"`              // Override global access_log setting
+	MaxRequestBodySize    *ByteSize `mapstructure:"max_request_body_size"`   // Override global max request body size
+	FunnelEnabled         *bool     `mapstructure:"funnel_enabled"`          // Expose service via Tailscale Funnel
+	Ephemeral             bool      `mapstructure:"ephemeral"`               // Create ephemeral nodes
+	FlushInterval         Duration  `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
 	// Header manipulation
 	UpstreamHeaders   map[string]string `mapstructure:"upstream_headers"`   // Headers to add to upstream requests
 	DownstreamHeaders map[string]string `mapstructure:"downstream_headers"` // Headers to add to downstream responses
 	RemoveUpstream    []string          `mapstructure:"remove_upstream"`    // Headers to remove from upstream requests
 	RemoveDownstream  []string          `mapstructure:"remove_downstream"`  // Headers to remove from downstream responses
-}
-
-// Duration wraps time.Duration for TOML unmarshaling
-type Duration struct {
-	time.Duration      // Embedded time.Duration value
-	IsSet         bool `mapstructure:"-" toml:"-" json:"-"` // Track if explicitly set
-}
-
-// UnmarshalText implements encoding.TextUnmarshaler for Duration
-func (d *Duration) UnmarshalText(text []byte) error {
-	var err error
-	d.Duration, err = time.ParseDuration(string(text))
-	if err == nil {
-		d.IsSet = true
-	}
-	return err
 }
 
 // Load reads and parses the configuration from the specified file path.
@@ -147,6 +133,7 @@ func LoadWithProvider(path string, provider string) (*Config, error) {
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
 			mapstructure.StringToTimeDurationHookFunc(),
 			durationDecodeHook(),
+			byteSizeDecodeHook(),
 		),
 		Result:           &cfg,
 		WeaklyTypedInput: true,
@@ -209,6 +196,51 @@ func durationDecodeHook() mapstructure.DecodeHookFunc {
 		// Handle int64 conversion (nanoseconds)
 		if from.Kind() == reflect.Int64 {
 			return Duration{Duration: time.Duration(data.(int64)), IsSet: true}, nil
+		}
+
+		return data, nil
+	}
+}
+
+// byteSizeDecodeHook creates a decode hook for the ByteSize type
+func byteSizeDecodeHook() mapstructure.DecodeHookFunc {
+	return func(
+		from reflect.Type,
+		to reflect.Type,
+		data any,
+	) (any, error) {
+		// Check if we're converting to ByteSize
+		if to != reflect.TypeOf(ByteSize{}) {
+			return data, nil
+		}
+
+		// Handle string conversion
+		if from.Kind() == reflect.String {
+			strData := data.(string)
+			var b ByteSize
+			if err := b.UnmarshalText([]byte(strData)); err != nil {
+				return nil, err
+			}
+			return b, nil
+		}
+
+		// Handle int/int64 conversion
+		if from.Kind() == reflect.Int || from.Kind() == reflect.Int64 {
+			var value int64
+			switch v := data.(type) {
+			case int:
+				value = int64(v)
+			case int64:
+				value = v
+			default:
+				return data, nil
+			}
+			return ByteSize{Value: value, IsSet: true}, nil
+		}
+
+		// Handle float64 conversion (from JSON numbers)
+		if from.Kind() == reflect.Float64 {
+			return ByteSize{Value: int64(data.(float64)), IsSet: true}, nil
 		}
 
 		return data, nil
@@ -346,6 +378,12 @@ func (c *Config) SetDefaults() {
 	if c.Global.AccessLog == nil {
 		enabled := constants.DefaultAccessLogEnabled
 		c.Global.AccessLog = &enabled
+	}
+
+	// Default max request body size if not specified
+	if !c.Global.MaxRequestBodySize.IsSet {
+		c.Global.MaxRequestBodySize.Value = constants.DefaultMaxRequestBodySize
+		c.Global.MaxRequestBodySize.IsSet = true
 	}
 
 	// Set transport timeout defaults if not specified

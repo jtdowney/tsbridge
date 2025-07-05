@@ -1,21 +1,25 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/middleware"
+	"github.com/jtdowney/tsbridge/internal/proxy"
 	"github.com/jtdowney/tsbridge/internal/tailscale"
 	"github.com/jtdowney/tsbridge/internal/tsnet"
 	"github.com/prometheus/client_golang/prometheus"
@@ -1965,4 +1969,199 @@ func TestRegistry_UpdateService_Concurrent(t *testing.T) {
 	// Cleanup
 	ctx := context.Background()
 	_ = registry.Shutdown(ctx)
+}
+
+func TestMaxRequestBodySize(t *testing.T) {
+	tests := []struct {
+		name               string
+		globalMaxBodySize  config.ByteSize
+		serviceMaxBodySize *config.ByteSize
+		requestBodySize    int
+		expectedStatus     int
+		expectBodyRead     bool
+	}{
+		{
+			name:               "request within global limit",
+			globalMaxBodySize:  config.ByteSize{Value: 1024, IsSet: true},
+			serviceMaxBodySize: nil,
+			requestBodySize:    512,
+			expectedStatus:     http.StatusOK,
+			expectBodyRead:     true,
+		},
+		{
+			name:               "request exceeds global limit",
+			globalMaxBodySize:  config.ByteSize{Value: 1024, IsSet: true},
+			serviceMaxBodySize: nil,
+			requestBodySize:    2048,
+			expectedStatus:     http.StatusRequestEntityTooLarge,
+			expectBodyRead:     false,
+		},
+		{
+			name:               "service override allows larger request",
+			globalMaxBodySize:  config.ByteSize{Value: 1024, IsSet: true},
+			serviceMaxBodySize: &config.ByteSize{Value: 4096, IsSet: true},
+			requestBodySize:    2048,
+			expectedStatus:     http.StatusOK,
+			expectBodyRead:     true,
+		},
+		{
+			name:               "service override restricts to smaller limit",
+			globalMaxBodySize:  config.ByteSize{Value: 4096, IsSet: true},
+			serviceMaxBodySize: &config.ByteSize{Value: 1024, IsSet: true},
+			requestBodySize:    2048,
+			expectedStatus:     http.StatusRequestEntityTooLarge,
+			expectBodyRead:     false,
+		},
+		{
+			name:               "zero global limit uses default",
+			globalMaxBodySize:  config.ByteSize{Value: 0, IsSet: false},
+			serviceMaxBodySize: nil,
+			requestBodySize:    100,
+			expectedStatus:     http.StatusOK,
+			expectBodyRead:     true,
+		},
+		{
+			name:               "negative service limit disables check",
+			globalMaxBodySize:  config.ByteSize{Value: 1024, IsSet: true},
+			serviceMaxBodySize: &config.ByteSize{Value: -1, IsSet: true},
+			requestBodySize:    10240,
+			expectedStatus:     http.StatusOK,
+			expectBodyRead:     true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test backend
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Read and echo the body size
+				body, _ := io.ReadAll(r.Body)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(strconv.Itoa(len(body))))
+			}))
+			defer backend.Close()
+
+			// Create service config
+			svcConfig := config.Service{
+				Name:               "test-service",
+				BackendAddr:        backend.URL,
+				MaxRequestBodySize: tt.serviceMaxBodySize,
+			}
+
+			// Create global config
+			globalCfg := &config.Config{
+				Global: config.Global{
+					MaxRequestBodySize: tt.globalMaxBodySize,
+				},
+			}
+
+			// Create metrics registry and collector
+			registry := prometheus.NewRegistry()
+			metricsCollector := metrics.NewCollector()
+			metricsCollector.Register(registry)
+
+			// Create proxy handler config
+			handlerConfig := &proxy.HandlerConfig{
+				BackendAddr:      backend.URL,
+				ServiceName:      svcConfig.Name,
+				MetricsCollector: metricsCollector,
+				TransportConfig: &proxy.TransportConfig{
+					DialTimeout:           30 * time.Second,
+					KeepAliveTimeout:      30 * time.Second,
+					IdleConnTimeout:       90 * time.Second,
+					TLSHandshakeTimeout:   10 * time.Second,
+					ExpectContinueTimeout: 1 * time.Second,
+					ResponseHeaderTimeout: 30 * time.Second,
+				},
+			}
+
+			// Create proxy handler
+			proxyHandler, err := proxy.NewHandler(handlerConfig)
+			require.NoError(t, err)
+			defer proxyHandler.Close()
+
+			// Get the max body size limit
+			var maxBodySize int64
+			switch {
+			case tt.serviceMaxBodySize != nil && tt.serviceMaxBodySize.IsSet:
+				maxBodySize = tt.serviceMaxBodySize.Value
+			case globalCfg != nil && globalCfg.Global.MaxRequestBodySize.IsSet:
+				maxBodySize = globalCfg.Global.MaxRequestBodySize.Value
+			default:
+				maxBodySize = constants.DefaultMaxRequestBodySize
+			}
+
+			// Apply body limit middleware
+			handler := middleware.MaxBytesHandler(maxBodySize)(proxyHandler)
+
+			// Create test request
+			body := bytes.Repeat([]byte("a"), tt.requestBodySize)
+			req := httptest.NewRequest("POST", "/test", bytes.NewReader(body))
+			req.Header.Set("Content-Length", strconv.Itoa(tt.requestBodySize))
+
+			// Set request ID header
+			req.Header.Set("X-Request-ID", "test-req-id")
+
+			// Execute request
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			// Check response
+			assert.Equal(t, tt.expectedStatus, rec.Code)
+
+			if tt.expectBodyRead {
+				// Backend should have received the full body
+				responseBody, _ := io.ReadAll(rec.Body)
+				assert.Equal(t, strconv.Itoa(tt.requestBodySize), string(responseBody))
+			}
+		})
+	}
+}
+
+func TestMaxRequestBodySizeConfiguration(t *testing.T) {
+	tests := []struct {
+		name               string
+		globalCfg          *config.Config
+		serviceMaxBodySize *config.ByteSize
+		expectedLimit      int64
+	}{
+		{
+			name:          "global default is applied when not specified",
+			globalCfg:     nil,
+			expectedLimit: constants.DefaultMaxRequestBodySize,
+		},
+		{
+			name: "service inherits global setting when not specified",
+			globalCfg: &config.Config{
+				Global: config.Global{
+					MaxRequestBodySize: config.ByteSize{Value: 5 * 1024 * 1024, IsSet: true},
+				},
+			},
+			expectedLimit: 5 * 1024 * 1024,
+		},
+		{
+			name: "service can override global setting",
+			globalCfg: &config.Config{
+				Global: config.Global{
+					MaxRequestBodySize: config.ByteSize{Value: 5 * 1024 * 1024, IsSet: true},
+				},
+			},
+			serviceMaxBodySize: &config.ByteSize{Value: 20 * 1024 * 1024, IsSet: true},
+			expectedLimit:      20 * 1024 * 1024,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := &Service{
+				Config: config.Service{
+					MaxRequestBodySize: tt.serviceMaxBodySize,
+				},
+				globalConfig: tt.globalCfg,
+			}
+
+			limit := svc.getMaxRequestBodySize()
+			assert.Equal(t, tt.expectedLimit, limit)
+		})
+	}
 }

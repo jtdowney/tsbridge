@@ -475,6 +475,7 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 		"DownstreamHeaders":     true,
 		"RemoveUpstream":        true,
 		"RemoveDownstream":      true,
+		"MaxRequestBodySize":    true,
 	}
 
 	// Check that all struct fields are in our comparison

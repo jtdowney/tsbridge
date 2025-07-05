@@ -2491,3 +2491,146 @@ func TestValidateWithProvider(t *testing.T) {
 		}
 	})
 }
+
+func TestConfigByteSizeParsing(t *testing.T) {
+	tests := []struct {
+		name           string
+		tomlContent    string
+		wantGlobal     int64
+		wantService    *int64
+		wantServiceStr string
+	}{
+		{
+			name: "human readable global size",
+			tomlContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+max_request_body_size = "50MB"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+`,
+			wantGlobal: 50 * 1024 * 1024,
+		},
+		{
+			name: "service override with units",
+			tomlContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+max_request_body_size = "10MB"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+max_request_body_size = "100MB"
+`,
+			wantGlobal:     10 * 1024 * 1024,
+			wantService:    int64Ptr(100 * 1024 * 1024),
+			wantServiceStr: "100MB",
+		},
+		{
+			name: "decimal values",
+			tomlContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+max_request_body_size = "1.5GB"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+`,
+			wantGlobal: int64(1.5 * 1024 * 1024 * 1024),
+		},
+		{
+			name: "plain number still works",
+			tomlContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+max_request_body_size = 1048576
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+`,
+			wantGlobal: 1048576,
+		},
+		{
+			name: "negative value to disable",
+			tomlContent: `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+
+[global]
+max_request_body_size = "10MB"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+max_request_body_size = "-1"
+`,
+			wantGlobal:  10 * 1024 * 1024,
+			wantService: int64Ptr(-1),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create temp file
+			tmpfile, err := os.CreateTemp("", "config-*.toml")
+			require.NoError(t, err)
+			defer os.Remove(tmpfile.Name())
+
+			_, err = tmpfile.WriteString(tt.tomlContent)
+			require.NoError(t, err)
+			tmpfile.Close()
+
+			// Load config
+			cfg, err := Load(tmpfile.Name())
+			require.NoError(t, err)
+
+			// Check global value
+			assert.Equal(t, tt.wantGlobal, cfg.Global.MaxRequestBodySize.Value)
+
+			// Check service value if expected
+			if len(cfg.Services) > 0 {
+				if tt.wantService != nil {
+					require.NotNil(t, cfg.Services[0].MaxRequestBodySize)
+					assert.Equal(t, *tt.wantService, cfg.Services[0].MaxRequestBodySize.Value)
+
+					// Check string representation if provided
+					if tt.wantServiceStr != "" {
+						// Convert expected MB/GB to MiB/GiB for comparison
+						expected := strings.ReplaceAll(tt.wantServiceStr, "MB", "MiB")
+						expected = strings.ReplaceAll(expected, "GB", "GiB")
+						assert.Equal(t, expected, cfg.Services[0].MaxRequestBodySize.String())
+					}
+				} else {
+					assert.Nil(t, cfg.Services[0].MaxRequestBodySize)
+				}
+			}
+		})
+	}
+}
+
+func int64Ptr(i int64) *int64 {
+	return &i
+}

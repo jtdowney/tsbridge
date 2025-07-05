@@ -74,6 +74,11 @@ func ServiceConfigEqual(a, b Service) bool {
 		return false
 	}
 
+	// Compare ByteSize pointer field
+	if !byteSizePtrEqual(a.MaxRequestBodySize, b.MaxRequestBodySize) {
+		return false
+	}
+
 	return true
 }
 
@@ -86,6 +91,17 @@ func boolPtrEqual(a, b *bool) bool {
 		return false
 	}
 	return *a == *b
+}
+
+// byteSizePtrEqual compares two ByteSize pointers
+func byteSizePtrEqual(a, b *ByteSize) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Value == b.Value && a.IsSet == b.IsSet
 }
 
 // durationEqual compares two Duration values

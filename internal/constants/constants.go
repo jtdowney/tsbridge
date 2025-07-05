@@ -68,3 +68,9 @@ const (
 	// DefaultTLSMode is the default TLS mode for services.
 	DefaultTLSMode = "auto"
 )
+
+// Default size limits used in configuration.
+const (
+	// DefaultMaxRequestBodySize is the default maximum request body size (50 MB).
+	DefaultMaxRequestBodySize = 50 * 1024 * 1024
+)

@@ -234,6 +234,9 @@ response_header_timeout = "0s"    # Maximum time to wait for response headers af
 
 # Response streaming
 flush_interval = "0s"             # Time between response flushes (default: 0s = default buffering; -1ms = immediate flush)
+
+# Request body size limit
+max_request_body_size = "50MB"    # Maximum allowed request body size (default: 50MB; -1 = no limit)
 ```
 
 ### Whois Configuration
@@ -244,6 +247,24 @@ Settings for Tailscale identity header injection:
 [global]
 whois_timeout = "1s"     # Maximum time to wait for whois lookup
 ```
+
+### Request Body Size Limits
+
+Control the maximum size of request bodies to prevent resource exhaustion:
+
+```toml
+[global]
+# Maximum request body size - supports human-readable formats
+max_request_body_size = "50MB"    # Default: 50MB
+```
+
+Supported formats:
+- Plain bytes: `"1048576"` (1MB in bytes)
+- Human-readable: `"10MB"`, `"5.5GiB"`, `"100KB"`
+- Supported units: B, KB, MB, GB, TB (decimal) and KiB, MiB, GiB, TiB (binary)
+- Disable limit: `"-1"` (allows unlimited request body size)
+
+**Important**: Setting `-1` disables the body size limit entirely. Use with caution as this can lead to resource exhaustion from large uploads.
 
 ### Security
 
@@ -374,6 +395,9 @@ idle_timeout = "300s"
 
 # Override logging
 access_log = false
+
+# Override request body size limit
+max_request_body_size = "100MB"  # Allow larger uploads for this service
 ```
 
 ## Environment Variables
