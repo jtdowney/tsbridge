@@ -135,7 +135,14 @@ func (p *labelParser) getDuration(key string) config.Duration {
 // getByteSize gets a ByteSize pointer from labels
 func (p *labelParser) getByteSize(key string) *config.ByteSize {
 	value := p.getString(key)
-	result, _ := parseByteSize(value)
+	result, err := parseByteSize(value)
+	if err != nil {
+		slog.Warn("failed to parse ByteSize from Docker label",
+			"key", key,
+			"value", value,
+			"error", err)
+		return nil
+	}
 	return result
 }
 

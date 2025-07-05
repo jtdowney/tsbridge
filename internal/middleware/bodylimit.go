@@ -60,7 +60,7 @@ func (w *maxBytesResponseWriter) WriteHeader(statusCode int) {
 
 // Error is called by MaxBytesReader when the body exceeds the limit
 func (w *maxBytesResponseWriter) Error(msg string, code int) {
-	if msg == "http: request body too large" {
+	if code == http.StatusRequestEntityTooLarge {
 		w.oversized = true
 		// Don't write the error here, let our middleware handle it
 		return

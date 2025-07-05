@@ -286,10 +286,16 @@ func (s *Service) isAccessLogEnabled() bool {
 // It returns the service-specific override if set, otherwise the global value
 // A negative value means no limit should be applied
 func (s *Service) getMaxRequestBodySize() int64 {
-	if s.Config.MaxRequestBodySize != nil {
+	if s.Config.MaxRequestBodySize != nil && s.Config.MaxRequestBodySize.IsSet {
+		if s.Config.MaxRequestBodySize.Value == 0 {
+			return constants.DefaultMaxRequestBodySize
+		}
 		return s.Config.MaxRequestBodySize.Value
 	}
-	if s.globalConfig != nil {
+	if s.globalConfig != nil && s.globalConfig.Global.MaxRequestBodySize.IsSet {
+		if s.globalConfig.Global.MaxRequestBodySize.Value == 0 {
+			return constants.DefaultMaxRequestBodySize
+		}
 		return s.globalConfig.Global.MaxRequestBodySize.Value
 	}
 	// Default if no config available
