@@ -47,11 +47,12 @@ const (
 	DefaultMetricsReadHeaderTimeout = 5 * time.Second
 )
 
-// OAuth constants define OAuth-related configuration.
+// Auth key constants define Tailscale auth key configuration.
 const (
-	// OAuthTokenExpirySeconds is the expiry time for OAuth tokens in seconds (90 days).
-	// This is a reasonable default that balances security with user convenience.
-	OAuthTokenExpirySeconds = 90 * 24 * 60 * 60 // 90 days in seconds
+	// AuthKeyExpirySeconds is the expiry time for Tailscale auth keys in seconds (5 minutes).
+	// These auth keys are used once for service registration and then discarded,
+	// so a short expiry minimizes the security exposure window.
+	AuthKeyExpirySeconds = 5 * 60 // 5 minutes in seconds
 )
 
 // Default boolean values used in configuration.

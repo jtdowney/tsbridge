@@ -1,11 +1,14 @@
 package tailscale
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -454,6 +457,11 @@ func TestOAuthEphemeralFlag(t *testing.T) {
 			if req.Capabilities.Devices.Create.Ephemeral != tt.ephemeral {
 				t.Errorf("expected ephemeral=%v, got %v", tt.ephemeral, req.Capabilities.Devices.Create.Ephemeral)
 			}
+
+			// Verify reusable is always false for security
+			if req.Capabilities.Devices.Create.Reusable != false {
+				t.Errorf("expected reusable=false, got %v", req.Capabilities.Devices.Create.Reusable)
+			}
 		})
 	}
 }
@@ -470,4 +478,124 @@ func TestCredentialResolutionErrorTypes(t *testing.T) {
 			t.Errorf("expected config error, got %v", err)
 		}
 	})
+}
+
+func TestAuthKeyNonReusable(t *testing.T) {
+	// Track the request body to verify reusable flag
+	var requestBody []byte
+
+	// Create mock servers
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"access_token": "test-token", "token_type": "Bearer"}`))
+	}))
+	defer tokenServer.Close()
+
+	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Capture the request body
+		body, _ := io.ReadAll(r.Body)
+		requestBody = body
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"key": "test-auth-key"}`))
+	}))
+	defer apiServer.Close()
+
+	oauthConfig := &oauth2.Config{
+		ClientID:     "test-client-id",
+		ClientSecret: "test-client-secret",
+		Endpoint: oauth2.Endpoint{
+			TokenURL: tokenServer.URL + "/oauth/token",
+		},
+	}
+
+	// Generate auth key
+	_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Parse the request body to check reusable flag
+	var req authKeyRequest
+	if err := json.Unmarshal(requestBody, &req); err != nil {
+		t.Fatalf("failed to unmarshal request body: %v", err)
+	}
+
+	// Verify reusable flag is false for better security
+	if req.Capabilities.Devices.Create.Reusable != false {
+		t.Errorf("expected reusable=false for single-use auth keys, got %v", req.Capabilities.Devices.Create.Reusable)
+	}
+}
+
+func TestAuthKeyGenerationLogging(t *testing.T) {
+	// Create a buffer to capture log output
+	var logBuf bytes.Buffer
+
+	// Set up custom logger to capture output
+	originalLogger := slog.Default()
+	testLogger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+	slog.SetDefault(testLogger)
+	defer slog.SetDefault(originalLogger)
+
+	// Create a single server that handles both OAuth token and API endpoints
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/api/v2/oauth/token":
+			// Handle OAuth token request
+			token := map[string]interface{}{
+				"access_token": "mock-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			}
+			_ = json.NewEncoder(w).Encode(token)
+		case "/api/v2/tailnet/-/keys":
+			// Handle API request
+			response := map[string]interface{}{
+				"key":     "tskey-auth-mock123",
+				"created": time.Now().Format(time.RFC3339),
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		}
+	}))
+	defer server.Close()
+
+	// Set up test environment
+	t.Setenv("TSBRIDGE_OAUTH_ENDPOINT", server.URL)
+
+	// Test with OAuth credentials
+	cfg := config.Config{
+		Tailscale: config.Tailscale{
+			OAuthClientID:     "test-client-id",
+			OAuthClientSecret: "test-client-secret",
+		},
+	}
+
+	svc := config.Service{
+		Name:      "test-service",
+		Tags:      []string{"tag:api"},
+		Ephemeral: false,
+	}
+
+	// Generate auth key using OAuth
+	authKey, err := generateOrResolveAuthKey(cfg, svc)
+	if err != nil {
+		t.Fatalf("failed to generate auth key: %v", err)
+	}
+
+	if authKey != "tskey-auth-mock123" {
+		t.Errorf("expected tskey-auth-mock123, got %s", authKey)
+	}
+
+	// Check that auth key generation was logged
+	logOutput := logBuf.String()
+	if !strings.Contains(logOutput, "Generated Tailscale auth key for service registration") {
+		t.Error("expected auth key generation to be logged")
+	}
+	if !strings.Contains(logOutput, `service=test-service`) {
+		t.Error("expected service name in log")
+	}
 }

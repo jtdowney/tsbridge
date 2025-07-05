@@ -64,12 +64,12 @@ func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tag
 
 	// Create auth key request
 	req := authKeyRequest{
-		ExpirySeconds: constants.OAuthTokenExpirySeconds,
+		ExpirySeconds: constants.AuthKeyExpirySeconds,
 		Tags:          tags,
 	}
 
 	// Set capabilities
-	req.Capabilities.Devices.Create.Reusable = true
+	req.Capabilities.Devices.Create.Reusable = false
 	req.Capabilities.Devices.Create.Ephemeral = ephemeral
 	req.Capabilities.Devices.Create.Tags = tags
 	req.Capabilities.Devices.Create.PreauthorizeOnly = false
@@ -144,6 +144,12 @@ func generateOrResolveAuthKey(cfg config.Config, svc config.Service) (string, er
 			// Error from generateAuthKeyWithOAuth is already typed
 			return "", err
 		}
+
+		// Log auth key generation for audit trail
+		slog.Info("Generated Tailscale auth key for service registration",
+			"service", svc.Name,
+		)
+
 		return authKey, nil
 	}
 

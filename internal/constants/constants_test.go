@@ -52,18 +52,18 @@ func TestTimeoutConstants(t *testing.T) {
 	}
 }
 
-func TestOAuthConstants(t *testing.T) {
-	// OAuth token expiry is 90 days in seconds
-	expectedExpiry := 90 * 24 * 60 * 60
-	if OAuthTokenExpirySeconds != expectedExpiry {
-		t.Errorf("OAuthTokenExpirySeconds = %d, want %d", OAuthTokenExpirySeconds, expectedExpiry)
+func TestAuthKeyConstants(t *testing.T) {
+	// Auth key expiry is 5 minutes in seconds
+	expectedExpiry := 5 * 60
+	if AuthKeyExpirySeconds != expectedExpiry {
+		t.Errorf("AuthKeyExpirySeconds = %d, want %d", AuthKeyExpirySeconds, expectedExpiry)
 	}
 
-	// Verify it equals 90 days
-	expectedDays := 90
-	actualDays := OAuthTokenExpirySeconds / (24 * 60 * 60)
-	if actualDays != expectedDays {
-		t.Errorf("OAuthTokenExpirySeconds represents %d days, want %d days", actualDays, expectedDays)
+	// Verify it equals 5 minutes
+	expectedMinutes := 5
+	actualMinutes := AuthKeyExpirySeconds / 60
+	if actualMinutes != expectedMinutes {
+		t.Errorf("AuthKeyExpirySeconds represents %d minutes, want %d minutes", actualMinutes, expectedMinutes)
 	}
 }
 
