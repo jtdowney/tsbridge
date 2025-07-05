@@ -1067,7 +1067,7 @@ func TestValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.config.Validate()
+			err := tt.config.Validate("")
 			if tt.wantErr == "" {
 				if err != nil {
 					t.Errorf("Validate() error = %v, wantErr = nil", err)
@@ -1534,7 +1534,7 @@ func TestValidateConfigErrorTypes(t *testing.T) {
 		}
 		cfg.SetDefaults()
 
-		err := cfg.Validate()
+		err := cfg.Validate("")
 		if err == nil {
 			t.Fatal("expected validation error")
 		}
@@ -2296,7 +2296,7 @@ func TestTagsInheritance(t *testing.T) {
 		assert.Equal(t, []string{"tag:global", "tag:default"}, cfg.Services[1].Tags)
 
 		// Validate should pass
-		err := cfg.Validate()
+		err := cfg.Validate("")
 		assert.NoError(t, err)
 	})
 }
@@ -2426,17 +2426,17 @@ func TestValidateWithProvider(t *testing.T) {
 		}
 
 		// Should fail with no provider specified
-		err := cfg.Validate()
+		err := cfg.Validate("")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "at least one service must be defined")
 
 		// Should fail with file provider
-		err = cfg.ValidateWithProvider("file")
+		err = cfg.Validate("file")
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "at least one service must be defined")
 
 		// Should succeed with docker provider
-		err = cfg.ValidateWithProvider("docker")
+		err = cfg.Validate("docker")
 		assert.NoError(t, err)
 	})
 
@@ -2457,7 +2457,7 @@ func TestValidateWithProvider(t *testing.T) {
 
 		providers := []string{"", "file", "kubernetes", "consul"}
 		for _, provider := range providers {
-			err := cfg.ValidateWithProvider(provider)
+			err := cfg.Validate(provider)
 			assert.Error(t, err, "provider: %s", provider)
 			assert.Contains(t, err.Error(), "at least one service must be defined")
 		}
@@ -2486,7 +2486,7 @@ func TestValidateWithProvider(t *testing.T) {
 
 		providers := []string{"", "file", "docker", "kubernetes", "consul"}
 		for _, provider := range providers {
-			err := cfg.ValidateWithProvider(provider)
+			err := cfg.Validate(provider)
 			assert.NoError(t, err, "provider: %s", provider)
 		}
 	})

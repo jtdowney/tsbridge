@@ -260,6 +260,6 @@ func TestHeaderConfigurationValidation(t *testing.T) {
 	cfg.Normalize()
 
 	// Should validate successfully
-	err := cfg.Validate()
+	err := cfg.Validate("")
 	assert.NoError(t, err)
 }

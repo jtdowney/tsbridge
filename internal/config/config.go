@@ -315,7 +315,7 @@ func ProcessLoadedConfigWithProvider(cfg *Config, provider string) error {
 	cfg.Normalize()
 
 	// Validate the configuration with provider context
-	if err := cfg.ValidateWithProvider(provider); err != nil {
+	if err := cfg.Validate(provider); err != nil {
 		return errors.WrapProviderError(err, provider, errors.ErrTypeConfig, "validating config")
 	}
 
@@ -438,14 +438,8 @@ func (c *Config) Normalize() {
 	}
 }
 
-// Validate validates the configuration
-func (c *Config) Validate() error {
-	// Call ValidateWithProvider with empty provider for backward compatibility
-	return c.ValidateWithProvider("")
-}
-
-// ValidateWithProvider validates the configuration with provider context
-func (c *Config) ValidateWithProvider(provider string) error {
+// Validate validates the configuration with provider context
+func (c *Config) Validate(provider string) error {
 	// Validate OAuth credentials
 	if err := c.validateOAuth(); err != nil {
 		return err

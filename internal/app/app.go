@@ -59,7 +59,11 @@ func NewAppWithOptions(cfg *config.Config, opts Options) (*App, error) {
 	}
 
 	// Validate configuration
-	if err := cfg.Validate(); err != nil {
+	providerName := ""
+	if opts.Provider != nil {
+		providerName = opts.Provider.Name()
+	}
+	if err := cfg.Validate(providerName); err != nil {
 		// The error from Validate is already a validation error
 		return nil, err
 	}

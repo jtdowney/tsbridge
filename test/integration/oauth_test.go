@@ -158,7 +158,7 @@ func TestTagsRequiredWithOAuth(t *testing.T) {
 		},
 	}
 	cfg1.SetDefaults()
-	err := cfg1.Validate()
+	err := cfg1.Validate("")
 	if err == nil {
 		t.Error("expected validation error for service without tags using OAuth")
 	}
@@ -184,7 +184,7 @@ func TestTagsRequiredWithOAuth(t *testing.T) {
 	}
 	cfg2.SetDefaults()
 	cfg2.Normalize()
-	err = cfg2.Validate()
+	err = cfg2.Validate("")
 	if err != nil {
 		t.Errorf("expected validation to pass for service inheriting global tags, got: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestTagsRequiredWithOAuth(t *testing.T) {
 		},
 	}
 	cfg3.SetDefaults()
-	err = cfg3.Validate()
+	err = cfg3.Validate("")
 	if err != nil {
 		t.Errorf("expected validation to pass for service with explicit tags, got: %v", err)
 	}
@@ -234,7 +234,7 @@ func TestTagsNotRequiredWithAuthKey(t *testing.T) {
 	cfg.SetDefaults()
 
 	// Should validate successfully without tags
-	err := cfg.Validate()
+	err := cfg.Validate("")
 	if err != nil {
 		t.Errorf("service without tags should be valid when using auth key, got: %v", err)
 	}
