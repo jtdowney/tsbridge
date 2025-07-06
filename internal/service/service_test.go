@@ -2028,6 +2028,14 @@ func TestMaxRequestBodySize(t *testing.T) {
 			expectedStatus:     http.StatusOK,
 			expectBodyRead:     true,
 		},
+		{
+			name:               "explicitly set zero limit blocks all requests",
+			globalMaxBodySize:  config.ByteSize{Value: 1024, IsSet: true},
+			serviceMaxBodySize: &config.ByteSize{Value: 0, IsSet: true},
+			requestBodySize:    1,
+			expectedStatus:     http.StatusRequestEntityTooLarge,
+			expectBodyRead:     false,
+		},
 	}
 
 	for _, tt := range tests {

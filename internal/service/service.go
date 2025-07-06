@@ -287,18 +287,14 @@ func (s *Service) isAccessLogEnabled() bool {
 // A negative value means no limit should be applied
 func (s *Service) getMaxRequestBodySize() int64 {
 	if s.Config.MaxRequestBodySize != nil && s.Config.MaxRequestBodySize.IsSet {
-		if s.Config.MaxRequestBodySize.Value == 0 {
-			return constants.DefaultMaxRequestBodySize
-		}
+		// If explicitly set, use the value as-is. 0 is a valid explicit limit.
 		return s.Config.MaxRequestBodySize.Value
 	}
 	if s.globalConfig != nil && s.globalConfig.Global.MaxRequestBodySize.IsSet {
-		if s.globalConfig.Global.MaxRequestBodySize.Value == 0 {
-			return constants.DefaultMaxRequestBodySize
-		}
+		// If explicitly set globally, use the value as-is.
 		return s.globalConfig.Global.MaxRequestBodySize.Value
 	}
-	// Default if no config available
+	// Default if no config available or not explicitly set anywhere
 	return constants.DefaultMaxRequestBodySize
 }
 
