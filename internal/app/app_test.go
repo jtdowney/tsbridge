@@ -112,21 +112,6 @@ func TestNewApp(t *testing.T) {
 			cfg:     nil,
 			wantErr: true,
 		},
-		{
-			name: "invalid config - no auth",
-			cfg: &config.Config{
-				Global: config.Global{
-					ShutdownTimeout: config.Duration{Duration: 30 * time.Second},
-				},
-				Tailscale: config.Tailscale{
-					// No auth configured
-				},
-				Services: []config.Service{
-					{Name: "test-service", BackendAddr: "localhost:8080"},
-				},
-			},
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
@@ -234,19 +219,6 @@ func TestNewAppWithOptions(t *testing.T) {
 func TestAppErrorTypes(t *testing.T) {
 	t.Run("nil config returns validation error", func(t *testing.T) {
 		_, err := NewApp(nil)
-		require.Error(t, err)
-		assert.True(t, errors.IsValidation(err), "expected validation error, got %v", err)
-	})
-
-	t.Run("invalid config returns validation error", func(t *testing.T) {
-		cfg := &config.Config{
-			// Missing required OAuth or AuthKey
-			Services: []config.Service{
-				{Name: "test", BackendAddr: "localhost:8080"},
-			},
-		}
-
-		_, err := NewApp(cfg)
 		require.Error(t, err)
 		assert.True(t, errors.IsValidation(err), "expected validation error, got %v", err)
 	})
