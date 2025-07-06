@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,47 +12,16 @@ import (
 	"github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/tailscale"
+	"github.com/jtdowney/tsbridge/internal/testutil"
 	"github.com/jtdowney/tsbridge/internal/tsnet"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// createTestUnixSocket creates a temporary unix socket for testing
-func createTestUnixSocket(t *testing.T) string {
-	// Use a shorter path to avoid macOS unix socket path length limits
-	// Replace slashes with dashes to make valid filename
-	safeName := strings.ReplaceAll(t.Name(), "/", "-")
-	socketPath := "/tmp/tsb-" + safeName + ".sock"
-
-	// Remove any existing socket file
-	os.Remove(socketPath)
-
-	// Create a simple unix socket server
-	listener, err := net.Listen("unix", socketPath)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		listener.Close()
-		os.Remove(socketPath)
-	})
-
-	// Start a simple server in the background
-	go func() {
-		for {
-			conn, err := listener.Accept()
-			if err != nil {
-				return
-			}
-			conn.Close()
-		}
-	}()
-
-	return socketPath
-}
-
 // Helper function to create a valid test config
 func createTestConfig(t *testing.T) *config.Config {
-	socketPath := createTestUnixSocket(t)
+	socketPath := testutil.CreateTestUnixSocket(t)
 
 	cfg := &config.Config{
 		Tailscale: config.Tailscale{
@@ -118,7 +85,7 @@ func TestNewApp(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.cfg != nil && !tt.wantErr {
 				// Create mock tailscale server for valid configs
-				tsServer := createMockTailscaleServer(t, tt.cfg.Tailscale)
+				tsServer := testutil.CreateMockTailscaleServer(t, tt.cfg.Tailscale)
 
 				// Use NewAppWithOptions to inject the mock
 				app, err := NewAppWithOptions(tt.cfg, Options{
@@ -175,7 +142,7 @@ func TestNewAppWithOptions(t *testing.T) {
 			name: "with custom TSServer",
 			cfg:  validConfig,
 			opts: Options{
-				TSServer: createMockTailscaleServer(t, validConfig.Tailscale),
+				TSServer: testutil.CreateMockTailscaleServer(t, validConfig.Tailscale),
 			},
 			wantErr: false,
 			checkFn: func(t *testing.T, app *App) {
@@ -187,7 +154,7 @@ func TestNewAppWithOptions(t *testing.T) {
 			name: "with nil options creates new TSServer",
 			cfg:  validConfig,
 			opts: Options{
-				TSServer: createMockTailscaleServer(t, validConfig.Tailscale),
+				TSServer: testutil.CreateMockTailscaleServer(t, validConfig.Tailscale),
 			},
 			wantErr: false,
 			checkFn: func(t *testing.T, app *App) {
@@ -235,7 +202,7 @@ func TestAppStart(t *testing.T) {
 		{
 			name: "successful start and shutdown without metrics",
 			setupApp: func(t *testing.T) *App {
-				socketPath := createTestUnixSocket(t)
+				socketPath := testutil.CreateTestUnixSocket(t)
 
 				cfg := &config.Config{
 					Global: config.Global{
@@ -256,7 +223,7 @@ func TestAppStart(t *testing.T) {
 				cfg.SetDefaults()
 
 				// Create app with mock tailscale server
-				tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+				tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 				app, err := NewAppWithOptions(cfg, Options{
 					TSServer: tsServer,
 				})
@@ -269,7 +236,7 @@ func TestAppStart(t *testing.T) {
 		{
 			name: "successful start and shutdown with metrics",
 			setupApp: func(t *testing.T) *App {
-				socketPath := createTestUnixSocket(t)
+				socketPath := testutil.CreateTestUnixSocket(t)
 
 				cfg := &config.Config{
 					Global: config.Global{
@@ -291,7 +258,7 @@ func TestAppStart(t *testing.T) {
 				cfg.SetDefaults()
 
 				// Create app with mock tailscale server and metrics enabled
-				tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+				tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 				app, err := NewAppWithOptions(cfg, Options{
 					TSServer: tsServer,
 				})
@@ -328,7 +295,7 @@ func TestAppStart(t *testing.T) {
 }
 
 func TestAppStartIdempotency(t *testing.T) {
-	socketPath := createTestUnixSocket(t)
+	socketPath := testutil.CreateTestUnixSocket(t)
 
 	// Create test config
 	cfg := &config.Config{
@@ -349,7 +316,7 @@ func TestAppStartIdempotency(t *testing.T) {
 	}
 	cfg.SetDefaults()
 
-	tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+	tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 	app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 	require.NoError(t, err)
 
@@ -373,7 +340,7 @@ func TestAppStartReturnsCleanlyOnContextCancel(t *testing.T) {
 	cfg := createTestConfig(t)
 
 	// Create app
-	tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+	tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 	app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 	require.NoError(t, err)
 
@@ -405,7 +372,7 @@ func TestAppStartDoesNotBlockShutdown(t *testing.T) {
 	cfg := createTestConfig(t)
 
 	// Create app
-	tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+	tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 	app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 	require.NoError(t, err)
 
@@ -638,7 +605,7 @@ func TestAppShutdownCanBeCalledIndependently(t *testing.T) {
 	cfg := createTestConfig(t)
 
 	// Create app
-	tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+	tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 	app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 	require.NoError(t, err)
 
@@ -725,7 +692,7 @@ func TestAppPerformShutdown(t *testing.T) {
 	}
 	cfg.SetDefaults()
 
-	tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+	tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 	app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 	require.NoError(t, err)
 	// Setup metrics manually for test
@@ -783,7 +750,7 @@ func TestAppSetupMetrics(t *testing.T) {
 			cfg.SetDefaults()
 
 			// Create app using internal setup path
-			tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+			tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 			app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 			require.NoError(t, err)
 
@@ -834,7 +801,7 @@ func TestAppMetricsAddr(t *testing.T) {
 				}
 				cfg.SetDefaults()
 
-				tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+				tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 				app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 				require.NoError(t, err)
 				return app
@@ -863,7 +830,7 @@ func TestAppMetricsAddr(t *testing.T) {
 				}
 				cfg.SetDefaults()
 
-				tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+				tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 				app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 				require.NoError(t, err)
 				// Setup metrics manually for test
@@ -965,7 +932,7 @@ func TestWatchConfigChanges(t *testing.T) {
 		cfg.SetDefaults()
 
 		// Create app
-		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -1027,7 +994,7 @@ func TestWatchConfigChanges(t *testing.T) {
 		cfg.SetDefaults()
 
 		// Create app
-		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -1073,7 +1040,7 @@ func TestWatchConfigChanges(t *testing.T) {
 		cfg.SetDefaults()
 
 		// Create app
-		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -1120,7 +1087,7 @@ func TestReloadConfig(t *testing.T) {
 		cfg.SetDefaults()
 
 		// Create app
-		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -1295,7 +1262,7 @@ func TestReloadConfig(t *testing.T) {
 		cfg.SetDefaults()
 
 		// Create app
-		tsServer := createMockTailscaleServer(t, cfg.Tailscale)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		app, err := NewAppWithOptions(cfg, Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -1615,7 +1582,7 @@ func TestConfigWatchIntegration(t *testing.T) {
 		}
 
 		// Create app with the provider and mock tsnet server
-		tsServer := createMockTailscaleServer(t, config.Tailscale{AuthKey: "test-auth-key"})
+		tsServer := testutil.CreateMockTailscaleServer(t, config.Tailscale{AuthKey: "test-auth-key"})
 		app, err := NewAppWithOptions(nil, Options{Provider: mockProvider, TSServer: tsServer})
 		require.NoError(t, err)
 

@@ -14,32 +14,11 @@ import (
 	"github.com/jtdowney/tsbridge/internal/app"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/errors"
-	"github.com/jtdowney/tsbridge/internal/tailscale"
-	"github.com/jtdowney/tsbridge/internal/tsnet"
+	"github.com/jtdowney/tsbridge/internal/testutil"
 	"github.com/jtdowney/tsbridge/test/integration/helpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// createMockTailscaleServer creates a mock tailscale server for testing
-func createMockTailscaleServer(t *testing.T) *tailscale.Server {
-	t.Helper()
-
-	// Create a factory that returns mock tsnet servers
-	factory := func() tsnet.TSNetServer {
-		return tsnet.NewMockTSNetServer()
-	}
-
-	cfg := config.Tailscale{
-		AuthKey:  "test-key",
-		StateDir: t.TempDir(),
-	}
-
-	server, err := tailscale.NewServerWithFactory(cfg, factory)
-	require.NoError(t, err)
-
-	return server
-}
 
 // stripScheme removes the http:// or https:// prefix from a URL
 func stripScheme(url string) string {
@@ -88,7 +67,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		cfg := helpers.CreateTestConfig(t, "svc1", stripScheme(backend1.URL))
 
 		// Create app with mock tailscale server
-		tsServer := createMockTailscaleServer(t)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		testApp, err := app.NewAppWithOptions(cfg, app.Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -133,7 +112,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		})
 
 		// Create app with mock tailscale server
-		tsServer := createMockTailscaleServer(t)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		testApp, err := app.NewAppWithOptions(cfg, app.Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -171,7 +150,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		}
 
 		// Create app with mock tailscale server
-		tsServer := createMockTailscaleServer(t)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		testApp, err := app.NewAppWithOptions(cfg, app.Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -208,7 +187,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		cfg := helpers.CreateTestConfig(t, "svc1", stripScheme(backend1.URL))
 
 		// Create app with mock tailscale server
-		tsServer := createMockTailscaleServer(t)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		testApp, err := app.NewAppWithOptions(cfg, app.Options{TSServer: tsServer})
 		require.NoError(t, err)
 
@@ -244,7 +223,7 @@ func TestDynamicServiceManagement(t *testing.T) {
 		cfg := helpers.CreateTestConfig(t, "svc1", stripScheme(backend1.URL))
 
 		// Create app with mock tailscale server
-		tsServer := createMockTailscaleServer(t)
+		tsServer := testutil.CreateMockTailscaleServer(t, cfg.Tailscale)
 		testApp, err := app.NewAppWithOptions(cfg, app.Options{TSServer: tsServer})
 		require.NoError(t, err)
 
