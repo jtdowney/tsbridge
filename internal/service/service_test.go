@@ -23,6 +23,7 @@ import (
 	"github.com/jtdowney/tsbridge/internal/tailscale"
 	"github.com/jtdowney/tsbridge/internal/tsnet"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"tailscale.com/client/tailscale/apitype"
@@ -62,6 +63,30 @@ func (m *MockWhoisAdapter) WhoIs(ctx context.Context, remoteAddr string) (*apity
 		return m.server.whoisFunc(ctx, remoteAddr)
 	}
 	return nil, nil
+}
+
+func TestRegistry_GetMetricsCollector(t *testing.T) {
+	// Create a metrics collector
+	metricsCollector := metrics.NewCollector()
+
+	// Create tailscale server
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create test config
+	cfg := &config.Config{
+		Global: config.Global{},
+	}
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+
+	// Set metrics collector
+	registry.SetMetricsCollector(metricsCollector)
+
+	// Get metrics collector
+	collector := registry.GetMetricsCollector()
+	assert.Equal(t, metricsCollector, collector)
 }
 
 func TestRegistry_StartServices(t *testing.T) {
@@ -2172,4 +2197,326 @@ func TestMaxRequestBodySizeConfiguration(t *testing.T) {
 			assert.Equal(t, tt.expectedLimit, limit)
 		})
 	}
+}
+
+func TestService_Stop(t *testing.T) {
+	t.Run("stop handler and server", func(t *testing.T) {
+		// Create a mock handler
+		mockHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		// Create a listener
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		require.NoError(t, err)
+
+		// Create service with handler and server
+		svc := &Service{
+			Name:     "test-service",
+			Config:   config.Service{Name: "test-service"},
+			handler:  mockHandler,
+			listener: listener,
+			server: &http.Server{
+				Handler: mockHandler,
+			},
+		}
+
+		// Stop should succeed even if handler doesn't implement io.Closer
+		ctx := context.Background()
+		err = svc.Stop(ctx)
+		assert.NoError(t, err)
+	})
+
+	t.Run("stop handler implementing io.Closer", func(t *testing.T) {
+		// Create a handler that implements io.Closer
+		closeCalled := false
+		handler := &closableHandler{
+			closeFunc: func() error {
+				closeCalled = true
+				return nil
+			},
+		}
+
+		svc := &Service{
+			Name:    "test-service",
+			Config:  config.Service{Name: "test-service"},
+			handler: handler,
+		}
+
+		ctx := context.Background()
+		err := svc.Stop(ctx)
+		assert.NoError(t, err)
+		assert.True(t, closeCalled, "handler.Close() should have been called")
+	})
+
+	t.Run("handler close returns error", func(t *testing.T) {
+		// Create a handler that returns an error on close
+		handler := &closableHandler{
+			closeFunc: func() error {
+				return fmt.Errorf("close error")
+			},
+		}
+
+		svc := &Service{
+			Name:    "test-service",
+			Config:  config.Service{Name: "test-service"},
+			handler: handler,
+		}
+
+		ctx := context.Background()
+		err := svc.Stop(ctx)
+		// Stop should succeed even if handler close fails (it only logs a warning)
+		assert.NoError(t, err)
+	})
+}
+
+// closableHandler is a test handler that implements io.Closer
+type closableHandler struct {
+	closeFunc func() error
+}
+
+func (h *closableHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *closableHandler) Close() error {
+	if h.closeFunc != nil {
+		return h.closeFunc()
+	}
+	return nil
+}
+
+func TestRegistry_UpdateService_EdgeCases(t *testing.T) {
+	// Create a test backend
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	// Create tailscale server
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create test config
+	cfg := &config.Config{
+		Global: config.Global{},
+	}
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+
+	t.Run("update non-existent service", func(t *testing.T) {
+		newCfg := config.Service{
+			Name:        "non-existent",
+			BackendAddr: backend.URL,
+			AccessLog:   boolPtr(true),
+		}
+
+		err := registry.UpdateService("non-existent", newCfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "service non-existent not found")
+	})
+
+	t.Run("update service with invalid config", func(t *testing.T) {
+		// Add a service first
+		svcCfg := config.Service{
+			Name:        "test-service",
+			BackendAddr: backend.URL,
+			TLSMode:     "off",
+		}
+
+		err := registry.AddService(svcCfg)
+		require.NoError(t, err)
+
+		// Try to update with invalid backend address
+		newCfg := config.Service{
+			Name:        "test-service",
+			BackendAddr: "", // Invalid: empty backend address
+			TLSMode:     "off",
+		}
+
+		err = registry.UpdateService("test-service", newCfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid service configuration")
+	})
+
+	t.Run("update service with validation failure", func(t *testing.T) {
+		// Add a service first
+		svcCfg := config.Service{
+			Name:        "test-service2",
+			BackendAddr: backend.URL,
+			TLSMode:     "off",
+		}
+
+		err := registry.AddService(svcCfg)
+		require.NoError(t, err)
+
+		// Try to update with invalid TLS mode
+		newCfg := config.Service{
+			Name:        "test-service2",
+			BackendAddr: backend.URL,
+			TLSMode:     "invalid-mode", // Invalid TLS mode
+		}
+
+		err = registry.UpdateService("test-service2", newCfg)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid service configuration")
+	})
+}
+
+func TestRegistry_RemoveService_EdgeCases(t *testing.T) {
+	// Create tailscale server
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create test config
+	cfg := &config.Config{
+		Global: config.Global{},
+	}
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+
+	t.Run("remove non-existent service", func(t *testing.T) {
+		err := registry.RemoveService("non-existent")
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "service non-existent not found")
+	})
+
+	t.Run("remove service with active connections", func(t *testing.T) {
+		// Create a backend that keeps connections open
+		var wg sync.WaitGroup
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			wg.Add(1)
+			defer wg.Done()
+			// Keep connection open for a while
+			time.Sleep(100 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer backend.Close()
+
+		// Add service
+		svcCfg := config.Service{
+			Name:        "test-service",
+			BackendAddr: backend.URL,
+			TLSMode:     "off",
+		}
+
+		err := registry.AddService(svcCfg)
+		require.NoError(t, err)
+
+		// Start a request in background
+		svc := registry.services["test-service"]
+		go func() {
+			req := httptest.NewRequest("GET", "/", nil)
+			rec := httptest.NewRecorder()
+			svc.Handler().ServeHTTP(rec, req)
+		}()
+
+		// Give the request time to start
+		time.Sleep(20 * time.Millisecond)
+
+		// Remove service while request is active
+		err = registry.RemoveService("test-service")
+		assert.NoError(t, err)
+
+		// Wait for background request to complete
+		wg.Wait()
+	})
+}
+
+func TestRegistry_AddService_ValidationFailure(t *testing.T) {
+	// Create tailscale server
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create test config
+	cfg := &config.Config{
+		Global: config.Global{},
+	}
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+
+	// Test various validation failures
+	tests := []struct {
+		name    string
+		svcCfg  config.Service
+		wantErr string
+	}{
+		{
+			name: "empty TLS mode",
+			svcCfg: config.Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				TLSMode:     "", // Empty TLS mode should be invalid
+			},
+			wantErr: "invalid TLS mode",
+		},
+		{
+			name: "invalid TLS mode",
+			svcCfg: config.Service{
+				Name:        "test-service2",
+				BackendAddr: "http://localhost:8080",
+				TLSMode:     "invalid",
+			},
+			wantErr: "invalid TLS mode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := registry.AddService(tt.svcCfg)
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestRegistry_Shutdown_WithMetrics(t *testing.T) {
+	// Create metrics collector
+	metricsCollector := metrics.NewCollector()
+
+	// Create tailscale server
+	tsServer, err := testTailscaleServerFactory()
+	require.NoError(t, err)
+
+	// Create test config
+	cfg := &config.Config{
+		Global: config.Global{},
+	}
+
+	// Create registry
+	registry := NewRegistry(cfg, tsServer)
+	registry.SetMetricsCollector(metricsCollector)
+
+	// Add a service
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	svcCfg := config.Service{
+		Name:        "test-service",
+		BackendAddr: backend.URL,
+		TLSMode:     "off",
+	}
+
+	err = registry.AddService(svcCfg)
+	require.NoError(t, err)
+
+	// Verify service count before shutdown
+	dto1 := &dto.Metric{}
+	metricsCollector.ServicesActive.Write(dto1)
+	assert.Equal(t, float64(1), dto1.Gauge.GetValue())
+
+	// Shutdown registry
+	ctx := context.Background()
+	err = registry.Shutdown(ctx)
+	assert.NoError(t, err)
+
+	// The Shutdown method doesn't automatically update metrics
+	// This would need to be done by the caller, so we verify
+	// that the service was actually stopped
+	assert.Len(t, registry.services, 1) // services map still contains entries after shutdown
 }

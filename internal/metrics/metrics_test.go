@@ -850,3 +850,230 @@ func TestMiddlewareFlushSupport(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "chunk1chunk2", rec.Body.String())
 }
+
+func TestRecordServiceOperation(t *testing.T) {
+	collector := NewCollector()
+	reg := prometheus.NewRegistry()
+	err := collector.Register(reg)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		operation string
+		success   bool
+		duration  time.Duration
+	}{
+		{
+			name:      "successful operation",
+			operation: "start",
+			success:   true,
+			duration:  100 * time.Millisecond,
+		},
+		{
+			name:      "failed operation",
+			operation: "stop",
+			success:   false,
+			duration:  50 * time.Millisecond,
+		},
+		{
+			name:      "slow operation",
+			operation: "reload",
+			success:   true,
+			duration:  2 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Record the operation
+			collector.RecordServiceOperation(tt.operation, tt.success, tt.duration)
+
+			// Gather metrics
+			mfs, err := reg.Gather()
+			require.NoError(t, err)
+
+			// Verify metrics were recorded
+			var foundCounter, foundHistogram bool
+			for _, mf := range mfs {
+				switch mf.GetName() {
+				case "tsbridge_service_operations_total":
+					foundCounter = true
+					metrics := mf.GetMetric()
+					assert.Greater(t, len(metrics), 0)
+				case "tsbridge_service_operation_duration_seconds":
+					foundHistogram = true
+					metrics := mf.GetMetric()
+					assert.Greater(t, len(metrics), 0)
+				}
+			}
+			assert.True(t, foundCounter, "service operations counter not found")
+			assert.True(t, foundHistogram, "service operation duration histogram not found")
+		})
+	}
+}
+
+func TestSetActiveServices(t *testing.T) {
+	collector := NewCollector()
+	reg := prometheus.NewRegistry()
+	err := collector.Register(reg)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		count    int
+		expected float64
+	}{
+		{"no services", 0, 0},
+		{"single service", 1, 1},
+		{"multiple services", 5, 5},
+		{"update count", 3, 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			collector.SetActiveServices(tt.count)
+			assert.Equal(t, tt.expected, promtestutil.ToFloat64(collector.ServicesActive))
+		})
+	}
+}
+
+func TestRecordConfigReload(t *testing.T) {
+	collector := NewCollector()
+	reg := prometheus.NewRegistry()
+	err := collector.Register(reg)
+	require.NoError(t, err)
+
+	tests := []struct {
+		name     string
+		success  bool
+		duration time.Duration
+		expected string
+	}{
+		{
+			name:     "successful reload",
+			success:  true,
+			duration: 100 * time.Millisecond,
+			expected: "success",
+		},
+		{
+			name:     "failed reload - validation error",
+			success:  false,
+			duration: 50 * time.Millisecond,
+			expected: "failure",
+		},
+		{
+			name:     "successful slow reload",
+			success:  true,
+			duration: 1 * time.Second,
+			expected: "success",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Get initial count
+			initialSuccess := promtestutil.ToFloat64(collector.ConfigReloads.WithLabelValues("success"))
+			initialFailure := promtestutil.ToFloat64(collector.ConfigReloads.WithLabelValues("failure"))
+
+			// Record the reload
+			collector.RecordConfigReload(tt.success, tt.duration)
+
+			// Check the appropriate counter was incremented
+			if tt.success {
+				newCount := promtestutil.ToFloat64(collector.ConfigReloads.WithLabelValues("success"))
+				assert.Equal(t, initialSuccess+1, newCount)
+			} else {
+				newCount := promtestutil.ToFloat64(collector.ConfigReloads.WithLabelValues("failure"))
+				assert.Equal(t, initialFailure+1, newCount)
+			}
+
+			// Verify duration was recorded
+			mfs, err := reg.Gather()
+			require.NoError(t, err)
+
+			var foundDuration bool
+			for _, mf := range mfs {
+				if mf.GetName() == "tsbridge_config_reload_duration_seconds" {
+					foundDuration = true
+					metrics := mf.GetMetric()
+					assert.Greater(t, len(metrics), 0)
+				}
+			}
+			assert.True(t, foundDuration, "config reload duration histogram not found")
+		})
+	}
+}
+
+func TestResponseWriterMetrics(t *testing.T) {
+	t.Run("Write returns error when underlying writer fails", func(t *testing.T) {
+		// Create a failing writer
+		failWriter := &failingWriter{shouldFail: true}
+		rw := &responseWriter{
+			ResponseWriter: failWriter,
+			statusCode:     http.StatusOK,
+		}
+
+		// Write should return error
+		n, err := rw.Write([]byte("test"))
+		assert.Error(t, err)
+		assert.Equal(t, 0, n)
+	})
+
+	t.Run("Hijack returns error when not supported", func(t *testing.T) {
+		// Create a response writer that doesn't support hijacking
+		rec := httptest.NewRecorder()
+		rw := &responseWriter{
+			ResponseWriter: rec,
+			statusCode:     http.StatusOK,
+		}
+
+		// Hijack should return error
+		_, _, err := rw.Hijack()
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "ResponseWriter does not support hijacking")
+	})
+}
+
+func TestServerAddrBeforeStart(t *testing.T) {
+	// Create server but don't start it
+	server := NewServer(":0", prometheus.NewRegistry(), 5*time.Second)
+
+	// Addr should return empty string before start
+	addr := server.Addr()
+	assert.Empty(t, addr)
+}
+
+func TestServerStartContextCancelled(t *testing.T) {
+	// Create server
+	server := NewServer(":0", prometheus.NewRegistry(), 5*time.Second)
+
+	// Create cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Start should handle cancelled context gracefully
+	err := server.Start(ctx)
+	assert.NoError(t, err) // Start doesn't immediately check context
+
+	// Shutdown should work
+	err = server.Shutdown(context.Background())
+	assert.NoError(t, err)
+}
+
+// failingWriter is a test writer that fails on Write
+type failingWriter struct {
+	shouldFail bool
+}
+
+func (fw *failingWriter) Header() http.Header {
+	return http.Header{}
+}
+
+func (fw *failingWriter) Write(b []byte) (int, error) {
+	if fw.shouldFail {
+		return 0, fmt.Errorf("write failed")
+	}
+	return len(b), nil
+}
+
+func (fw *failingWriter) WriteHeader(statusCode int) {}

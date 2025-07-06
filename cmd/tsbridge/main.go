@@ -35,43 +35,67 @@ func registerProviders() {
 	}))
 }
 
-func main() {
-	var (
-		configPath     = flag.String("config", "", "Path to TOML configuration file (required for file provider)")
-		provider       = flag.String("provider", "file", "Configuration provider (file or docker)")
-		dockerEndpoint = flag.String("docker-socket", "", "Docker socket endpoint (default: unix:///var/run/docker.sock)")
-		labelPrefix    = flag.String("docker-label-prefix", "tsbridge", "Docker label prefix for configuration")
-		verbose        = flag.Bool("verbose", false, "Enable debug logging")
-		help           = flag.Bool("help", false, "Show usage information")
-		versionFlag    = flag.Bool("version", false, "Show version information")
-	)
+// cliArgs holds parsed command-line arguments
+type cliArgs struct {
+	configPath     string
+	provider       string
+	dockerEndpoint string
+	labelPrefix    string
+	verbose        bool
+	help           bool
+	version        bool
+}
 
-	// Override flag.Usage to output to stdout instead of stderr
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stdout, "Usage of %s:\n", os.Args[0])
-		flag.PrintDefaults()
+// parseCLIArgs parses command-line arguments and returns the parsed values
+func parseCLIArgs(args []string) (*cliArgs, error) {
+	fs := flag.NewFlagSet("tsbridge", flag.ContinueOnError)
+
+	result := &cliArgs{}
+	fs.StringVar(&result.configPath, "config", "", "Path to TOML configuration file (required for file provider)")
+	fs.StringVar(&result.provider, "provider", "file", "Configuration provider (file or docker)")
+	fs.StringVar(&result.dockerEndpoint, "docker-socket", "", "Docker socket endpoint (default: unix:///var/run/docker.sock)")
+	fs.StringVar(&result.labelPrefix, "docker-label-prefix", "tsbridge", "Docker label prefix for configuration")
+	fs.BoolVar(&result.verbose, "verbose", false, "Enable debug logging")
+	fs.BoolVar(&result.help, "help", false, "Show usage information")
+	fs.BoolVar(&result.version, "version", false, "Show version information")
+
+	// Create usage function
+	usage := func() {
+		fmt.Fprintf(os.Stdout, "Usage of %s:\n", fs.Name())
+		fs.PrintDefaults()
+	}
+	fs.Usage = usage
+
+	if err := fs.Parse(args); err != nil {
+		return nil, err
 	}
 
-	flag.Parse()
+	// Set the global flag.Usage to match
+	flag.Usage = usage
 
+	return result, nil
+}
+
+// run executes the main application logic
+func run(args *cliArgs) error {
 	// Register all available providers
 	registerProviders()
 
-	if *help {
+	if args.help {
 		flag.Usage()
-		exitFunc(0)
+		return nil
 	}
 
-	if *versionFlag {
+	if args.version {
 		fmt.Printf("tsbridge version: %s\n", version)
-		exitFunc(0)
+		return nil
 	}
 
 	// Configure logging
 	opts := &slog.HandlerOptions{
 		Level: slog.LevelInfo,
 	}
-	if *verbose {
+	if args.verbose {
 		opts.Level = slog.LevelDebug
 	}
 	handler := slog.NewTextHandler(os.Stdout, opts)
@@ -79,23 +103,21 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Validate provider-specific flags
-	if *provider == "file" && *configPath == "" {
-		slog.Error("-config flag is required for file provider")
-		exitFunc(1)
+	if args.provider == "file" && args.configPath == "" {
+		return fmt.Errorf("-config flag is required for file provider")
 	}
 
-	slog.Debug("starting tsbridge", "version", version, "provider", *provider)
+	slog.Debug("starting tsbridge", "version", version, "provider", args.provider)
 
 	// Create configuration provider
 	dockerOpts := config.DockerProviderOptions{
-		DockerEndpoint: *dockerEndpoint,
-		LabelPrefix:    *labelPrefix,
+		DockerEndpoint: args.dockerEndpoint,
+		LabelPrefix:    args.labelPrefix,
 	}
 
-	configProvider, err := config.NewProvider(*provider, *configPath, dockerOpts)
+	configProvider, err := config.NewProvider(args.provider, args.configPath, dockerOpts)
 	if err != nil {
-		slog.Error("failed to create configuration provider", "error", err)
-		exitFunc(1)
+		return fmt.Errorf("failed to create configuration provider: %w", err)
 	}
 
 	slog.Debug("loading configuration", "provider", configProvider.Name())
@@ -106,39 +128,46 @@ func main() {
 		Provider: configProvider,
 	})
 	if err != nil {
-		slog.Error("failed to create application", "error", err)
-		exitFunc(1)
+		return fmt.Errorf("failed to create application: %w", err)
 	}
 
 	// Start the application
 	ctx := context.Background()
 	if err := application.Start(ctx); err != nil {
-		slog.Error("failed to start application", "error", err)
-		exitFunc(1)
+		return fmt.Errorf("failed to start application: %w", err)
 	}
 
 	// Setup signal handling for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
-	// Single goroutine for signal listening
-	go func() {
-		sig := <-sigCh
-		slog.Info("received signal, shutting down", "signal", sig)
+	// Wait for signal
+	sig := <-sigCh
+	slog.Info("received signal, shutting down", "signal", sig)
 
-		// Create shutdown context with timeout
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), constants.DefaultShutdownTimeout)
-		defer cancel()
+	// Create shutdown context with timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), constants.DefaultShutdownTimeout)
+	defer cancel()
 
-		// Call shutdown
-		if err := application.Shutdown(shutdownCtx); err != nil {
-			slog.Error("shutdown error", "error", err)
-			exitFunc(1)
-		}
+	// Call shutdown
+	if err := application.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown error: %w", err)
+	}
 
-		exitFunc(0)
-	}()
+	return nil
+}
 
-	// Block forever (until signal handler exits)
-	select {}
+func main() {
+	args, err := parseCLIArgs(os.Args[1:])
+	if err != nil {
+		// Flag parsing errors already printed by flag package
+		exitFunc(2)
+	}
+
+	if err := run(args); err != nil {
+		slog.Error("error", "error", err)
+		exitFunc(1)
+	}
+
+	exitFunc(0)
 }
