@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"flag"
 	"fmt"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -18,7 +19,7 @@ import (
 	"time"
 )
 
-// Test that signal handling is simple and clean
+// TestSignalHandlingSimplicity verifies signal handling follows the expected pattern
 func TestSignalHandlingSimplicity(t *testing.T) {
 	// Create a context that can be cancelled
 	ctx, cancel := context.WithCancel(context.Background())
@@ -191,6 +192,114 @@ func TestRegisterProviders(t *testing.T) {
 	}
 }
 
+// TestFlagParsing tests flag parsing behavior
+func TestFlagParsing(t *testing.T) {
+	tests := []struct {
+		name           string
+		args           []string
+		wantProvider   string
+		wantConfig     string
+		wantDocker     string
+		wantLabel      string
+		wantVerbose    bool
+		wantHelp       bool
+		wantVersion    bool
+		wantParseError bool
+	}{
+		{
+			name:         "default values",
+			args:         []string{},
+			wantProvider: "file",
+			wantLabel:    "tsbridge",
+		},
+		{
+			name:         "file provider with config",
+			args:         []string{"-provider", "file", "-config", "/path/to/config.toml"},
+			wantProvider: "file",
+			wantConfig:   "/path/to/config.toml",
+			wantLabel:    "tsbridge",
+		},
+		{
+			name:         "docker provider with custom options",
+			args:         []string{"-provider", "docker", "-docker-socket", "tcp://localhost:2375", "-docker-label-prefix", "custom"},
+			wantProvider: "docker",
+			wantDocker:   "tcp://localhost:2375",
+			wantLabel:    "custom",
+		},
+		{
+			name:         "verbose flag",
+			args:         []string{"-verbose"},
+			wantVerbose:  true,
+			wantProvider: "file",
+			wantLabel:    "tsbridge",
+		},
+		{
+			name:         "help flag",
+			args:         []string{"-help"},
+			wantHelp:     true,
+			wantProvider: "file",
+			wantLabel:    "tsbridge",
+		},
+		{
+			name:         "version flag",
+			args:         []string{"-version"},
+			wantVersion:  true,
+			wantProvider: "file",
+			wantLabel:    "tsbridge",
+		},
+		{
+			name:           "unknown flag",
+			args:           []string{"-unknown"},
+			wantParseError: true,
+		},
+		{
+			name:         "all flags combined",
+			args:         []string{"-provider", "docker", "-config", "ignored.toml", "-docker-socket", "unix:///var/run/docker.sock", "-docker-label-prefix", "prod", "-verbose"},
+			wantProvider: "docker",
+			wantConfig:   "ignored.toml",
+			wantDocker:   "unix:///var/run/docker.sock",
+			wantLabel:    "prod",
+			wantVerbose:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a new flag set for each test
+			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+
+			// Define flags matching main.go
+			provider := fs.String("provider", "file", "Configuration provider")
+			configPath := fs.String("config", "", "Path to TOML configuration file")
+			dockerEndpoint := fs.String("docker-socket", "", "Docker socket endpoint")
+			labelPrefix := fs.String("docker-label-prefix", "tsbridge", "Docker label prefix")
+			verbose := fs.Bool("verbose", false, "Enable debug logging")
+			help := fs.Bool("help", false, "Show usage information")
+			versionFlag := fs.Bool("version", false, "Show version information")
+
+			// Parse flags
+			err := fs.Parse(tt.args)
+
+			if tt.wantParseError {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+
+			// Verify parsed values
+			assert.Equal(t, tt.wantProvider, *provider)
+			assert.Equal(t, tt.wantConfig, *configPath)
+			assert.Equal(t, tt.wantDocker, *dockerEndpoint)
+			assert.Equal(t, tt.wantLabel, *labelPrefix)
+			assert.Equal(t, tt.wantVerbose, *verbose)
+			assert.Equal(t, tt.wantHelp, *help)
+			assert.Equal(t, tt.wantVersion, *versionFlag)
+		})
+	}
+}
+
+// TestMainIntegration tests the main binary with various arguments
 func TestMainIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -216,7 +325,7 @@ func TestMainIntegration(t *testing.T) {
 			name:       "help flag shows usage",
 			args:       []string{"-help"},
 			wantExit:   0,
-			wantOutput: []string{"Usage of", "-config", "-provider", "-docker-socket"},
+			wantOutput: []string{"Usage of", "-config", "-provider", "-docker-socket", "-docker-label-prefix", "-verbose", "-help", "-version"},
 			timeout:    2 * time.Second,
 		},
 		{
@@ -248,10 +357,24 @@ func TestMainIntegration(t *testing.T) {
 			timeout:  2 * time.Second,
 		},
 		{
-			name:       "verbose logging",
+			name:       "verbose logging with help",
 			args:       []string{"-verbose", "-help"},
 			wantExit:   0,
 			wantOutput: []string{"Usage of"},
+			timeout:    2 * time.Second,
+		},
+		{
+			name:     "unknown flag",
+			args:     []string{"-unknown-flag"},
+			wantExit: 2,
+			wantErr:  []string{"flag provided but not defined"},
+			timeout:  2 * time.Second,
+		},
+		{
+			name:       "multiple flags order independence",
+			args:       []string{"-version", "-verbose"},
+			wantExit:   0,
+			wantOutput: []string{"tsbridge version:"},
 			timeout:    2 * time.Second,
 		},
 	}
@@ -291,6 +414,7 @@ func TestMainIntegration(t *testing.T) {
 	}
 }
 
+// TestMainWithValidConfig tests main with a valid configuration file
 func TestMainWithValidConfig(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -346,6 +470,7 @@ backend_addr = "http://localhost:8080"
 	assert.Contains(t, output, "creating application")
 }
 
+// TestMainSignalHandling tests signal handling behavior
 func TestMainSignalHandling(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -378,7 +503,7 @@ backend_addr = "http://localhost:8080"
 		signal os.Signal
 	}{
 		{"SIGINT", os.Interrupt},
-		{"SIGTERM", os.Kill}, // os.Kill is SIGTERM on Unix
+		{"SIGTERM", syscall.SIGTERM},
 	}
 
 	for _, sig := range signals {
@@ -404,10 +529,11 @@ backend_addr = "http://localhost:8080"
 			// Wait for exit
 			waitErr := cmd.Wait()
 
-			// For SIGTERM (os.Kill), the process might exit with non-zero
-			if sig.signal == os.Kill {
-				// Just check that it exited
-				assert.NotNil(t, waitErr)
+			// Check exit code
+			if exitErr, ok := waitErr.(*exec.ExitError); ok {
+				// Should exit cleanly (0) or with error (1)
+				exitCode := exitErr.ExitCode()
+				assert.True(t, exitCode == 0 || exitCode == 1, "Expected exit code 0 or 1, got %d", exitCode)
 			}
 
 			output := stdout.String() + stderr.String()
@@ -419,6 +545,7 @@ backend_addr = "http://localhost:8080"
 	}
 }
 
+// TestMainDockerProvider tests docker provider configuration
 func TestMainDockerProvider(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -458,4 +585,87 @@ func TestMainDockerProvider(t *testing.T) {
 	// Check that docker provider was selected
 	output := stdout.String() + stderr.String()
 	assert.Contains(t, output, "provider=docker")
+}
+
+// TestMainInvalidConfig tests behavior with invalid configuration
+func TestMainInvalidConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	tests := []struct {
+		name    string
+		config  string
+		wantErr string
+	}{
+		{
+			name: "invalid TOML syntax",
+			config: `
+[tailscale
+auth_key = "test-key"
+`,
+			wantErr: "failed to create application",
+		},
+		{
+			name: "missing required fields",
+			config: `
+[tailscale]
+# Missing auth credentials
+
+[[services]]
+name = "test"
+# Missing backend_addr
+`,
+			wantErr: "failed to create application",
+		},
+		{
+			name: "invalid service configuration",
+			config: `
+[tailscale]
+auth_key = "test-key"
+
+[[services]]
+name = ""
+backend_addr = "localhost:8080"
+`,
+			wantErr: "failed to create application",
+		},
+	}
+
+	// Build the binary once
+	binPath := filepath.Join(t.TempDir(), "tsbridge-test")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = filepath.Dir(".")
+	err := cmd.Run()
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create config file
+			configPath := filepath.Join(t.TempDir(), "config.toml")
+			err := os.WriteFile(configPath, []byte(tt.config), 0644)
+			require.NoError(t, err)
+
+			// Run the binary
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			cmd := exec.CommandContext(ctx, binPath, "-config", configPath)
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err = cmd.Run()
+
+			// Should exit with error
+			require.Error(t, err)
+			exitErr, ok := err.(*exec.ExitError)
+			require.True(t, ok)
+			assert.Equal(t, 1, exitErr.ExitCode())
+
+			// Check error message
+			output := stdout.String() + stderr.String()
+			assert.Contains(t, output, tt.wantErr)
+		})
+	}
 }
