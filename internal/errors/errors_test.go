@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestErrorTypes(t *testing.T) {
@@ -754,4 +756,354 @@ func containsSubstring(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+func TestNewReloadError(t *testing.T) {
+	err := NewReloadError()
+
+	assert.NotNil(t, err)
+	assert.NotNil(t, err.AddErrors)
+	assert.NotNil(t, err.RemoveErrors)
+	assert.NotNil(t, err.UpdateErrors)
+	assert.Equal(t, 0, err.Successful)
+	assert.Equal(t, 0, err.Failed)
+	assert.Empty(t, err.AddErrors)
+	assert.Empty(t, err.RemoveErrors)
+	assert.Empty(t, err.UpdateErrors)
+}
+
+func TestReloadError_RecordErrors(t *testing.T) {
+	t.Run("record add error", func(t *testing.T) {
+		err := NewReloadError()
+		testErr := errors.New("failed to add service")
+
+		err.RecordAddError("service1", testErr)
+
+		assert.Equal(t, 1, err.Failed)
+		assert.Equal(t, 0, err.Successful)
+		assert.Len(t, err.AddErrors, 1)
+		assert.Equal(t, testErr, err.AddErrors["service1"])
+	})
+
+	t.Run("record remove error", func(t *testing.T) {
+		err := NewReloadError()
+		testErr := errors.New("failed to remove service")
+
+		err.RecordRemoveError("service2", testErr)
+
+		assert.Equal(t, 1, err.Failed)
+		assert.Equal(t, 0, err.Successful)
+		assert.Len(t, err.RemoveErrors, 1)
+		assert.Equal(t, testErr, err.RemoveErrors["service2"])
+	})
+
+	t.Run("record update error", func(t *testing.T) {
+		err := NewReloadError()
+		testErr := errors.New("failed to update service")
+
+		err.RecordUpdateError("service3", testErr)
+
+		assert.Equal(t, 1, err.Failed)
+		assert.Equal(t, 0, err.Successful)
+		assert.Len(t, err.UpdateErrors, 1)
+		assert.Equal(t, testErr, err.UpdateErrors["service3"])
+	})
+
+	t.Run("record multiple errors", func(t *testing.T) {
+		err := NewReloadError()
+
+		err.RecordAddError("svc1", errors.New("add error"))
+		err.RecordRemoveError("svc2", errors.New("remove error"))
+		err.RecordUpdateError("svc3", errors.New("update error"))
+		err.RecordAddError("svc4", errors.New("another add error"))
+
+		assert.Equal(t, 4, err.Failed)
+		assert.Equal(t, 0, err.Successful)
+		assert.Len(t, err.AddErrors, 2)
+		assert.Len(t, err.RemoveErrors, 1)
+		assert.Len(t, err.UpdateErrors, 1)
+	})
+}
+
+func TestReloadError_RecordSuccess(t *testing.T) {
+	err := NewReloadError()
+
+	err.RecordSuccess()
+	err.RecordSuccess()
+	err.RecordSuccess()
+
+	assert.Equal(t, 3, err.Successful)
+	assert.Equal(t, 0, err.Failed)
+}
+
+func TestReloadError_HasErrors(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(*ReloadError)
+		expected bool
+	}{
+		{
+			name:     "no errors",
+			setup:    func(e *ReloadError) {},
+			expected: false,
+		},
+		{
+			name: "only successes",
+			setup: func(e *ReloadError) {
+				e.RecordSuccess()
+				e.RecordSuccess()
+			},
+			expected: false,
+		},
+		{
+			name: "has add error",
+			setup: func(e *ReloadError) {
+				e.RecordAddError("svc", errors.New("error"))
+			},
+			expected: true,
+		},
+		{
+			name: "has remove error",
+			setup: func(e *ReloadError) {
+				e.RecordRemoveError("svc", errors.New("error"))
+			},
+			expected: true,
+		},
+		{
+			name: "has update error",
+			setup: func(e *ReloadError) {
+				e.RecordUpdateError("svc", errors.New("error"))
+			},
+			expected: true,
+		},
+		{
+			name: "mixed success and failure",
+			setup: func(e *ReloadError) {
+				e.RecordSuccess()
+				e.RecordAddError("svc", errors.New("error"))
+				e.RecordSuccess()
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewReloadError()
+			tt.setup(err)
+			assert.Equal(t, tt.expected, err.HasErrors())
+		})
+	}
+}
+
+func TestReloadError_AllFailed(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(*ReloadError)
+		expected bool
+	}{
+		{
+			name:     "no operations",
+			setup:    func(e *ReloadError) {},
+			expected: false,
+		},
+		{
+			name: "all succeeded",
+			setup: func(e *ReloadError) {
+				e.RecordSuccess()
+				e.RecordSuccess()
+			},
+			expected: false,
+		},
+		{
+			name: "all failed",
+			setup: func(e *ReloadError) {
+				e.RecordAddError("svc1", errors.New("error"))
+				e.RecordRemoveError("svc2", errors.New("error"))
+			},
+			expected: true,
+		},
+		{
+			name: "mixed success and failure",
+			setup: func(e *ReloadError) {
+				e.RecordSuccess()
+				e.RecordAddError("svc", errors.New("error"))
+			},
+			expected: false,
+		},
+		{
+			name: "single failure",
+			setup: func(e *ReloadError) {
+				e.RecordUpdateError("svc", errors.New("error"))
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NewReloadError()
+			tt.setup(err)
+			assert.Equal(t, tt.expected, err.AllFailed())
+		})
+	}
+}
+
+func TestReloadError_ToError(t *testing.T) {
+	t.Run("no errors returns nil", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordSuccess()
+		err.RecordSuccess()
+
+		assert.Nil(t, err.ToError())
+	})
+
+	t.Run("with errors returns self", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordAddError("svc", errors.New("error"))
+
+		result := err.ToError()
+		assert.NotNil(t, result)
+		assert.Equal(t, err, result)
+	})
+}
+
+func TestReloadError_Error(t *testing.T) {
+	t.Run("successful reload", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordSuccess()
+		err.RecordSuccess()
+
+		assert.Equal(t, "configuration reload completed successfully", err.Error())
+	})
+
+	t.Run("single add error", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordAddError("web", errors.New("port already in use"))
+		err.RecordSuccess()
+
+		msg := err.Error()
+		assert.Contains(t, msg, "configuration reload partially failed (1 errors, 1 successful)")
+		assert.Contains(t, msg, "Failed to add services:")
+		assert.Contains(t, msg, "web: port already in use")
+	})
+
+	t.Run("single remove error", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordRemoveError("api", errors.New("service not found"))
+
+		msg := err.Error()
+		assert.Contains(t, msg, "configuration reload partially failed (1 errors, 0 successful)")
+		assert.Contains(t, msg, "Failed to remove services:")
+		assert.Contains(t, msg, "api: service not found")
+	})
+
+	t.Run("single update error", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordUpdateError("db", errors.New("invalid config"))
+		err.RecordSuccess()
+		err.RecordSuccess()
+
+		msg := err.Error()
+		assert.Contains(t, msg, "configuration reload partially failed (1 errors, 2 successful)")
+		assert.Contains(t, msg, "Failed to update services:")
+		assert.Contains(t, msg, "db: invalid config")
+	})
+
+	t.Run("multiple error types", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordRemoveError("old-api", errors.New("cleanup failed"))
+		err.RecordUpdateError("web", errors.New("port conflict"))
+		err.RecordAddError("new-api", errors.New("backend unreachable"))
+		err.RecordAddError("metrics", errors.New("invalid address"))
+		err.RecordSuccess()
+
+		msg := err.Error()
+
+		// Check header
+		assert.Contains(t, msg, "configuration reload partially failed (4 errors, 1 successful)")
+
+		// Check sections appear in correct order
+		removeIdx := strings.Index(msg, "Failed to remove services:")
+		updateIdx := strings.Index(msg, "Failed to update services:")
+		addIdx := strings.Index(msg, "Failed to add services:")
+
+		assert.True(t, removeIdx > 0, "Should contain remove section")
+		assert.True(t, updateIdx > removeIdx, "Update section should come after remove")
+		assert.True(t, addIdx > updateIdx, "Add section should come after update")
+
+		// Check all errors are included
+		assert.Contains(t, msg, "old-api: cleanup failed")
+		assert.Contains(t, msg, "web: port conflict")
+		assert.Contains(t, msg, "new-api: backend unreachable")
+		assert.Contains(t, msg, "metrics: invalid address")
+	})
+
+	t.Run("all operations failed", func(t *testing.T) {
+		err := NewReloadError()
+		err.RecordAddError("svc1", errors.New("error1"))
+		err.RecordRemoveError("svc2", errors.New("error2"))
+		err.RecordUpdateError("svc3", errors.New("error3"))
+
+		msg := err.Error()
+		assert.Contains(t, msg, "configuration reload partially failed (3 errors, 0 successful)")
+		assert.True(t, err.AllFailed())
+	})
+}
+
+func TestReloadError_ComplexScenario(t *testing.T) {
+	// Simulate a complex reload scenario
+	err := NewReloadError()
+
+	// Some services removed successfully
+	err.RecordSuccess() // removed svc1
+	err.RecordSuccess() // removed svc2
+
+	// One removal failed
+	err.RecordRemoveError("legacy-api", errors.New("timeout during shutdown"))
+
+	// Some updates succeeded
+	err.RecordSuccess() // updated web
+	err.RecordSuccess() // updated api
+
+	// Some updates failed
+	err.RecordUpdateError("database", errors.New("connection pool exhausted"))
+	err.RecordUpdateError("cache", errors.New("invalid memory limit"))
+
+	// Some additions succeeded
+	err.RecordSuccess() // added monitoring
+
+	// Some additions failed
+	err.RecordAddError("new-feature", errors.New("dependency not available"))
+	err.RecordAddError("experimental", errors.New("feature flag disabled"))
+
+	// Verify counts
+	assert.Equal(t, 5, err.Successful)
+	assert.Equal(t, 5, err.Failed)
+	assert.True(t, err.HasErrors())
+	assert.False(t, err.AllFailed())
+
+	// Verify error message structure
+	msg := err.Error()
+	assert.Contains(t, msg, "(5 errors, 5 successful)")
+
+	// Verify ToError behavior
+	assert.NotNil(t, err.ToError())
+}
+
+// Additional test for using ReloadError with the errors package
+func TestReloadError_ErrorsPackageIntegration(t *testing.T) {
+	err := NewReloadError()
+	err.RecordAddError("svc", errors.New("test error"))
+
+	reloadErr := err.ToError()
+
+	// Should be able to use errors.As
+	var re *ReloadError
+	assert.True(t, errors.As(reloadErr, &re))
+	assert.Equal(t, err, re)
+
+	// Should work with error wrapping
+	wrapped := fmt.Errorf("reload failed: %w", reloadErr)
+	assert.True(t, errors.As(wrapped, &re))
 }
