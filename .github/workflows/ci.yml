@@ -96,5 +96,5 @@ jobs:
           
           # Clean up architecture-specific tags
           echo "Cleaning up architecture-specific tags..."
-          ./scripts/cleanup-arch-tags.sh "pr-${PR_NUMBER}"
-          ./scripts/cleanup-arch-tags.sh "sha-${SHA_SHORT}"
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} ./scripts/cleanup-arch-tags.sh "pr-${PR_NUMBER}"
+          GITHUB_TOKEN=${{ secrets.GITHUB_TOKEN }} ./scripts/cleanup-arch-tags.sh "sha-${SHA_SHORT}"
