@@ -175,12 +175,17 @@ tail -f /var/log/tsbridge/tsbridge.log
 
 ### Configure Log Rotation
 
-Add to `/etc/newsyslog.conf`:
+Install the provided newsyslog configuration:
 
+```bash
+# Copy the newsyslog configuration
+install -m 644 tsbridge-newsyslog.conf /usr/local/etc/newsyslog.conf.d/tsbridge.conf
+
+# Or if using /etc/newsyslog.conf directly, append the configuration:
+cat tsbridge-newsyslog.conf >> /etc/newsyslog.conf
 ```
-# logfilename          [owner:group]    mode count size when  flags [/pid_file] [sig_num]
-/var/log/tsbridge/tsbridge.log  tsbridge:tsbridge  640  7     *    @T00  J
-```
+
+This will rotate logs daily at midnight, keeping 7 days of compressed logs.
 
 ### Check Service Status
 

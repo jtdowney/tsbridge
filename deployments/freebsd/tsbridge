@@ -53,7 +53,7 @@ extra_commands="reload"
 tsbridge_precmd()
 {
     # Create required directories
-    local dirs="/var/run/${name} /var/log/${name} /var/db/${name}"
+    dirs="/var/run/${name} /var/log/${name} /var/db/${name}"
     for dir in ${dirs}; do
         if [ ! -d "${dir}" ]; then
             install -d -o ${tsbridge_user} -g ${tsbridge_group} -m 750 "${dir}"
@@ -79,7 +79,7 @@ tsbridge_start()
     echo "Starting ${name}."
     
     # Prepare environment
-    local env_cmd=""
+    env_cmd=""
     if [ -n "${tsbridge_env}" ]; then
         env_cmd="/usr/bin/env ${tsbridge_env}"
     fi
@@ -95,13 +95,13 @@ tsbridge_stop()
     echo "Stopping ${name}."
     
     if [ -f "${pidfile}" ]; then
-        local pid=$(cat ${pidfile})
+        pid=$(cat ${pidfile})
         if kill -0 ${pid} 2>/dev/null; then
             # Send SIGTERM and wait for graceful shutdown
             kill -TERM ${pid}
             
             # Wait up to 30 seconds for process to exit
-            local count=0
+            count=0
             while kill -0 ${pid} 2>/dev/null && [ ${count} -lt 30 ]; do
                 sleep 1
                 count=$((count + 1))
@@ -120,7 +120,7 @@ tsbridge_stop()
 tsbridge_status()
 {
     if [ -f "${pidfile}" ]; then
-        local pid=$(cat ${pidfile})
+        pid=$(cat ${pidfile})
         if kill -0 ${pid} 2>/dev/null; then
             echo "${name} is running as pid ${pid}."
             return 0
@@ -140,7 +140,7 @@ tsbridge_reload()
     echo "Reloading ${name} configuration."
     
     if [ -f "${pidfile}" ]; then
-        local pid=$(cat ${pidfile})
+        pid=$(cat ${pidfile})
         if kill -0 ${pid} 2>/dev/null; then
             kill -HUP ${pid}
         else
