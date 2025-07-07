@@ -93,3 +93,8 @@ jobs:
             ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-amd64 \
             ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-arm64
           docker manifest push ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}
+          
+          # Clean up architecture-specific tags
+          echo "Cleaning up architecture-specific tags..."
+          ./scripts/cleanup-arch-tags.sh "pr-${PR_NUMBER}"
+          ./scripts/cleanup-arch-tags.sh "sha-${SHA_SHORT}"
