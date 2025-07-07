@@ -85,8 +85,8 @@ tsbridge_start()
     fi
 
     # Start the daemon
-    /usr/sbin/daemon -c -f -p ${pidfile} -u ${tsbridge_user} \
-        -o ${logfile} \
+    /usr/sbin/daemon -c -f -p "${pidfile}" -u "${tsbridge_user}" \
+        -o "${logfile}" \
         ${env_cmd} ${command} ${command_args}
 }
 
