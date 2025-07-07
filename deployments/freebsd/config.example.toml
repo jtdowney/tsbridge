@@ -1,0 +1,107 @@
+# Example tsbridge configuration for FreeBSD
+# Copy to /usr/local/etc/tsbridge/config.toml and customize
+
+# Tailscale authentication configuration (required)
+[tailscale]
+# OAuth authentication (recommended)
+# Store credentials in separate files for security
+oauth_client_id_file = "/usr/local/etc/tsbridge/oauth_client_id"
+oauth_client_secret_file = "/usr/local/etc/tsbridge/oauth_client_secret"
+
+# Alternative: Use environment variables
+# oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
+# oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
+
+# Alternative: Use auth key (not recommended for production)
+# auth_key_file = "/usr/local/etc/tsbridge/auth_key"
+
+# State directory for TSNet data
+state_dir = "/var/db/tsbridge"
+
+# Default tags for all services (required when using OAuth)
+default_tags = ["tag:server", "tag:tsbridge"]
+
+# Global defaults for all services (optional)
+[global]
+# Timeouts
+read_header_timeout = "10s"
+write_timeout = "30s"
+idle_timeout = "120s"
+shutdown_timeout = "15s"
+
+# Enable access logging
+access_log = true
+
+# Prometheus metrics endpoint
+metrics_addr = ":9100"
+
+# Security settings
+max_request_body_size = "10MB"
+
+# Whois timeout for Tailscale identity lookups
+whois_timeout = "1s"
+
+# Example services
+# Each service becomes accessible at https://<name>.<tailnet-name>.ts.net
+
+# Simple web application
+[[services]]
+name = "wiki"
+backend_addr = "127.0.0.1:8080"
+whois_enabled = true  # Inject Tailscale identity headers
+
+# API service with custom timeouts
+[[services]]
+name = "api"
+backend_addr = "127.0.0.1:3000"
+tags = ["tag:api"]  # Additional tags for this service
+write_timeout = "60s"  # Override global timeout
+max_request_body_size = "50MB"  # Override global limit
+
+# Add custom headers
+downstream_headers = { "X-Frame-Options" = "DENY", "X-Content-Type-Options" = "nosniff" }
+upstream_headers = { "X-Forwarded-By" = "tsbridge" }
+
+# Internal dashboard
+[[services]]
+name = "dashboard"
+backend_addr = "127.0.0.1:4000"
+whois_enabled = false  # Don't inject identity headers
+
+# Streaming service (disable timeouts for long-lived connections)
+[[services]]
+name = "stream"
+backend_addr = "127.0.0.1:8888"
+write_timeout = "0s"  # Disable timeout for streaming
+flush_interval = "-1ms"  # Immediate flushing for real-time data
+
+# Unix socket example (useful for local services)
+[[services]]
+name = "pgadmin"
+backend_addr = "unix:///var/run/pgadmin/pgadmin.sock"
+
+# Service with all options
+[[services]]
+name = "advanced"
+backend_addr = "10.0.0.5:8080"
+tags = ["tag:internal", "tag:admin"]
+whois_enabled = true
+
+# Override all timeouts
+read_header_timeout = "5s"
+write_timeout = "120s"
+idle_timeout = "300s"
+
+# Security settings
+max_request_body_size = "100MB"
+trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12"]
+
+# Headers
+downstream_headers = { 
+    "Strict-Transport-Security" = "max-age=31536000; includeSubDomains",
+    "X-Frame-Options" = "SAMEORIGIN"
+}
+upstream_headers = {
+    "X-Real-IP" = "$remote_addr",
+    "X-Service-Name" = "advanced"
+}

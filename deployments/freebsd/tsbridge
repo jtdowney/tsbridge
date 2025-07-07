@@ -1,0 +1,155 @@
+#!/bin/sh
+
+# PROVIDE: tsbridge
+# REQUIRE: DAEMON NETWORKING
+# BEFORE: LOGIN
+# KEYWORD: shutdown
+
+# Add the following lines to /etc/rc.conf to enable tsbridge:
+#
+# tsbridge_enable (bool):       Set to "NO" by default.
+#                               Set it to "YES" to enable tsbridge.
+# tsbridge_config (path):       Set to "/usr/local/etc/tsbridge/config.toml" by default.
+#                               Path to the configuration file.
+# tsbridge_user (str):          Set to "tsbridge" by default.
+#                               User to run tsbridge as.
+# tsbridge_group (str):         Set to "tsbridge" by default.
+#                               Group to run tsbridge as.
+# tsbridge_flags (str):         Set to "" by default.
+#                               Extra flags passed to tsbridge.
+# tsbridge_env (str):           Set to "" by default.
+#                               Environment variables for tsbridge.
+# tsbridge_limits (str):        Set to "" by default.
+#                               Process limits (see limits(1)).
+
+. /etc/rc.subr
+
+name="tsbridge"
+rcvar="${name}_enable"
+
+# Default values
+: ${tsbridge_enable:="NO"}
+: ${tsbridge_config:="/usr/local/etc/tsbridge/config.toml"}
+: ${tsbridge_user:="tsbridge"}
+: ${tsbridge_group:="tsbridge"}
+: ${tsbridge_flags:=""}
+: ${tsbridge_env:=""}
+: ${tsbridge_limits:=""}
+
+# Paths
+pidfile="/var/run/${name}/${name}.pid"
+logfile="/var/log/${name}/${name}.log"
+command="/usr/local/bin/tsbridge"
+command_args="-config ${tsbridge_config} ${tsbridge_flags}"
+
+# Setup
+start_precmd="${name}_precmd"
+start_cmd="${name}_start"
+stop_cmd="${name}_stop"
+status_cmd="${name}_status"
+reload_cmd="${name}_reload"
+extra_commands="reload"
+
+tsbridge_precmd()
+{
+    # Create required directories
+    local dirs="/var/run/${name} /var/log/${name} /var/db/${name}"
+    for dir in ${dirs}; do
+        if [ ! -d "${dir}" ]; then
+            install -d -o ${tsbridge_user} -g ${tsbridge_group} -m 750 "${dir}"
+        fi
+    done
+
+    # Check for configuration file
+    if [ ! -f "${tsbridge_config}" ]; then
+        err 1 "Configuration file ${tsbridge_config} not found"
+    fi
+
+    # Set file descriptor limits
+    if [ -n "${tsbridge_limits}" ]; then
+        eval `/usr/bin/limits ${tsbridge_limits} /usr/bin/env`
+    fi
+
+    # Set default file descriptor limit if not specified
+    ulimit -n 65535 2>/dev/null || true
+}
+
+tsbridge_start()
+{
+    echo "Starting ${name}."
+    
+    # Prepare environment
+    local env_cmd=""
+    if [ -n "${tsbridge_env}" ]; then
+        env_cmd="/usr/bin/env ${tsbridge_env}"
+    fi
+
+    # Start the daemon
+    /usr/sbin/daemon -c -f -p ${pidfile} -u ${tsbridge_user} \
+        -o ${logfile} \
+        ${env_cmd} ${command} ${command_args}
+}
+
+tsbridge_stop()
+{
+    echo "Stopping ${name}."
+    
+    if [ -f "${pidfile}" ]; then
+        local pid=$(cat ${pidfile})
+        if kill -0 ${pid} 2>/dev/null; then
+            # Send SIGTERM and wait for graceful shutdown
+            kill -TERM ${pid}
+            
+            # Wait up to 30 seconds for process to exit
+            local count=0
+            while kill -0 ${pid} 2>/dev/null && [ ${count} -lt 30 ]; do
+                sleep 1
+                count=$((count + 1))
+            done
+            
+            # Force kill if still running
+            if kill -0 ${pid} 2>/dev/null; then
+                echo "Timeout waiting for ${name} to stop, forcing shutdown."
+                kill -KILL ${pid}
+            fi
+        fi
+        rm -f ${pidfile}
+    fi
+}
+
+tsbridge_status()
+{
+    if [ -f "${pidfile}" ]; then
+        local pid=$(cat ${pidfile})
+        if kill -0 ${pid} 2>/dev/null; then
+            echo "${name} is running as pid ${pid}."
+            return 0
+        else
+            echo "${name} is not running (stale pidfile)."
+            rm -f ${pidfile}
+            return 1
+        fi
+    else
+        echo "${name} is not running."
+        return 1
+    fi
+}
+
+tsbridge_reload()
+{
+    echo "Reloading ${name} configuration."
+    
+    if [ -f "${pidfile}" ]; then
+        local pid=$(cat ${pidfile})
+        if kill -0 ${pid} 2>/dev/null; then
+            kill -HUP ${pid}
+        else
+            err 1 "${name} is not running"
+        fi
+    else
+        err 1 "${name} is not running"
+    fi
+}
+
+load_rc_config ${name}
+run_rc_command "$1"
