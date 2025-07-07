@@ -33,6 +33,9 @@ dockers:
   - image_templates:
       - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-amd64"
       - "ghcr.io/jtdowney/tsbridge:latest-amd64"
+      - "ghcr.io/jtdowney/tsbridge:{{ .Major }}.{{ .Minor }}-amd64"
+      # TODO: Uncomment for 1.0.0 release
+      # - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-amd64"
     dockerfile: Dockerfile
     goos: linux
     goarch: amd64
@@ -51,6 +54,9 @@ dockers:
   - image_templates:
       - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-arm64"
       - "ghcr.io/jtdowney/tsbridge:latest-arm64"
+      - "ghcr.io/jtdowney/tsbridge:{{ .Major }}.{{ .Minor }}-arm64"
+      # TODO: Uncomment for 1.0.0 release
+      # - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-arm64"
     dockerfile: Dockerfile
     goos: linux
     goarch: arm64
@@ -72,6 +78,15 @@ docker_manifests:
     image_templates:
       - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-amd64"
       - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/jtdowney/tsbridge:{{ .Major }}.{{ .Minor }}"
+    image_templates:
+      - "ghcr.io/jtdowney/tsbridge:{{ .Major }}.{{ .Minor }}-amd64"
+      - "ghcr.io/jtdowney/tsbridge:{{ .Major }}.{{ .Minor }}-arm64"
+  # TODO: Uncomment for 1.0.0 release
+  # - name_template: "ghcr.io/jtdowney/tsbridge:{{ .Major }}"
+  #   image_templates:
+  #     - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-amd64"
+  #     - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-arm64"
   - name_template: "ghcr.io/jtdowney/tsbridge:latest"
     image_templates:
       - "ghcr.io/jtdowney/tsbridge:latest-amd64"
