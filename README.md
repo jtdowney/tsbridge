@@ -81,6 +81,38 @@ Your services will be available at:
 - `https://api.<your-tailnet-name>.ts.net`
 - `https://web.<your-tailnet-name>.ts.net`
 
+### CLI Usage
+
+```bash
+tsbridge [flags]
+
+Flags:
+  -config string              Path to TOML configuration file (required for file provider)
+  -provider string           Configuration provider: file or docker (default: file)
+  -docker-socket string      Docker socket endpoint (default: unix:///var/run/docker.sock)
+  -docker-label-prefix string Docker label prefix for configuration (default: tsbridge)
+  -validate                  Validate configuration and exit
+  -verbose                   Enable debug logging
+  -help                      Show usage information
+  -version                   Show version information
+```
+
+#### Validating Configuration
+
+Use the `-validate` flag to check your configuration without starting any services:
+
+```bash
+tsbridge -config tsbridge.toml -validate
+```
+
+This will:
+- Check TOML syntax
+- Validate all required fields
+- Verify backend addresses
+- Check file permissions for secret files
+- Validate environment variables
+- Exit with code 0 if valid, non-zero if invalid
+
 ## Streaming Services
 
 tsbridge supports long-lived streaming connections such as media streaming, Server-Sent Events (SSE), and real-time data feeds. Proper configuration is essential for these services to work correctly.

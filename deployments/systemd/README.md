@@ -79,7 +79,16 @@ sudo cp tsbridge.logrotate /etc/logrotate.d/tsbridge
 sudo chmod 644 /etc/logrotate.d/tsbridge
 ```
 
-### 7. Start and enable the service
+### 7. Validate configuration
+
+Before starting the service, validate your configuration:
+
+```bash
+# Validate configuration as the tsbridge user
+sudo -u tsbridge /usr/local/bin/tsbridge -config /etc/tsbridge/config.toml -validate
+```
+
+### 8. Start and enable the service
 
 ```bash
 # Start the service
@@ -191,7 +200,7 @@ sudo systemctl restart tsbridge
 If the service fails to start, check:
 
 1. Binary is executable: `ls -la /usr/local/bin/tsbridge`
-2. Config file exists and is valid: `sudo -u tsbridge /usr/local/bin/tsbridge -config /etc/tsbridge/config.toml -test`
+2. Config file exists and is valid: `sudo -u tsbridge /usr/local/bin/tsbridge -config /etc/tsbridge/config.toml -validate`
 3. Directories exist with correct permissions
 4. OAuth credentials are set (either in config or environment)
 5. No port conflicts on metrics endpoint or service ports

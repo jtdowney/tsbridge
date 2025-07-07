@@ -44,6 +44,7 @@ type cliArgs struct {
 	verbose        bool
 	help           bool
 	version        bool
+	validate       bool
 }
 
 // parseCLIArgs parses command-line arguments and returns the parsed values
@@ -58,6 +59,7 @@ func parseCLIArgs(args []string) (*cliArgs, error) {
 	fs.BoolVar(&result.verbose, "verbose", false, "Enable debug logging")
 	fs.BoolVar(&result.help, "help", false, "Show usage information")
 	fs.BoolVar(&result.version, "version", false, "Show version information")
+	fs.BoolVar(&result.validate, "validate", false, "Validate configuration and exit")
 
 	// Create usage function
 	usage := func() {
@@ -76,6 +78,57 @@ func parseCLIArgs(args []string) (*cliArgs, error) {
 	return result, nil
 }
 
+// validateConfig validates the configuration and returns an error if invalid
+func validateConfig(args *cliArgs) error {
+	// Register all available providers
+	registerProviders()
+
+	// Configure logging
+	opts := &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}
+	if args.verbose {
+		opts.Level = slog.LevelDebug
+	}
+	handler := slog.NewTextHandler(os.Stdout, opts)
+	logger := slog.New(handler)
+	slog.SetDefault(logger)
+
+	// Validate provider-specific flags
+	if args.provider == "file" && args.configPath == "" {
+		return fmt.Errorf("-config flag is required for file provider")
+	}
+
+	slog.Debug("validating configuration", "provider", args.provider)
+
+	// Create configuration provider
+	dockerOpts := config.DockerProviderOptions{
+		DockerEndpoint: args.dockerEndpoint,
+		LabelPrefix:    args.labelPrefix,
+	}
+
+	configProvider, err := config.NewProvider(args.provider, args.configPath, dockerOpts)
+	if err != nil {
+		return fmt.Errorf("failed to create configuration provider: %w", err)
+	}
+
+	slog.Debug("loading configuration for validation", "provider", configProvider.Name())
+
+	// Load the configuration
+	cfg, err := configProvider.Load(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Validate the configuration
+	if err := cfg.Validate(args.provider); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	slog.Info("configuration is valid")
+	return nil
+}
+
 // run executes the main application logic
 func run(args *cliArgs) error {
 	// Register all available providers
@@ -89,6 +142,11 @@ func run(args *cliArgs) error {
 	if args.version {
 		fmt.Printf("tsbridge version: %s\n", version)
 		return nil
+	}
+
+	// Check if we're in validation mode
+	if args.validate {
+		return validateConfig(args)
 	}
 
 	// Configure logging

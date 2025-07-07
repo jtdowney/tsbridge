@@ -205,6 +205,7 @@ func TestFlagParsing(t *testing.T) {
 		wantVerbose    bool
 		wantHelp       bool
 		wantVersion    bool
+		wantValidate   bool
 		wantParseError bool
 	}{
 		{
@@ -249,6 +250,21 @@ func TestFlagParsing(t *testing.T) {
 			wantLabel:    "tsbridge",
 		},
 		{
+			name:         "validate flag",
+			args:         []string{"-validate"},
+			wantValidate: true,
+			wantProvider: "file",
+			wantLabel:    "tsbridge",
+		},
+		{
+			name:         "validate flag with config",
+			args:         []string{"-validate", "-config", "/path/to/config.toml"},
+			wantValidate: true,
+			wantConfig:   "/path/to/config.toml",
+			wantProvider: "file",
+			wantLabel:    "tsbridge",
+		},
+		{
 			name:           "unknown flag",
 			args:           []string{"-unknown"},
 			wantParseError: true,
@@ -277,6 +293,7 @@ func TestFlagParsing(t *testing.T) {
 			verbose := fs.Bool("verbose", false, "Enable debug logging")
 			help := fs.Bool("help", false, "Show usage information")
 			versionFlag := fs.Bool("version", false, "Show version information")
+			validateFlag := fs.Bool("validate", false, "Validate configuration and exit")
 
 			// Parse flags
 			err := fs.Parse(tt.args)
@@ -296,6 +313,7 @@ func TestFlagParsing(t *testing.T) {
 			assert.Equal(t, tt.wantVerbose, *verbose)
 			assert.Equal(t, tt.wantHelp, *help)
 			assert.Equal(t, tt.wantVersion, *versionFlag)
+			assert.Equal(t, tt.wantValidate, *validateFlag)
 		})
 	}
 }
@@ -326,7 +344,7 @@ func TestMainIntegration(t *testing.T) {
 			name:       "help flag shows usage",
 			args:       []string{"-help"},
 			wantExit:   0,
-			wantOutput: []string{"Usage of", "-config", "-provider", "-docker-socket", "-docker-label-prefix", "-verbose", "-help", "-version"},
+			wantOutput: []string{"Usage of", "-config", "-provider", "-docker-socket", "-docker-label-prefix", "-verbose", "-help", "-version", "-validate"},
 			timeout:    2 * time.Second,
 		},
 		{
@@ -574,6 +592,7 @@ func TestParseCLIArgs(t *testing.T) {
 				"-verbose",
 				"-help",
 				"-version",
+				"-validate",
 			},
 			want: &cliArgs{
 				configPath:     "/path/to/config.toml",
@@ -583,6 +602,7 @@ func TestParseCLIArgs(t *testing.T) {
 				verbose:        true,
 				help:           true,
 				version:        true,
+				validate:       true,
 			},
 		},
 		{
@@ -592,6 +612,25 @@ func TestParseCLIArgs(t *testing.T) {
 				provider:    "file",
 				configPath:  "test.toml",
 				labelPrefix: "tsbridge",
+			},
+		},
+		{
+			name: "validate flag only",
+			args: []string{"-validate"},
+			want: &cliArgs{
+				provider:    "file",
+				labelPrefix: "tsbridge",
+				validate:    true,
+			},
+		},
+		{
+			name: "validate with config",
+			args: []string{"-validate", "-config", "config.toml"},
+			want: &cliArgs{
+				provider:    "file",
+				configPath:  "config.toml",
+				labelPrefix: "tsbridge",
+				validate:    true,
 			},
 		},
 		{
@@ -640,6 +679,7 @@ func TestRun(t *testing.T) {
 	tests := []struct {
 		name       string
 		args       *cliArgs
+		setupFunc  func(t *testing.T) string // returns config path if needed
 		wantErr    bool
 		errMsg     string
 		wantOutput []string
@@ -647,7 +687,7 @@ func TestRun(t *testing.T) {
 		{
 			name:       "help flag",
 			args:       &cliArgs{help: true},
-			wantOutput: []string{"Usage of tsbridge:", "-config", "-provider"},
+			wantOutput: []string{"Usage of tsbridge:", "-config", "-provider", "-validate"},
 		},
 		{
 			name:       "version flag",
@@ -669,10 +709,121 @@ func TestRun(t *testing.T) {
 			wantErr: true,
 			errMsg:  "failed to create configuration provider",
 		},
+		{
+			name: "validate with valid config",
+			args: &cliArgs{
+				validate:   true,
+				provider:   "file",
+				configPath: "test.toml",
+			},
+			setupFunc: func(t *testing.T) string {
+				configPath := filepath.Join(t.TempDir(), "test.toml")
+				configContent := `
+[tailscale]
+auth_key = "test-auth-key"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+`
+				err := os.WriteFile(configPath, []byte(configContent), 0644)
+				require.NoError(t, err)
+				return configPath
+			},
+			wantErr: false,
+			// No specific output expected for successful validation
+		},
+		{
+			name: "validate with invalid config",
+			args: &cliArgs{
+				validate:   true,
+				provider:   "file",
+				configPath: "test.toml",
+			},
+			setupFunc: func(t *testing.T) string {
+				configPath := filepath.Join(t.TempDir(), "test.toml")
+				configContent := `
+[tailscale]
+# Missing auth credentials
+
+[[services]]
+name = "test-service"
+# Missing backend_addr
+`
+				err := os.WriteFile(configPath, []byte(configContent), 0644)
+				require.NoError(t, err)
+				return configPath
+			},
+			wantErr: true,
+			errMsg:  "validation error",
+		},
+		{
+			name:    "validate missing config for file provider",
+			args:    &cliArgs{validate: true, provider: "file"},
+			wantErr: true,
+			errMsg:  "-config flag is required for file provider",
+		},
+		{
+			name: "validate with non-existent file reference",
+			args: &cliArgs{
+				validate:   true,
+				provider:   "file",
+				configPath: "test.toml",
+			},
+			setupFunc: func(t *testing.T) string {
+				configPath := filepath.Join(t.TempDir(), "test.toml")
+				configContent := `
+[tailscale]
+auth_key_file = "/non/existent/file.txt"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+`
+				err := os.WriteFile(configPath, []byte(configContent), 0644)
+				require.NoError(t, err)
+				return configPath
+			},
+			wantErr: true,
+			errMsg:  "no such file or directory",
+		},
+		{
+			name: "validate with missing env var",
+			args: &cliArgs{
+				validate:   true,
+				provider:   "file",
+				configPath: "test.toml",
+			},
+			setupFunc: func(t *testing.T) string {
+				// Ensure env var is not set
+				os.Unsetenv("MISSING_ENV_VAR")
+
+				configPath := filepath.Join(t.TempDir(), "test.toml")
+				configContent := `
+[tailscale]
+auth_key_env = "MISSING_ENV_VAR"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+`
+				err := os.WriteFile(configPath, []byte(configContent), 0644)
+				require.NoError(t, err)
+				return configPath
+			},
+			wantErr: true,
+			errMsg:  "OAuth client ID must be provided",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Run setup function if provided
+			if tt.setupFunc != nil {
+				configPath := tt.setupFunc(t)
+				tt.args.configPath = configPath
+			}
+
 			// Capture stdout
 			oldStdout := os.Stdout
 			r, w, _ := os.Pipe()
