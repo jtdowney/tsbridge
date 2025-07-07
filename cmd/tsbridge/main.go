@@ -78,11 +78,8 @@ func parseCLIArgs(args []string) (*cliArgs, error) {
 	return result, nil
 }
 
-// validateConfig validates the configuration and returns an error if invalid
-func validateConfig(args *cliArgs) error {
-	// Register all available providers
-	registerProviders()
-
+// setupCommon configures logging and validates provider-specific flags
+func setupCommon(args *cliArgs) error {
 	// Configure logging
 	opts := &slog.HandlerOptions{
 		Level: slog.LevelInfo,
@@ -97,6 +94,18 @@ func validateConfig(args *cliArgs) error {
 	// Validate provider-specific flags
 	if args.provider == "file" && args.configPath == "" {
 		return fmt.Errorf("-config flag is required for file provider")
+	}
+	return nil
+}
+
+// validateConfig validates the configuration and returns an error if invalid
+func validateConfig(args *cliArgs) error {
+	// Register all available providers
+	registerProviders()
+
+	// Perform common setup
+	if err := setupCommon(args); err != nil {
+		return err
 	}
 
 	slog.Debug("validating configuration", "provider", args.provider)
@@ -149,20 +158,9 @@ func run(args *cliArgs) error {
 		return validateConfig(args)
 	}
 
-	// Configure logging
-	opts := &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}
-	if args.verbose {
-		opts.Level = slog.LevelDebug
-	}
-	handler := slog.NewTextHandler(os.Stdout, opts)
-	logger := slog.New(handler)
-	slog.SetDefault(logger)
-
-	// Validate provider-specific flags
-	if args.provider == "file" && args.configPath == "" {
-		return fmt.Errorf("-config flag is required for file provider")
+	// Perform common setup
+	if err := setupCommon(args); err != nil {
+		return err
 	}
 
 	slog.Debug("starting tsbridge", "version", version, "provider", args.provider)
