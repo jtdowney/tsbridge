@@ -42,6 +42,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Clean up architecture-specific Docker tags
+        run: |
+          # Extract the tag from the ref
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Cleaning up architecture-specific tags for release ${TAG}"
+          ./scripts/cleanup-arch-tags.sh "${TAG}"
+          ./scripts/cleanup-arch-tags.sh "latest"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         if: always()
