@@ -78,16 +78,17 @@ func CreateMockTailscaleServer(t *testing.T, cfg config.Tailscale) *tailscale.Se
 // CreateTestHTTPServer creates a test HTTP server with the given handler.
 // If handler is nil, a default handler that returns 200 OK is used.
 // The server is automatically closed when the test completes.
+// This is a convenience wrapper around CreateTestHTTPServerWithOptions.
 func CreateTestHTTPServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 
 	if handler == nil {
-		handler = func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("OK"))
-		}
+		// Use default options which gives us 200 OK with "OK" body
+		return CreateTestHTTPServerWithOptions(t, HTTPServerOptions{})
 	}
 
+	// For custom handlers, we need to create the server directly
+	// since HTTPServerOptions doesn't support custom handlers
 	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
 
