@@ -31,7 +31,6 @@ type Registry struct {
 	tsServer         *tailscale.Server
 	services         map[string]*Service
 	metricsCollector *metrics.Collector
-	whoisCache       *middleware.WhoisCache
 	mu               sync.RWMutex
 }
 
@@ -44,7 +43,6 @@ type Service struct {
 	server           *http.Server
 	tsServer         *tailscale.Server // Reference to Tailscale server for WhoIs
 	metricsCollector *metrics.Collector
-	whoisCache       *middleware.WhoisCache
 	handler          http.Handler // Pre-created handler to catch config errors early
 }
 
@@ -65,10 +63,9 @@ func (h *handlerWithClose) Close() error {
 // NewRegistry creates a new service registry
 func NewRegistry(cfg *config.Config, tsServer *tailscale.Server) *Registry {
 	return &Registry{
-		config:     cfg,
-		tsServer:   tsServer,
-		services:   make(map[string]*Service, len(cfg.Services)),
-		whoisCache: middleware.NewWhoisCache(1000, 5*time.Minute),
+		config:   cfg,
+		tsServer: tsServer,
+		services: make(map[string]*Service, len(cfg.Services)),
 	}
 }
 
@@ -146,7 +143,6 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 		listener:         listener,
 		tsServer:         r.tsServer,
 		metricsCollector: r.metricsCollector,
-		whoisCache:       r.whoisCache,
 	}
 
 	// Create handler early to catch configuration errors
@@ -268,8 +264,8 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 			}
 			// Create a whois client adapter for the tsnet server
 			whoisClient := tailscale.NewWhoisClientAdapter(serviceServer)
-			// Use the whois middleware with cache
-			httpHandler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, s.whoisCache)(httpHandler)
+			// Use the whois middleware with internalized cache
+			httpHandler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, 1000, 5*time.Minute)(httpHandler)
 		}
 	}
 

@@ -23,16 +23,12 @@ type WhoisClient interface {
 	WhoIs(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error)
 }
 
-type WhoisCache struct {
-	cache *expirable.LRU[string, *apitype.WhoIsResponse]
-}
+func Whois(client WhoisClient, enabled bool, timeout time.Duration, cacheSize int, cacheTTL time.Duration) func(http.Handler) http.Handler {
+	var cache *expirable.LRU[string, *apitype.WhoIsResponse]
+	if cacheSize > 0 {
+		cache = expirable.NewLRU[string, *apitype.WhoIsResponse](cacheSize, nil, cacheTTL)
+	}
 
-func NewWhoisCache(size int, ttl time.Duration) *WhoisCache {
-	cache := expirable.NewLRU[string, *apitype.WhoIsResponse](size, nil, ttl)
-	return &WhoisCache{cache: cache}
-}
-
-func Whois(client WhoisClient, enabled bool, timeout time.Duration, cache *WhoisCache) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !enabled {
@@ -47,12 +43,12 @@ func Whois(client WhoisClient, enabled bool, timeout time.Duration, cache *Whois
 	}
 }
 
-func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Request, cache *WhoisCache) {
+func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Request, cache *expirable.LRU[string, *apitype.WhoIsResponse]) {
 	var resp *apitype.WhoIsResponse
 	var err error
 
 	if cache != nil {
-		if cached, ok := cache.cache.Get(r.RemoteAddr); ok {
+		if cached, ok := cache.Get(r.RemoteAddr); ok {
 			resp = cached
 		} else {
 			ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -65,7 +61,7 @@ func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Reque
 			}
 
 			if resp != nil {
-				cache.cache.Add(r.RemoteAddr, resp)
+				cache.Add(r.RemoteAddr, resp)
 			}
 		}
 	} else {

@@ -130,8 +130,8 @@ func TestWhoisMiddleware(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			// Create middleware
-			middleware := Whois(whoisClient, tt.enabled, tt.timeout, nil)
+			// Create middleware without cache
+			middleware := Whois(whoisClient, tt.enabled, tt.timeout, 0, 0)
 			handler := middleware(nextHandler)
 
 			// Create test request
@@ -181,8 +181,7 @@ func TestWhoisCaching(t *testing.T) {
 		WhoIsFunc: whoisFunc,
 	}
 
-	cache := NewWhoisCache(100, 5*time.Minute)
-	middleware := Whois(whoisClient, true, 100*time.Millisecond, cache)
+	middleware := Whois(whoisClient, true, 100*time.Millisecond, 100, 5*time.Minute)
 
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -321,7 +320,7 @@ func TestWhoisHeaderInjectionPrevention(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			middleware := Whois(whoisClient, true, 100*time.Millisecond, nil)
+			middleware := Whois(whoisClient, true, 100*time.Millisecond, 0, 0)
 			handler := middleware(nextHandler)
 
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
@@ -423,7 +422,7 @@ func TestWhois_PreservesAllHeaders(t *testing.T) {
 	}
 
 	// Create middleware
-	m := Whois(client, true, 0, nil)
+	m := Whois(client, true, 0, 0, 0)
 
 	// Create a test handler that captures the headers
 	var capturedHeaders http.Header
@@ -509,7 +508,7 @@ func TestWhois_HandlesPartialResponse(t *testing.T) {
 					return tc.response, nil
 				},
 			}
-			m := Whois(client, true, 0, nil)
+			m := Whois(client, true, 0, 0, 0)
 
 			var capturedHeaders http.Header
 			handler := m(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
