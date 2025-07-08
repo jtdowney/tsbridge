@@ -147,7 +147,7 @@ func TestTagsRequiredWithOAuth(t *testing.T) {
 	cfg1 := &config.Config{
 		Tailscale: config.Tailscale{
 			OAuthClientID:     "test-id",
-			OAuthClientSecret: "test-secret",
+			OAuthClientSecret: config.RedactedString("test-secret"),
 			StateDir:          t.TempDir(),
 		},
 		Services: []config.Service{
@@ -170,7 +170,7 @@ func TestTagsRequiredWithOAuth(t *testing.T) {
 	cfg2 := &config.Config{
 		Tailscale: config.Tailscale{
 			OAuthClientID:     "test-id",
-			OAuthClientSecret: "test-secret",
+			OAuthClientSecret: config.RedactedString("test-secret"),
 			StateDir:          t.TempDir(),
 			DefaultTags:       []string{"tag:default"},
 		},
@@ -193,7 +193,7 @@ func TestTagsRequiredWithOAuth(t *testing.T) {
 	cfg3 := &config.Config{
 		Tailscale: config.Tailscale{
 			OAuthClientID:     "test-id",
-			OAuthClientSecret: "test-secret",
+			OAuthClientSecret: config.RedactedString("test-secret"),
 			StateDir:          t.TempDir(),
 		},
 		Services: []config.Service{
@@ -221,7 +221,7 @@ func TestTagsNotRequiredWithAuthKey(t *testing.T) {
 	// Create config with auth key (no OAuth)
 	cfg := &config.Config{
 		Tailscale: config.Tailscale{
-			AuthKey:  "tskey-auth-test123",
+			AuthKey:  config.RedactedString("tskey-auth-test123"),
 			StateDir: t.TempDir(),
 		},
 		Services: []config.Service{

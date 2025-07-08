@@ -169,3 +169,67 @@ func TestRedactedConfig_String(t *testing.T) {
 		t.Errorf("String representation should contain service name: %s", str)
 	}
 }
+
+func TestTailscaleWithRedactedString(t *testing.T) {
+	// Test that Tailscale struct can use RedactedString for sensitive fields
+	type TailscaleWithRedacted struct {
+		OAuthClientID         string         `mapstructure:"oauth_client_id"`
+		OAuthClientIDEnv      string         `mapstructure:"oauth_client_id_env"`
+		OAuthClientIDFile     string         `mapstructure:"oauth_client_id_file"`
+		OAuthClientSecret     RedactedString `mapstructure:"oauth_client_secret"`
+		OAuthClientSecretEnv  string         `mapstructure:"oauth_client_secret_env"`
+		OAuthClientSecretFile string         `mapstructure:"oauth_client_secret_file"`
+		AuthKey               RedactedString `mapstructure:"auth_key"`
+		AuthKeyEnv            string         `mapstructure:"auth_key_env"`
+		AuthKeyFile           string         `mapstructure:"auth_key_file"`
+		StateDir              string         `mapstructure:"state_dir"`
+		DefaultTags           []string       `mapstructure:"default_tags"`
+	}
+
+	ts := &TailscaleWithRedacted{
+		OAuthClientID:     "client-id-123",
+		OAuthClientSecret: RedactedString("secret-value-456"),
+		AuthKey:           RedactedString("tskey-auth-789"),
+		StateDir:          "/var/lib/tsbridge",
+	}
+
+	// Test string representation
+	secretStr := ts.OAuthClientSecret.String()
+	if secretStr != "[REDACTED]" {
+		t.Errorf("OAuthClientSecret.String() = %v, want [REDACTED]", secretStr)
+	}
+
+	authStr := ts.AuthKey.String()
+	if authStr != "[REDACTED]" {
+		t.Errorf("AuthKey.String() = %v, want [REDACTED]", authStr)
+	}
+
+	// Test JSON marshaling
+	data, err := json.Marshal(ts)
+	if err != nil {
+		t.Fatalf("json.Marshal() error = %v", err)
+	}
+
+	jsonStr := string(data)
+	if strings.Contains(jsonStr, "secret-value-456") {
+		t.Errorf("JSON contains actual secret value: %s", jsonStr)
+	}
+	if strings.Contains(jsonStr, "tskey-auth-789") {
+		t.Errorf("JSON contains actual auth key: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"OAuthClientSecret":"[REDACTED]"`) {
+		t.Errorf("JSON should contain redacted secret: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"AuthKey":"[REDACTED]"`) {
+		t.Errorf("JSON should contain redacted auth key: %s", jsonStr)
+	}
+
+	// Test formatting
+	formatted := fmt.Sprintf("%+v", ts)
+	if strings.Contains(formatted, "secret-value-456") {
+		t.Errorf("Formatted output contains actual secret: %s", formatted)
+	}
+	if strings.Contains(formatted, "tskey-auth-789") {
+		t.Errorf("Formatted output contains actual auth key: %s", formatted)
+	}
+}

@@ -23,7 +23,7 @@ func NewTestFixture(t *testing.T) *TestFixture {
 		t: t,
 		cfg: &config.Config{
 			Tailscale: config.Tailscale{
-				AuthKey:  "tskey-auth-test123",
+				AuthKey:  config.RedactedString("tskey-auth-test123"),
 				StateDir: t.TempDir(),
 			},
 			Global: config.Global{
@@ -68,9 +68,9 @@ func (f *TestFixture) WithService(name, backendAddr string) *TestFixture {
 
 // WithOAuth configures OAuth authentication
 func (f *TestFixture) WithOAuth(clientID, clientSecret string) *TestFixture {
-	f.cfg.Tailscale.AuthKey = ""
+	f.cfg.Tailscale.AuthKey = config.RedactedString("")
 	f.cfg.Tailscale.OAuthClientID = clientID
-	f.cfg.Tailscale.OAuthClientSecret = clientSecret
+	f.cfg.Tailscale.OAuthClientSecret = config.RedactedString(clientSecret)
 	return f
 }
 

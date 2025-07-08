@@ -23,6 +23,11 @@ func (r RedactedString) Format(f fmt.State, verb rune) {
 	fmt.Fprint(f, "[REDACTED]")
 }
 
+// Value returns the actual string value for internal use
+func (r RedactedString) Value() string {
+	return string(r)
+}
+
 // RedactedTailscale is a version of Tailscale config with sensitive fields redacted
 type RedactedTailscale struct {
 	OAuthClientID         string   `json:"oauth_client_id,omitempty"`
@@ -68,10 +73,10 @@ func (c *Config) Redacted() *RedactedConfig {
 	}
 
 	// Redact sensitive values
-	if c.Tailscale.OAuthClientSecret != "" {
+	if c.Tailscale.OAuthClientSecret.Value() != "" {
 		redacted.Tailscale.OAuthClientSecret = "[REDACTED]"
 	}
-	if c.Tailscale.AuthKey != "" {
+	if c.Tailscale.AuthKey.Value() != "" {
 		redacted.Tailscale.AuthKey = "[REDACTED]"
 	}
 

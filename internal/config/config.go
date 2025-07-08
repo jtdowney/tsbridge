@@ -28,17 +28,17 @@ type Config struct {
 
 // Tailscale contains Tailscale-specific configuration
 type Tailscale struct {
-	OAuthClientID         string   `mapstructure:"oauth_client_id"`          // OAuth client ID for Tailscale
-	OAuthClientIDEnv      string   `mapstructure:"oauth_client_id_env"`      // Env var containing OAuth client ID
-	OAuthClientIDFile     string   `mapstructure:"oauth_client_id_file"`     // File containing OAuth client ID
-	OAuthClientSecret     string   `mapstructure:"oauth_client_secret"`      // OAuth client secret for Tailscale
-	OAuthClientSecretEnv  string   `mapstructure:"oauth_client_secret_env"`  // Env var containing OAuth client secret
-	OAuthClientSecretFile string   `mapstructure:"oauth_client_secret_file"` // File containing OAuth client secret
-	AuthKey               string   `mapstructure:"auth_key"`                 // Tailscale auth key (alternative to OAuth)
-	AuthKeyEnv            string   `mapstructure:"auth_key_env"`             // Env var containing auth key
-	AuthKeyFile           string   `mapstructure:"auth_key_file"`            // File containing auth key
-	StateDir              string   `mapstructure:"state_dir"`                // Directory for Tailscale state
-	DefaultTags           []string `mapstructure:"default_tags"`             // Default tags for services
+	OAuthClientID         string         `mapstructure:"oauth_client_id"`          // OAuth client ID for Tailscale
+	OAuthClientIDEnv      string         `mapstructure:"oauth_client_id_env"`      // Env var containing OAuth client ID
+	OAuthClientIDFile     string         `mapstructure:"oauth_client_id_file"`     // File containing OAuth client ID
+	OAuthClientSecret     RedactedString `mapstructure:"oauth_client_secret"`      // OAuth client secret for Tailscale
+	OAuthClientSecretEnv  string         `mapstructure:"oauth_client_secret_env"`  // Env var containing OAuth client secret
+	OAuthClientSecretFile string         `mapstructure:"oauth_client_secret_file"` // File containing OAuth client secret
+	AuthKey               RedactedString `mapstructure:"auth_key"`                 // Tailscale auth key (alternative to OAuth)
+	AuthKeyEnv            string         `mapstructure:"auth_key_env"`             // Env var containing auth key
+	AuthKeyFile           string         `mapstructure:"auth_key_file"`            // File containing auth key
+	StateDir              string         `mapstructure:"state_dir"`                // Directory for Tailscale state
+	DefaultTags           []string       `mapstructure:"default_tags"`             // Default tags for services
 }
 
 // Global contains global default settings
@@ -134,6 +134,7 @@ func LoadWithProvider(path string, provider string) (*Config, error) {
 			mapstructure.StringToTimeDurationHookFunc(),
 			durationDecodeHook(),
 			byteSizeDecodeHook(),
+			redactedStringDecodeHook(),
 		),
 		Result:           &cfg,
 		WeaklyTypedInput: true,
@@ -247,78 +248,96 @@ func byteSizeDecodeHook() mapstructure.DecodeHookFunc {
 	}
 }
 
+// redactedStringDecodeHook provides mapstructure hook for RedactedString
+func redactedStringDecodeHook() mapstructure.DecodeHookFunc {
+	return func(
+		from reflect.Type,
+		to reflect.Type,
+		data any,
+	) (any, error) {
+		// Check if we're converting to RedactedString
+		if to != reflect.TypeOf(RedactedString("")) {
+			return data, nil
+		}
+
+		// Handle string conversion
+		if from.Kind() == reflect.String {
+			strData := data.(string)
+			return RedactedString(strData), nil
+		}
+
+		// Handle nil
+		if data == nil {
+			return RedactedString(""), nil
+		}
+
+		// Invalid input type
+		return data, nil
+	}
+}
+
 // resolveSecrets resolves all secret values from their configured sources
 func resolveSecrets(cfg *Config) error {
-	// Define secret configurations
-	type secretConfig struct {
-		value       *string
-		envVar      string
-		fileVar     string
-		fallbackEnv string
-		fieldName   string
-		clearEnv    *string
-		clearFile   *string
+	// Resolve OAuth Client ID (regular string)
+	if cfg.Tailscale.OAuthClientIDEnv != "" || cfg.Tailscale.OAuthClientIDFile != "" {
+		cfg.Tailscale.OAuthClientID = ""
+		resolved, err := ResolveSecretWithFallback(
+			"",
+			cfg.Tailscale.OAuthClientIDEnv,
+			cfg.Tailscale.OAuthClientIDFile,
+			"TS_OAUTH_CLIENT_ID",
+		)
+		if err != nil {
+			return fmt.Errorf("resolving OAuth client ID: %w", err)
+		}
+		cfg.Tailscale.OAuthClientID = resolved
+		cfg.Tailscale.OAuthClientIDEnv = ""
+		cfg.Tailscale.OAuthClientIDFile = ""
+	} else if cfg.Tailscale.OAuthClientID == "" {
+		if val := os.Getenv("TS_OAUTH_CLIENT_ID"); val != "" {
+			cfg.Tailscale.OAuthClientID = val
+		}
 	}
 
-	secrets := []secretConfig{
-		{
-			value:       &cfg.Tailscale.OAuthClientID,
-			envVar:      cfg.Tailscale.OAuthClientIDEnv,
-			fileVar:     cfg.Tailscale.OAuthClientIDFile,
-			fallbackEnv: "TS_OAUTH_CLIENT_ID",
-			fieldName:   "OAuth client ID",
-			clearEnv:    &cfg.Tailscale.OAuthClientIDEnv,
-			clearFile:   &cfg.Tailscale.OAuthClientIDFile,
-		},
-		{
-			value:       &cfg.Tailscale.OAuthClientSecret,
-			envVar:      cfg.Tailscale.OAuthClientSecretEnv,
-			fileVar:     cfg.Tailscale.OAuthClientSecretFile,
-			fallbackEnv: "TS_OAUTH_CLIENT_SECRET",
-			fieldName:   "OAuth client secret",
-			clearEnv:    &cfg.Tailscale.OAuthClientSecretEnv,
-			clearFile:   &cfg.Tailscale.OAuthClientSecretFile,
-		},
-		{
-			value:       &cfg.Tailscale.AuthKey,
-			envVar:      cfg.Tailscale.AuthKeyEnv,
-			fileVar:     cfg.Tailscale.AuthKeyFile,
-			fallbackEnv: "TS_AUTHKEY",
-			fieldName:   "auth key",
-			clearEnv:    &cfg.Tailscale.AuthKeyEnv,
-			clearFile:   &cfg.Tailscale.AuthKeyFile,
-		},
+	// Resolve OAuth Client Secret (RedactedString)
+	if cfg.Tailscale.OAuthClientSecretEnv != "" || cfg.Tailscale.OAuthClientSecretFile != "" {
+		cfg.Tailscale.OAuthClientSecret = ""
+		resolved, err := ResolveSecretWithFallback(
+			"",
+			cfg.Tailscale.OAuthClientSecretEnv,
+			cfg.Tailscale.OAuthClientSecretFile,
+			"TS_OAUTH_CLIENT_SECRET",
+		)
+		if err != nil {
+			return fmt.Errorf("resolving OAuth client secret: %w", err)
+		}
+		cfg.Tailscale.OAuthClientSecret = RedactedString(resolved)
+		cfg.Tailscale.OAuthClientSecretEnv = ""
+		cfg.Tailscale.OAuthClientSecretFile = ""
+	} else if cfg.Tailscale.OAuthClientSecret.Value() == "" {
+		if val := os.Getenv("TS_OAUTH_CLIENT_SECRET"); val != "" {
+			cfg.Tailscale.OAuthClientSecret = RedactedString(val)
+		}
 	}
 
-	// Process each secret
-	for _, secret := range secrets {
-		if secret.envVar != "" || secret.fileVar != "" {
-			// Clear the direct value to avoid conflicts
-			*secret.value = ""
-
-			resolved, err := ResolveSecretWithFallback(
-				"", // No direct value
-				secret.envVar,
-				secret.fileVar,
-				secret.fallbackEnv,
-			)
-			if err != nil {
-				return fmt.Errorf("resolving %s: %w", secret.fieldName, err)
-			}
-			*secret.value = resolved
-
-			// Clear the env/file fields after resolution
-			if secret.clearEnv != nil {
-				*secret.clearEnv = ""
-			}
-			if secret.clearFile != nil {
-				*secret.clearFile = ""
-			}
-		} else if *secret.value == "" {
-			// If no secrets are configured at all, check fallback env var
-			if val := os.Getenv(secret.fallbackEnv); val != "" {
-				*secret.value = val
-			}
+	// Resolve Auth Key (RedactedString)
+	if cfg.Tailscale.AuthKeyEnv != "" || cfg.Tailscale.AuthKeyFile != "" {
+		cfg.Tailscale.AuthKey = ""
+		resolved, err := ResolveSecretWithFallback(
+			"",
+			cfg.Tailscale.AuthKeyEnv,
+			cfg.Tailscale.AuthKeyFile,
+			"TS_AUTHKEY",
+		)
+		if err != nil {
+			return fmt.Errorf("resolving auth key: %w", err)
+		}
+		cfg.Tailscale.AuthKey = RedactedString(resolved)
+		cfg.Tailscale.AuthKeyEnv = ""
+		cfg.Tailscale.AuthKeyFile = ""
+	} else if cfg.Tailscale.AuthKey.Value() == "" {
+		if val := os.Getenv("TS_AUTHKEY"); val != "" {
+			cfg.Tailscale.AuthKey = RedactedString(val)
 		}
 	}
 
@@ -517,7 +536,7 @@ func validateOAuthSources(ts Tailscale) error {
 	if ts.OAuthClientID == "" {
 		return errors.NewValidationError("OAuth client ID must be provided")
 	}
-	if ts.OAuthClientSecret == "" {
+	if ts.OAuthClientSecret.Value() == "" {
 		return errors.NewValidationError("OAuth client secret must be provided")
 	}
 	return nil
@@ -525,9 +544,9 @@ func validateOAuthSources(ts Tailscale) error {
 
 // validateAuthMethodSelection ensures only one auth method is configured
 func validateAuthMethodSelection(ts Tailscale) error {
-	hasAuthKey := ts.AuthKey != ""
+	hasAuthKey := ts.AuthKey.Value() != ""
 	hasOAuthID := ts.OAuthClientID != ""
-	hasOAuthSecret := ts.OAuthClientSecret != ""
+	hasOAuthSecret := ts.OAuthClientSecret.Value() != ""
 
 	if hasAuthKey && (hasOAuthID || hasOAuthSecret) {
 		return errors.NewValidationError("cannot specify both OAuth and AuthKey credentials")
@@ -542,7 +561,7 @@ func (c *Config) validateOAuth() error {
 	}
 
 	// If an auth key is provided, auth validation is complete
-	if c.Tailscale.AuthKey != "" {
+	if c.Tailscale.AuthKey.Value() != "" {
 		return nil
 	}
 

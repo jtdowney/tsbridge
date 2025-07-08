@@ -119,8 +119,8 @@ func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tag
 func generateOrResolveAuthKey(cfg config.Config, svc config.Service) (string, error) {
 	// Config package has already resolved all secrets, so we can use them directly
 	clientID := cfg.Tailscale.OAuthClientID
-	clientSecret := cfg.Tailscale.OAuthClientSecret
-	authKey := cfg.Tailscale.AuthKey
+	clientSecret := cfg.Tailscale.OAuthClientSecret.Value()
+	authKey := cfg.Tailscale.AuthKey.Value()
 
 	// If OAuth is configured, use it to generate auth key
 	if clientID != "" && clientSecret != "" {

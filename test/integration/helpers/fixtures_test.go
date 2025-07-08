@@ -12,7 +12,7 @@ func TestNewTestFixture(t *testing.T) {
 	cfg := fixture.Build()
 
 	// Verify defaults
-	assert.Equal(t, "tskey-auth-test123", cfg.Tailscale.AuthKey)
+	assert.Equal(t, "tskey-auth-test123", cfg.Tailscale.AuthKey.Value())
 	assert.Equal(t, "localhost:0", cfg.Global.MetricsAddr)
 	assert.Equal(t, 1, len(cfg.Services))
 	assert.Equal(t, "test-service", cfg.Services[0].Name)
@@ -39,9 +39,9 @@ func TestTestFixtureWithOAuth(t *testing.T) {
 	cfg := fixture.WithOAuth("client-id", "client-secret").Build()
 
 	// Verify OAuth is configured and AuthKey is cleared
-	assert.Equal(t, "", cfg.Tailscale.AuthKey)
+	assert.Equal(t, "", cfg.Tailscale.AuthKey.Value())
 	assert.Equal(t, "client-id", cfg.Tailscale.OAuthClientID)
-	assert.Equal(t, "client-secret", cfg.Tailscale.OAuthClientSecret)
+	assert.Equal(t, "client-secret", cfg.Tailscale.OAuthClientSecret.Value())
 }
 
 func TestTestFixtureWithTimeout(t *testing.T) {

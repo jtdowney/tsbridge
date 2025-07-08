@@ -94,7 +94,7 @@ func CreateTestConfig(t *testing.T, serviceName string, backendAddr string) *con
 	boolFalse := false
 	return &config.Config{
 		Tailscale: config.Tailscale{
-			AuthKey:  "tskey-auth-test123",
+			AuthKey:  config.RedactedString("tskey-auth-test123"),
 			StateDir: t.TempDir(),
 		},
 		Global: config.Global{
@@ -122,7 +122,7 @@ func CreateMultiServiceConfig(t *testing.T, services map[string]string) *config.
 	boolFalse := false
 	cfg := &config.Config{
 		Tailscale: config.Tailscale{
-			AuthKey:  "tskey-auth-test123",
+			AuthKey:  config.RedactedString("tskey-auth-test123"),
 			StateDir: t.TempDir(),
 		},
 		Global: config.Global{
@@ -318,14 +318,14 @@ func WriteConfigFile(t *testing.T, cfg *config.Config) string {
 state_dir = "%s"`, cfg.Tailscale.StateDir)
 
 	// Add auth configuration
-	if cfg.Tailscale.AuthKey != "" {
+	if cfg.Tailscale.AuthKey.Value() != "" {
 		content += fmt.Sprintf(`
-auth_key = "%s"`, cfg.Tailscale.AuthKey)
+auth_key = "%s"`, cfg.Tailscale.AuthKey.Value())
 	}
 	if cfg.Tailscale.OAuthClientID != "" {
 		content += fmt.Sprintf(`
 oauth_client_id = "%s"
-oauth_client_secret = "%s"`, cfg.Tailscale.OAuthClientID, cfg.Tailscale.OAuthClientSecret)
+oauth_client_secret = "%s"`, cfg.Tailscale.OAuthClientID, cfg.Tailscale.OAuthClientSecret.Value())
 	}
 
 	// Add default_tags if present

@@ -79,13 +79,13 @@ func TestGenerateAuthKeyWithOAuth(t *testing.T) {
 	// Configure OAuth with test servers
 	cfg := config.Tailscale{
 		OAuthClientID:     "test-client-id",
-		OAuthClientSecret: "test-client-secret",
+		OAuthClientSecret: config.RedactedString("test-client-secret"),
 	}
 
 	// Create OAuth client with test endpoints
 	oauthConfig := &oauth2.Config{
 		ClientID:     cfg.OAuthClientID,
-		ClientSecret: cfg.OAuthClientSecret,
+		ClientSecret: cfg.OAuthClientSecret.Value(),
 		Endpoint: oauth2.Endpoint{
 			TokenURL: tokenServer.URL + "/oauth/token",
 		},

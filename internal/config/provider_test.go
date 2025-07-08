@@ -624,7 +624,7 @@ func TestProviderInterface(t *testing.T) {
 				if cfg.Tailscale.OAuthClientID == "" {
 					t.Error("Config missing Tailscale.OAuthClientID")
 				}
-				if cfg.Tailscale.OAuthClientSecret == "" {
+				if cfg.Tailscale.OAuthClientSecret.Value() == "" {
 					t.Error("Config missing Tailscale.OAuthClientSecret")
 				}
 				if len(cfg.Services) == 0 {

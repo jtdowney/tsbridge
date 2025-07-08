@@ -36,21 +36,21 @@ func TestNewServer(t *testing.T) {
 			name: "valid config with inline OAuth",
 			cfg: config.Tailscale{
 				OAuthClientID:     "test-client-id",
-				OAuthClientSecret: "test-client-secret",
+				OAuthClientSecret: config.RedactedString("test-client-secret"),
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid config with auth key",
 			cfg: config.Tailscale{
-				AuthKey: "test-auth-key",
+				AuthKey: config.RedactedString("test-auth-key"),
 			},
 			wantErr: false,
 		},
 		{
 			name: "valid config with auth key from env",
 			cfg: config.Tailscale{
-				AuthKey: "$TS_AUTHKEY",
+				AuthKey: config.RedactedString("$TS_AUTHKEY"),
 			},
 			wantErr: false,
 		},
@@ -71,7 +71,7 @@ func TestNewServer(t *testing.T) {
 		{
 			name: "incomplete OAuth - missing ID",
 			cfg: config.Tailscale{
-				OAuthClientSecret: "test-client-secret",
+				OAuthClientSecret: config.RedactedString("test-client-secret"),
 			},
 			wantErr: true,
 			errMsg:  "OAuth client ID is required",
@@ -301,7 +301,7 @@ func TestClose(t *testing.T) {
 	}
 
 	cfg := config.Tailscale{
-		AuthKey: "test-key",
+		AuthKey: config.RedactedString("test-key"),
 	}
 
 	server, err := NewServerWithFactory(cfg, factory)
@@ -335,7 +335,7 @@ func TestGetServiceServer(t *testing.T) {
 	}
 
 	cfg := config.Tailscale{
-		AuthKey: "test-key",
+		AuthKey: config.RedactedString("test-key"),
 	}
 
 	server, err := NewServerWithFactory(cfg, factory)
@@ -363,7 +363,7 @@ func TestValidateTailscaleSecrets(t *testing.T) {
 		{
 			name: "auth key present",
 			cfg: config.Tailscale{
-				AuthKey: "test-key",
+				AuthKey: config.RedactedString("test-key"),
 			},
 			wantErr: false,
 		},
@@ -371,7 +371,7 @@ func TestValidateTailscaleSecrets(t *testing.T) {
 			name: "OAuth credentials present",
 			cfg: config.Tailscale{
 				OAuthClientID:     "client-id",
-				OAuthClientSecret: "client-secret",
+				OAuthClientSecret: config.RedactedString("client-secret"),
 			},
 			wantErr: false,
 		},
@@ -392,7 +392,7 @@ func TestValidateTailscaleSecrets(t *testing.T) {
 		{
 			name: "missing OAuth ID",
 			cfg: config.Tailscale{
-				OAuthClientSecret: "client-secret",
+				OAuthClientSecret: config.RedactedString("client-secret"),
 			},
 			wantErr: true,
 			errMsg:  "OAuth client ID is missing",
@@ -490,7 +490,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			name: "use global auth key",
 			cfg: config.Config{
 				Tailscale: config.Tailscale{
-					AuthKey: "global-auth-key",
+					AuthKey: config.RedactedString("global-auth-key"),
 				},
 			},
 			svc: config.Service{
@@ -503,7 +503,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			cfg: config.Config{
 				Tailscale: config.Tailscale{
 					OAuthClientID:     "test-client",
-					OAuthClientSecret: "test-secret",
+					OAuthClientSecret: config.RedactedString("test-secret"),
 				},
 			},
 			svc: config.Service{
@@ -517,7 +517,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			cfg: config.Config{
 				Tailscale: config.Tailscale{
 					OAuthClientID:     "test-client",
-					OAuthClientSecret: "test-secret",
+					OAuthClientSecret: config.RedactedString("test-secret"),
 				},
 			},
 			svc: config.Service{
@@ -540,7 +540,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			cfg: config.Config{
 				Tailscale: config.Tailscale{
 					OAuthClientID:     "test-client",
-					OAuthClientSecret: "test-secret",
+					OAuthClientSecret: config.RedactedString("test-secret"),
 				},
 			},
 			svc: config.Service{
@@ -554,7 +554,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			cfg: config.Config{
 				Tailscale: config.Tailscale{
 					OAuthClientID:     "test-client",
-					OAuthClientSecret: "test-secret",
+					OAuthClientSecret: config.RedactedString("test-secret"),
 				},
 			},
 			svc: config.Service{
@@ -567,7 +567,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			name: "missing OAuth client ID",
 			cfg: config.Config{
 				Tailscale: config.Tailscale{
-					OAuthClientSecret: "test-secret",
+					OAuthClientSecret: config.RedactedString("test-secret"),
 				},
 			},
 			svc: config.Service{
@@ -598,8 +598,8 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				// When OAuth is used, we should get a non-empty result
-				if tt.cfg.Tailscale.AuthKey != "" {
-					assert.Equal(t, tt.cfg.Tailscale.AuthKey, result)
+				if tt.cfg.Tailscale.AuthKey.Value() != "" {
+					assert.Equal(t, tt.cfg.Tailscale.AuthKey.Value(), result)
 				}
 			}
 		})
@@ -617,7 +617,7 @@ func TestResolveAuthConfiguration(t *testing.T) {
 			{
 				name: "auth key provided",
 				cfg: config.Tailscale{
-					AuthKey: "test-key",
+					AuthKey: config.RedactedString("test-key"),
 				},
 				wantErr: false,
 			},
@@ -625,7 +625,7 @@ func TestResolveAuthConfiguration(t *testing.T) {
 				name: "OAuth credentials provided",
 				cfg: config.Tailscale{
 					OAuthClientID:     "client-id",
-					OAuthClientSecret: "client-secret",
+					OAuthClientSecret: config.RedactedString("client-secret"),
 				},
 				wantErr: false,
 			},
@@ -704,7 +704,7 @@ func TestPrimeCertificate(t *testing.T) {
 	}
 
 	cfg := config.Tailscale{
-		AuthKey: "test-key",
+		AuthKey: config.RedactedString("test-key"),
 	}
 
 	server, err := NewServerWithFactory(cfg, factory)
@@ -817,7 +817,7 @@ func TestPrimeCertificateErrorCases(t *testing.T) {
 			}
 
 			cfg := config.Tailscale{
-				AuthKey: "test-key",
+				AuthKey: config.RedactedString("test-key"),
 			}
 
 			server, err := NewServerWithFactory(cfg, factory)
@@ -915,7 +915,7 @@ func TestListenWithPrimeCertificate(t *testing.T) {
 			}
 
 			cfg := config.Tailscale{
-				AuthKey: "test-key",
+				AuthKey: config.RedactedString("test-key"),
 			}
 
 			server, err := NewServerWithFactory(cfg, factory)
@@ -989,7 +989,7 @@ func TestCloseService(t *testing.T) {
 			}
 
 			cfg := config.Tailscale{
-				AuthKey: "test-key",
+				AuthKey: config.RedactedString("test-key"),
 			}
 
 			server, err := NewServerWithFactory(cfg, factory)

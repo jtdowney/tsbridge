@@ -184,7 +184,7 @@ func TestParseGlobalConfig(t *testing.T) {
 
 		// Verify Tailscale config - env vars should be set but not resolved yet
 		assert.Equal(t, "", cfg.Tailscale.OAuthClientID)
-		assert.Equal(t, "", cfg.Tailscale.OAuthClientSecret)
+		assert.Equal(t, "", cfg.Tailscale.OAuthClientSecret.Value())
 		assert.Equal(t, "TS_OAUTH_CLIENT_ID", cfg.Tailscale.OAuthClientIDEnv)
 		assert.Equal(t, "TS_OAUTH_CLIENT_SECRET", cfg.Tailscale.OAuthClientSecretEnv)
 		assert.Equal(t, "/var/lib/tsbridge", cfg.Tailscale.StateDir)
@@ -219,7 +219,7 @@ func TestParseGlobalConfig(t *testing.T) {
 
 		// Verify no env vars are set - secrets will be resolved later by ProcessLoadedConfig
 		assert.Equal(t, "", cfg.Tailscale.OAuthClientID)
-		assert.Equal(t, "", cfg.Tailscale.OAuthClientSecret)
+		assert.Equal(t, "", cfg.Tailscale.OAuthClientSecret.Value())
 		assert.Equal(t, "", cfg.Tailscale.OAuthClientIDEnv)
 		assert.Equal(t, "", cfg.Tailscale.OAuthClientSecretEnv)
 		assert.Equal(t, "/var/lib/tsbridge", cfg.Tailscale.StateDir)

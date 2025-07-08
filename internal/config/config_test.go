@@ -76,7 +76,7 @@ tags = ["tag:test"]
 
 		// Secrets should be resolved from the specified env vars
 		assert.Equal(t, "resolved-client-id", cfg.Tailscale.OAuthClientID)
-		assert.Equal(t, "resolved-secret", cfg.Tailscale.OAuthClientSecret)
+		assert.Equal(t, "resolved-secret", cfg.Tailscale.OAuthClientSecret.Value())
 	})
 
 	// Test secret resolution from files
@@ -111,7 +111,7 @@ tags = ["tag:test"]
 
 		// Secrets should be resolved from files
 		assert.Equal(t, "file-client-id", cfg.Tailscale.OAuthClientID)
-		assert.Equal(t, "file-secret", cfg.Tailscale.OAuthClientSecret)
+		assert.Equal(t, "file-secret", cfg.Tailscale.OAuthClientSecret.Value())
 	})
 
 	// Test default values
@@ -246,8 +246,8 @@ tags = ["tag:test"]
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 
-		assert.Equal(t, "inline-id", cfg.Tailscale.OAuthClientID)      // Inline wins
-		assert.Equal(t, "env-secret", cfg.Tailscale.OAuthClientSecret) // Env specified
+		assert.Equal(t, "inline-id", cfg.Tailscale.OAuthClientID)              // Inline wins
+		assert.Equal(t, "env-secret", cfg.Tailscale.OAuthClientSecret.Value()) // Env specified
 	})
 
 	t.Run("OAuth secret resolution from files", func(t *testing.T) {
@@ -282,7 +282,7 @@ tags = ["tag:test"]
 		require.NotNil(t, cfg)
 
 		assert.Equal(t, "file-client-id", cfg.Tailscale.OAuthClientID)
-		assert.Equal(t, "file-client-secret", cfg.Tailscale.OAuthClientSecret)
+		assert.Equal(t, "file-client-secret", cfg.Tailscale.OAuthClientSecret.Value())
 	})
 
 	t.Run("auth key resolution from file", func(t *testing.T) {
@@ -312,7 +312,7 @@ tags = ["tag:test"]
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 
-		assert.Equal(t, "file-auth-key", cfg.Tailscale.AuthKey)
+		assert.Equal(t, "file-auth-key", cfg.Tailscale.AuthKey.Value())
 	})
 
 	t.Run("fallback to TS_ OAuth environment variables", func(t *testing.T) {
@@ -341,7 +341,7 @@ tags = ["tag:test"]
 		require.NotNil(t, cfg)
 
 		assert.Equal(t, "fallback-client-id", cfg.Tailscale.OAuthClientID)
-		assert.Equal(t, "fallback-client-secret", cfg.Tailscale.OAuthClientSecret)
+		assert.Equal(t, "fallback-client-secret", cfg.Tailscale.OAuthClientSecret.Value())
 	})
 
 	t.Run("fallback to TS_AUTHKEY environment variable", func(t *testing.T) {
@@ -368,7 +368,7 @@ tags = ["tag:test"]
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 
-		assert.Equal(t, "fallback-auth-key", cfg.Tailscale.AuthKey)
+		assert.Equal(t, "fallback-auth-key", cfg.Tailscale.AuthKey.Value())
 	})
 
 	t.Run("TSBRIDGE_ environment variables override config", func(t *testing.T) {
@@ -399,7 +399,7 @@ tags = ["tag:test"]
 		require.NotNil(t, cfg)
 
 		assert.Equal(t, "tsbridge-override-id", cfg.Tailscale.OAuthClientID)
-		assert.Equal(t, "config-secret", cfg.Tailscale.OAuthClientSecret) // Not overridden
+		assert.Equal(t, "config-secret", cfg.Tailscale.OAuthClientSecret.Value()) // Not overridden
 		assert.Equal(t, 60*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
 		assert.Equal(t, 40*time.Second, cfg.Global.WriteTimeout.Duration) // Not overridden
 	})
@@ -481,7 +481,7 @@ func TestResolveSecrets(t *testing.T) {
 		err := resolveSecrets(cfg)
 		require.NoError(t, err, "resolveSecrets() failed")
 
-		if cfg.Tailscale.OAuthClientSecret != "test-secret" {
+		if cfg.Tailscale.OAuthClientSecret.Value() != "test-secret" {
 			t.Errorf("OAuthClientSecret = %v, want %v", cfg.Tailscale.OAuthClientSecret, "test-secret")
 		}
 	})
@@ -495,7 +495,7 @@ func TestResolveSecrets(t *testing.T) {
 		err := resolveSecrets(cfg)
 		require.NoError(t, err, "resolveSecrets() failed")
 
-		if cfg.Tailscale.AuthKey != "fallback-key" {
+		if cfg.Tailscale.AuthKey.Value() != "fallback-key" {
 			t.Errorf("AuthKey = %v, want %v", cfg.Tailscale.AuthKey, "fallback-key")
 		}
 	})
@@ -1858,7 +1858,7 @@ func TestProcessLoadedConfig(t *testing.T) {
 		assert.NoError(t, err)
 
 		// Verify secrets were resolved
-		if cfg.Tailscale.AuthKey != "test-auth-key" {
+		if cfg.Tailscale.AuthKey.Value() != "test-auth-key" {
 			t.Errorf("expected AuthKey to be resolved to 'test-auth-key', got %q", cfg.Tailscale.AuthKey)
 		}
 		if cfg.Tailscale.AuthKeyFile != "" {
