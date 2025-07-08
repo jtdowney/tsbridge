@@ -2,6 +2,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -497,7 +498,7 @@ func (c *Config) SetDefaults() {
 	for i := range c.Services {
 		svc := &c.Services[i]
 
-		// Default whois_enabled to true if not specified
+		// Default whois_enabled to false if not specified
 		if svc.WhoisEnabled == nil {
 			enabled := constants.DefaultWhoisEnabled
 			svc.WhoisEnabled = &enabled
@@ -780,70 +781,10 @@ func (t Tailscale) String() string {
 
 // String returns a string representation of the Config with secrets redacted
 func (c *Config) String() string {
-	var b strings.Builder
-
-	// Tailscale section
-	b.WriteString(c.Tailscale.String())
-
-	// Global section
-	b.WriteString("\nGlobal:\n")
-	if c.Global.ReadHeaderTimeout != nil {
-		b.WriteString(fmt.Sprintf("  ReadHeaderTimeout: %s\n", *c.Global.ReadHeaderTimeout))
+	redacted := c.Redacted()
+	data, err := json.MarshalIndent(redacted, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Config{error: %v}", err)
 	}
-	if c.Global.WriteTimeout != nil {
-		b.WriteString(fmt.Sprintf("  WriteTimeout: %s\n", *c.Global.WriteTimeout))
-	}
-	if c.Global.IdleTimeout != nil {
-		b.WriteString(fmt.Sprintf("  IdleTimeout: %s\n", *c.Global.IdleTimeout))
-	}
-	if c.Global.ResponseHeaderTimeout != nil {
-		b.WriteString(fmt.Sprintf("  ResponseHeaderTimeout: %s\n", *c.Global.ResponseHeaderTimeout))
-	}
-	if c.Global.ShutdownTimeout != nil {
-		b.WriteString(fmt.Sprintf("  ShutdownTimeout: %s\n", *c.Global.ShutdownTimeout))
-	}
-	b.WriteString(fmt.Sprintf("  MetricsAddr: %s\n", c.Global.MetricsAddr))
-	if c.Global.AccessLog != nil {
-		b.WriteString(fmt.Sprintf("  AccessLog: %t\n", *c.Global.AccessLog))
-	}
-	if len(c.Global.TrustedProxies) > 0 {
-		b.WriteString(fmt.Sprintf("  TrustedProxies: %v\n", c.Global.TrustedProxies))
-	}
-
-	// Services section
-	b.WriteString("\nServices:\n")
-	for _, svc := range c.Services {
-		b.WriteString(fmt.Sprintf("  - Name: %s\n", svc.Name))
-		b.WriteString(fmt.Sprintf("    BackendAddr: %s\n", svc.BackendAddr))
-		if svc.WhoisEnabled != nil {
-			b.WriteString(fmt.Sprintf("    WhoisEnabled: %t\n", *svc.WhoisEnabled))
-		}
-		if svc.WhoisTimeout != nil {
-			b.WriteString(fmt.Sprintf("    WhoisTimeout: %s\n", *svc.WhoisTimeout))
-		}
-		if svc.TLSMode != "" {
-			b.WriteString(fmt.Sprintf("    TLSMode: %s\n", svc.TLSMode))
-		}
-		if len(svc.Tags) > 0 {
-			b.WriteString(fmt.Sprintf("    Tags: %v\n", svc.Tags))
-		}
-		// Add service-level overrides if set
-		if svc.ReadHeaderTimeout != nil {
-			b.WriteString(fmt.Sprintf("    ReadHeaderTimeout: %s\n", *svc.ReadHeaderTimeout))
-		}
-		if svc.WriteTimeout != nil {
-			b.WriteString(fmt.Sprintf("    WriteTimeout: %s\n", *svc.WriteTimeout))
-		}
-		if svc.IdleTimeout != nil {
-			b.WriteString(fmt.Sprintf("    IdleTimeout: %s\n", *svc.IdleTimeout))
-		}
-		if svc.ResponseHeaderTimeout != nil {
-			b.WriteString(fmt.Sprintf("    ResponseHeaderTimeout: %s\n", *svc.ResponseHeaderTimeout))
-		}
-		if svc.AccessLog != nil {
-			b.WriteString(fmt.Sprintf("    AccessLog: %t\n", *svc.AccessLog))
-		}
-	}
-
-	return b.String()
+	return string(data)
 }

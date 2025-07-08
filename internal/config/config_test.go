@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1492,7 +1493,7 @@ func TestConfigString(t *testing.T) {
 	expectedValues := []string{
 		"client-123",        // OAuth client ID should be visible
 		"/var/lib/tsbridge", // State dir should be visible
-		"5s",                // Timeouts should be visible
+		"5000000000",        // 5s timeout in nanoseconds should be visible
 		":9090",             // Metrics address should be visible
 		"api",               // Service names should be visible
 		"127.0.0.1:8080",    // Backend addresses should be visible
@@ -1504,15 +1505,21 @@ func TestConfigString(t *testing.T) {
 		}
 	}
 
-	// Ensure the output is properly formatted
-	if !strings.Contains(result, "Tailscale:") {
-		t.Error("String() result should contain 'Tailscale:' section")
+	// Ensure the output is properly formatted as JSON
+	if !strings.Contains(result, "\"tailscale\":") {
+		t.Error("String() result should contain '\"tailscale\":' JSON field")
 	}
-	if !strings.Contains(result, "Global:") {
-		t.Error("String() result should contain 'Global:' section")
+	if !strings.Contains(result, "\"global\":") {
+		t.Error("String() result should contain '\"global\":' JSON field")
 	}
-	if !strings.Contains(result, "Services:") {
-		t.Error("String() result should contain 'Services:' section")
+	if !strings.Contains(result, "\"services\":") {
+		t.Error("String() result should contain '\"services\":' JSON field")
+	}
+
+	// Verify it's valid JSON
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		t.Errorf("String() result should be valid JSON, got error: %v", err)
 	}
 }
 
