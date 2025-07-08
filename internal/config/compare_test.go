@@ -506,3 +506,120 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+// TestServiceConfigEqualWithGoCmp tests the improved implementation using go-cmp
+func TestServiceConfigEqualWithGoCmp(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        Service
+		b        Service
+		expected bool
+	}{
+		{
+			name: "complex service with all fields different",
+			a: Service{
+				Name:                  "service-a",
+				BackendAddr:           "http://localhost:8080",
+				WhoisEnabled:          boolPtr(true),
+				WhoisTimeout:          testhelpers.DurationPtr(5 * time.Second),
+				TLSMode:               "strict",
+				Tags:                  []string{"prod", "api"},
+				ReadHeaderTimeout:     testhelpers.DurationPtr(10 * time.Second),
+				WriteTimeout:          testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+				ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				AccessLog:             boolPtr(true),
+				MaxRequestBodySize:    testhelpers.Int64Ptr(1048576),
+				FunnelEnabled:         boolPtr(false),
+				Ephemeral:             true,
+				FlushInterval:         testhelpers.DurationPtr(1 * time.Second),
+				UpstreamHeaders: map[string]string{
+					"X-Custom-Header": "value1",
+					"X-Request-ID":    "123",
+				},
+				DownstreamHeaders: map[string]string{
+					"X-Response-Header": "response1",
+				},
+				RemoveUpstream:   []string{"Authorization", "Cookie"},
+				RemoveDownstream: []string{"Server", "X-Powered-By"},
+			},
+			b: Service{
+				Name:                  "service-b",
+				BackendAddr:           "http://localhost:8081",
+				WhoisEnabled:          boolPtr(false),
+				WhoisTimeout:          testhelpers.DurationPtr(10 * time.Second),
+				TLSMode:               "off",
+				Tags:                  []string{"dev", "internal"},
+				ReadHeaderTimeout:     testhelpers.DurationPtr(20 * time.Second),
+				WriteTimeout:          testhelpers.DurationPtr(60 * time.Second),
+				IdleTimeout:           testhelpers.DurationPtr(240 * time.Second),
+				ResponseHeaderTimeout: testhelpers.DurationPtr(60 * time.Second),
+				AccessLog:             boolPtr(false),
+				MaxRequestBodySize:    testhelpers.Int64Ptr(2097152),
+				FunnelEnabled:         boolPtr(true),
+				Ephemeral:             false,
+				FlushInterval:         testhelpers.DurationPtr(2 * time.Second),
+				UpstreamHeaders: map[string]string{
+					"X-Custom-Header": "value2",
+					"X-Trace-ID":      "456",
+				},
+				DownstreamHeaders: map[string]string{
+					"X-Response-Header": "response2",
+					"X-Cache-Control":   "no-cache",
+				},
+				RemoveUpstream:   []string{"X-Forwarded-For"},
+				RemoveDownstream: []string{"Date"},
+			},
+			expected: false,
+		},
+		{
+			name: "nil and empty slices should be equal",
+			a: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				Tags:        nil,
+			},
+			b: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				Tags:        []string{},
+			},
+			expected: true,
+		},
+		{
+			name: "nil and empty maps should be equal",
+			a: Service{
+				Name:            "test-service",
+				BackendAddr:     "http://localhost:8080",
+				UpstreamHeaders: nil,
+			},
+			b: Service{
+				Name:            "test-service",
+				BackendAddr:     "http://localhost:8080",
+				UpstreamHeaders: map[string]string{},
+			},
+			expected: true,
+		},
+		{
+			name: "tags order should not matter",
+			a: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				Tags:        []string{"api", "prod", "v2"},
+			},
+			b: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				Tags:        []string{"v2", "api", "prod"},
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ServiceConfigEqual(tt.a, tt.b)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
