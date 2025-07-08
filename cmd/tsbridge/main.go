@@ -153,8 +153,19 @@ func validateConfig(args *cliArgs) error {
 	return nil
 }
 
+// Application interface for testing
+type Application interface {
+	Start(ctx context.Context) error
+	Shutdown(ctx context.Context) error
+}
+
+// Allow replacing the app factory for tests.
+var newApp = func(cfg *config.Config, opts app.Options) (Application, error) {
+	return app.NewAppWithOptions(cfg, opts)
+}
+
 // run executes the main application logic
-func run(args *cliArgs) error {
+func run(args *cliArgs, sigCh <-chan os.Signal) error {
 	// Register all available providers
 	registerProviders()
 
@@ -190,7 +201,7 @@ func run(args *cliArgs) error {
 
 	// Create the application with the provider
 	slog.Debug("creating application")
-	application, err := app.NewAppWithOptions(nil, app.Options{
+	application, err := newApp(nil, app.Options{
 		Provider: configProvider,
 	})
 	if err != nil {
@@ -202,10 +213,6 @@ func run(args *cliArgs) error {
 	if err := application.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start application: %w", err)
 	}
-
-	// Setup signal handling for graceful shutdown
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	// Wait for signal
 	sig := <-sigCh
@@ -230,7 +237,11 @@ func main() {
 		exitFunc(2)
 	}
 
-	if err := run(args); err != nil {
+	// Setup signal handling for graceful shutdown
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	if err := run(args, sigCh); err != nil {
 		slog.Error("error", "error", err)
 		exitFunc(1)
 	}

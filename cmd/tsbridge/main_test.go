@@ -5,6 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/jtdowney/tsbridge/internal/app"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -836,8 +837,11 @@ backend_addr = "localhost:8080"
 			slog.SetDefault(logger)
 			defer slog.SetDefault(oldLogger)
 
+			// Create a signal channel (not used in these tests)
+			sigCh := make(chan os.Signal, 1)
+
 			// Run the function
-			err := run(tt.args)
+			err := run(tt.args, sigCh)
 
 			// Close writer and restore stdout
 			w.Close()
@@ -1006,14 +1010,116 @@ func TestMainDockerProvider(t *testing.T) {
 	assert.Contains(t, output, "provider=docker")
 }
 
+// mockApp is a test implementation that allows simulating errors
+type mockApp struct {
+	startErr    error
+	shutdownErr error
+	started     bool
+	shutdown    bool
+}
+
+func (m *mockApp) Start(ctx context.Context) error {
+	m.started = true
+	return m.startErr
+}
+
+func (m *mockApp) Shutdown(ctx context.Context) error {
+	m.shutdown = true
+	return m.shutdownErr
+}
+
 // TestApplicationStartError tests handling of application.Start() errors
 func TestApplicationStartError(t *testing.T) {
-	t.Skip("Skipping test that requires tsnet authentication")
+	// Save and restore the original newApp function
+	oldNewApp := newApp
+	defer func() { newApp = oldNewApp }()
+
+	// Create a mock application that returns an error on Start()
+	mockApplication := &mockApp{startErr: fmt.Errorf("start failed")}
+	newApp = func(c *config.Config, opts app.Options) (Application, error) {
+		return mockApplication, nil
+	}
+
+	// Create a valid config file for the test to proceed
+	configPath := filepath.Join(t.TempDir(), "test.toml")
+	configContent := `
+[tailscale]
+auth_key = "test-auth-key"
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	args := &cliArgs{
+		provider:   "file",
+		configPath: configPath,
+	}
+
+	// Create a signal channel (not used in this test)
+	sigCh := make(chan os.Signal, 1)
+
+	err := run(args, sigCh)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to start application")
+	assert.Contains(t, err.Error(), "start failed")
+	assert.True(t, mockApplication.started)
 }
 
 // TestApplicationShutdownError tests handling of application.Shutdown() errors
 func TestApplicationShutdownError(t *testing.T) {
-	t.Skip("Skipping test that requires mocking app.Application interface")
+	// Save and restore the original newApp function
+	oldNewApp := newApp
+	defer func() { newApp = oldNewApp }()
+
+	// Create a mock application that returns an error on Shutdown()
+	mockApplication := &mockApp{shutdownErr: fmt.Errorf("shutdown failed")}
+	newApp = func(c *config.Config, opts app.Options) (Application, error) {
+		return mockApplication, nil
+	}
+
+	// Create a valid config file for the test to proceed
+	configPath := filepath.Join(t.TempDir(), "test.toml")
+	configContent := `
+[tailscale]
+auth_key = "test-auth-key"
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+`
+	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0644))
+
+	args := &cliArgs{
+		provider:   "file",
+		configPath: configPath,
+	}
+
+	// Create controlled signal channel
+	sigCh := make(chan os.Signal, 1)
+
+	// Run in goroutine
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- run(args, sigCh)
+	}()
+
+	// Wait for app to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Trigger shutdown
+	sigCh <- os.Interrupt
+
+	// Verify error
+	select {
+	case err := <-errCh:
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "shutdown error")
+		assert.Contains(t, err.Error(), "shutdown failed")
+		assert.True(t, mockApplication.started)
+		assert.True(t, mockApplication.shutdown)
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for shutdown")
+	}
 }
 
 // TestProviderLoadError tests handling of provider.Load() errors
@@ -1031,8 +1137,11 @@ func TestProviderLoadError(t *testing.T) {
 		configPath: "/non/existent/path/config.toml",
 	}
 
+	// Create a signal channel (not used in this test)
+	sigCh := make(chan os.Signal, 1)
+
 	// Run should fail
-	err := run(args)
+	err := run(args, sigCh)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to create application")
 }
