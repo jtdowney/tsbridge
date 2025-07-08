@@ -9,14 +9,10 @@ import (
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// Helper function to create a Duration with IsSet=true
-func makeDuration(d time.Duration) Duration {
-	return Duration{Duration: d, IsSet: true}
-}
 
 func TestLoad(t *testing.T) {
 	// Focus on testing our custom logic, not library functionality
@@ -135,16 +131,16 @@ tags = ["tag:test"]
 		require.NotNil(t, cfg)
 
 		// Check that defaults are applied
-		assert.Equal(t, 30*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
-		assert.Equal(t, 30*time.Second, cfg.Global.WriteTimeout.Duration)
-		assert.Equal(t, 120*time.Second, cfg.Global.IdleTimeout.Duration)
-		assert.Equal(t, 30*time.Second, cfg.Global.ShutdownTimeout.Duration)
+		assert.Equal(t, 30*time.Second, *cfg.Global.ReadHeaderTimeout)
+		assert.Equal(t, 30*time.Second, *cfg.Global.WriteTimeout)
+		assert.Equal(t, 120*time.Second, *cfg.Global.IdleTimeout)
+		assert.Equal(t, 30*time.Second, *cfg.Global.ShutdownTimeout)
 
 		// Service defaults
 		svc := cfg.Services[0]
 		assert.NotNil(t, svc.WhoisEnabled)
 		assert.False(t, *svc.WhoisEnabled)
-		assert.Equal(t, 5*time.Second, svc.WhoisTimeout.Duration)
+		assert.Equal(t, 5*time.Second, *svc.WhoisTimeout)
 		assert.Equal(t, "auto", svc.TLSMode)
 	})
 
@@ -173,8 +169,8 @@ tags = ["tag:test"]
 		require.NotNil(t, cfg)
 
 		// Check ReadHeaderTimeout values
-		assert.Equal(t, 60*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
-		assert.Equal(t, 90*time.Second, cfg.Services[0].ReadHeaderTimeout.Duration)
+		assert.Equal(t, 60*time.Second, *cfg.Global.ReadHeaderTimeout)
+		assert.Equal(t, 90*time.Second, *cfg.Services[0].ReadHeaderTimeout)
 	})
 
 	// Test ReadHeaderTimeout environment variable override
@@ -203,7 +199,7 @@ tags = ["tag:test"]
 		require.NotNil(t, cfg)
 
 		// Environment variable should override config file
-		assert.Equal(t, 120*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
+		assert.Equal(t, 120*time.Second, *cfg.Global.ReadHeaderTimeout)
 	})
 
 	// Test empty file path validation
@@ -400,8 +396,8 @@ tags = ["tag:test"]
 
 		assert.Equal(t, "tsbridge-override-id", cfg.Tailscale.OAuthClientID)
 		assert.Equal(t, "config-secret", cfg.Tailscale.OAuthClientSecret.Value()) // Not overridden
-		assert.Equal(t, 60*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
-		assert.Equal(t, 40*time.Second, cfg.Global.WriteTimeout.Duration) // Not overridden
+		assert.Equal(t, 60*time.Second, *cfg.Global.ReadHeaderTimeout)
+		assert.Equal(t, 40*time.Second, *cfg.Global.WriteTimeout) // Not overridden
 	})
 
 	t.Run("validation error propagates", func(t *testing.T) {
@@ -652,17 +648,17 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:         "api",
 						BackendAddr:  "127.0.0.1:8080",
 						WhoisEnabled: &trueVal,
-						WhoisTimeout: makeDuration(1 * time.Second),
+						WhoisTimeout: testhelpers.DurationPtr(1 * time.Second),
 						Tags:         []string{"tag:test"},
 					},
 				},
@@ -674,10 +670,10 @@ func TestValidate(t *testing.T) {
 			config: &Config{
 				Tailscale: Tailscale{},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -696,10 +692,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{},
 			},
@@ -713,10 +709,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -741,10 +737,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -764,10 +760,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -787,10 +783,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -810,10 +806,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(-5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(-5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -833,10 +829,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -857,10 +853,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 					MetricsAddr:       "not-a-valid-addr",
 				},
 				Services: []Service{
@@ -881,10 +877,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 					TrustedProxies:    []string{"invalid-ip"},
 				},
 				Services: []Service{
@@ -905,10 +901,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 					TrustedProxies:    []string{"10.0.0.0/33"},
 				},
 				Services: []Service{
@@ -929,10 +925,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 					TrustedProxies:    []string{"192.168.1.1", "10.0.0.0/8", "172.16.0.0/12"},
 				},
 				Services: []Service{
@@ -954,10 +950,10 @@ func TestValidate(t *testing.T) {
 					AuthKey:           "test-auth-key",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -976,10 +972,10 @@ func TestValidate(t *testing.T) {
 					AuthKey: "test-auth-key",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1000,10 +996,10 @@ func TestValidate(t *testing.T) {
 					StateDir:          "/var/lib/tsbridge",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1024,10 +1020,10 @@ func TestValidate(t *testing.T) {
 					StateDir:          "",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1047,10 +1043,10 @@ func TestValidate(t *testing.T) {
 					OAuthClientSecret: "test-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout: makeDuration(5 * time.Second),
-					WriteTimeout:      makeDuration(10 * time.Second),
-					IdleTimeout:       makeDuration(120 * time.Second),
-					ShutdownTimeout:   makeDuration(15 * time.Second),
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1093,10 +1089,10 @@ func TestNormalize(t *testing.T) {
 			name: "service inherits all global timeouts",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1108,19 +1104,19 @@ func TestNormalize(t *testing.T) {
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     makeDuration(5 * time.Second),
-						WriteTimeout:          makeDuration(10 * time.Second),
-						IdleTimeout:           makeDuration(120 * time.Second),
-						ResponseHeaderTimeout: makeDuration(30 * time.Second),
+						ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+						WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+						IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+						ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 					},
 				},
 			},
@@ -1129,37 +1125,37 @@ func TestNormalize(t *testing.T) {
 			name: "service keeps its own timeouts",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     makeDuration(15 * time.Second),
-						WriteTimeout:          makeDuration(20 * time.Second),
-						IdleTimeout:           makeDuration(180 * time.Second),
-						ResponseHeaderTimeout: makeDuration(45 * time.Second),
+						ReadHeaderTimeout:     testhelpers.DurationPtr(15 * time.Second),
+						WriteTimeout:          testhelpers.DurationPtr(20 * time.Second),
+						IdleTimeout:           testhelpers.DurationPtr(180 * time.Second),
+						ResponseHeaderTimeout: testhelpers.DurationPtr(45 * time.Second),
 					},
 				},
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     makeDuration(15 * time.Second),
-						WriteTimeout:          makeDuration(20 * time.Second),
-						IdleTimeout:           makeDuration(180 * time.Second),
-						ResponseHeaderTimeout: makeDuration(45 * time.Second),
+						ReadHeaderTimeout:     testhelpers.DurationPtr(15 * time.Second),
+						WriteTimeout:          testhelpers.DurationPtr(20 * time.Second),
+						IdleTimeout:           testhelpers.DurationPtr(180 * time.Second),
+						ResponseHeaderTimeout: testhelpers.DurationPtr(45 * time.Second),
 					},
 				},
 			},
@@ -1168,37 +1164,37 @@ func TestNormalize(t *testing.T) {
 			name: "service inherits only missing timeouts",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:              "api",
 						BackendAddr:       "127.0.0.1:8080",
-						ReadHeaderTimeout: makeDuration(15 * time.Second),
-						WriteTimeout:      Duration{Duration: 0, IsSet: false}, // Should inherit from global
-						IdleTimeout:       makeDuration(180 * time.Second),
+						ReadHeaderTimeout: testhelpers.DurationPtr(15 * time.Second),
+						WriteTimeout:      nil, // Should inherit from global
+						IdleTimeout:       testhelpers.DurationPtr(180 * time.Second),
 						// ResponseHeaderTimeout not set, should inherit
 					},
 				},
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     makeDuration(15 * time.Second),
-						WriteTimeout:          makeDuration(10 * time.Second), // Inherited
-						IdleTimeout:           makeDuration(180 * time.Second),
-						ResponseHeaderTimeout: makeDuration(30 * time.Second), // Inherited
+						ReadHeaderTimeout:     testhelpers.DurationPtr(15 * time.Second),
+						WriteTimeout:          testhelpers.DurationPtr(10 * time.Second), // Inherited
+						IdleTimeout:           testhelpers.DurationPtr(180 * time.Second),
+						ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second), // Inherited
 					},
 				},
 			},
@@ -1207,47 +1203,47 @@ func TestNormalize(t *testing.T) {
 			name: "multiple services normalized correctly",
 			config: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:              "api",
 						BackendAddr:       "127.0.0.1:8080",
-						ReadHeaderTimeout: makeDuration(15 * time.Second),
+						ReadHeaderTimeout: testhelpers.DurationPtr(15 * time.Second),
 					},
 					{
 						Name:         "web",
 						BackendAddr:  "127.0.0.1:8081",
-						WriteTimeout: makeDuration(25 * time.Second),
+						WriteTimeout: testhelpers.DurationPtr(25 * time.Second),
 					},
 				},
 			},
 			expected: &Config{
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(5 * time.Second),
-					WriteTimeout:          makeDuration(10 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ResponseHeaderTimeout: makeDuration(30 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 				},
 				Services: []Service{
 					{
 						Name:                  "api",
 						BackendAddr:           "127.0.0.1:8080",
-						ReadHeaderTimeout:     makeDuration(15 * time.Second),
-						WriteTimeout:          makeDuration(10 * time.Second),  // Inherited
-						IdleTimeout:           makeDuration(120 * time.Second), // Inherited
-						ResponseHeaderTimeout: makeDuration(30 * time.Second),  // Inherited
+						ReadHeaderTimeout:     testhelpers.DurationPtr(15 * time.Second),
+						WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),  // Inherited
+						IdleTimeout:           testhelpers.DurationPtr(120 * time.Second), // Inherited
+						ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),  // Inherited
 					},
 					{
 						Name:                  "web",
 						BackendAddr:           "127.0.0.1:8081",
-						ReadHeaderTimeout:     makeDuration(5 * time.Second), // Inherited
-						WriteTimeout:          makeDuration(25 * time.Second),
-						IdleTimeout:           makeDuration(120 * time.Second), // Inherited
-						ResponseHeaderTimeout: makeDuration(30 * time.Second),  // Inherited
+						ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second), // Inherited
+						WriteTimeout:          testhelpers.DurationPtr(25 * time.Second),
+						IdleTimeout:           testhelpers.DurationPtr(120 * time.Second), // Inherited
+						ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),  // Inherited
 					},
 				},
 			},
@@ -1276,17 +1272,46 @@ func TestNormalize(t *testing.T) {
 				if svc.BackendAddr != expectedSvc.BackendAddr {
 					t.Errorf("Service[%d] backend mismatch: got %q, want %q", i, svc.BackendAddr, expectedSvc.BackendAddr)
 				}
-				if svc.ReadHeaderTimeout != expectedSvc.ReadHeaderTimeout {
-					t.Errorf("Service[%d] ReadHeaderTimeout mismatch: got %v, want %v", i, svc.ReadHeaderTimeout, expectedSvc.ReadHeaderTimeout)
+				// Compare timeout values
+				if !durationPtrEqual(svc.ReadHeaderTimeout, expectedSvc.ReadHeaderTimeout) {
+					var got, want time.Duration
+					if svc.ReadHeaderTimeout != nil {
+						got = *svc.ReadHeaderTimeout
+					}
+					if expectedSvc.ReadHeaderTimeout != nil {
+						want = *expectedSvc.ReadHeaderTimeout
+					}
+					t.Errorf("Service[%d] ReadHeaderTimeout mismatch: got %v, want %v", i, got, want)
 				}
-				if svc.WriteTimeout != expectedSvc.WriteTimeout {
-					t.Errorf("Service[%d] WriteTimeout mismatch: got %v, want %v", i, svc.WriteTimeout, expectedSvc.WriteTimeout)
+				if !durationPtrEqual(svc.WriteTimeout, expectedSvc.WriteTimeout) {
+					var got, want time.Duration
+					if svc.WriteTimeout != nil {
+						got = *svc.WriteTimeout
+					}
+					if expectedSvc.WriteTimeout != nil {
+						want = *expectedSvc.WriteTimeout
+					}
+					t.Errorf("Service[%d] WriteTimeout mismatch: got %v, want %v", i, got, want)
 				}
-				if svc.IdleTimeout != expectedSvc.IdleTimeout {
-					t.Errorf("Service[%d] IdleTimeout mismatch: got %v, want %v", i, svc.IdleTimeout, expectedSvc.IdleTimeout)
+				if !durationPtrEqual(svc.IdleTimeout, expectedSvc.IdleTimeout) {
+					var got, want time.Duration
+					if svc.IdleTimeout != nil {
+						got = *svc.IdleTimeout
+					}
+					if expectedSvc.IdleTimeout != nil {
+						want = *expectedSvc.IdleTimeout
+					}
+					t.Errorf("Service[%d] IdleTimeout mismatch: got %v, want %v", i, got, want)
 				}
-				if svc.ResponseHeaderTimeout != expectedSvc.ResponseHeaderTimeout {
-					t.Errorf("Service[%d] ResponseHeaderTimeout mismatch: got %v, want %v", i, svc.ResponseHeaderTimeout, expectedSvc.ResponseHeaderTimeout)
+				if !durationPtrEqual(svc.ResponseHeaderTimeout, expectedSvc.ResponseHeaderTimeout) {
+					var got, want time.Duration
+					if svc.ResponseHeaderTimeout != nil {
+						got = *svc.ResponseHeaderTimeout
+					}
+					if expectedSvc.ResponseHeaderTimeout != nil {
+						want = *expectedSvc.ResponseHeaderTimeout
+					}
+					t.Errorf("Service[%d] ResponseHeaderTimeout mismatch: got %v, want %v", i, got, want)
 				}
 			}
 		})
@@ -1430,10 +1455,10 @@ func TestConfigString(t *testing.T) {
 			StateDir:          "/var/lib/tsbridge",
 		},
 		Global: Global{
-			ReadHeaderTimeout: makeDuration(5 * time.Second),
-			WriteTimeout:      makeDuration(10 * time.Second),
-			IdleTimeout:       makeDuration(120 * time.Second),
-			ShutdownTimeout:   makeDuration(15 * time.Second),
+			ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+			WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+			IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+			ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 			MetricsAddr:       ":9090",
 		},
 		Services: []Service{
@@ -1441,7 +1466,7 @@ func TestConfigString(t *testing.T) {
 				Name:         "api",
 				BackendAddr:  "127.0.0.1:8080",
 				WhoisEnabled: &[]bool{true}[0],
-				WhoisTimeout: makeDuration(1 * time.Second),
+				WhoisTimeout: testhelpers.DurationPtr(1 * time.Second),
 			},
 			{
 				Name:        "web",
@@ -1672,11 +1697,11 @@ backend_addr = "localhost:8080"
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 
-		assert.Equal(t, 15*time.Second, cfg.Global.DialTimeout.Duration)
-		assert.Equal(t, 20*time.Second, cfg.Global.KeepAliveTimeout.Duration)
-		assert.Equal(t, 60*time.Second, cfg.Global.IdleConnTimeout.Duration)
-		assert.Equal(t, 5*time.Second, cfg.Global.TLSHandshakeTimeout.Duration)
-		assert.Equal(t, 2*time.Second, cfg.Global.ExpectContinueTimeout.Duration)
+		assert.Equal(t, 15*time.Second, *cfg.Global.DialTimeout)
+		assert.Equal(t, 20*time.Second, *cfg.Global.KeepAliveTimeout)
+		assert.Equal(t, 60*time.Second, *cfg.Global.IdleConnTimeout)
+		assert.Equal(t, 5*time.Second, *cfg.Global.TLSHandshakeTimeout)
+		assert.Equal(t, 2*time.Second, *cfg.Global.ExpectContinueTimeout)
 	})
 
 	// Test transport timeouts use defaults when not specified
@@ -1700,11 +1725,11 @@ backend_addr = "localhost:8080"
 		require.NotNil(t, cfg)
 
 		// Check that defaults are set
-		assert.Equal(t, 30*time.Second, cfg.Global.DialTimeout.Duration)
-		assert.Equal(t, 30*time.Second, cfg.Global.KeepAliveTimeout.Duration)
-		assert.Equal(t, 90*time.Second, cfg.Global.IdleConnTimeout.Duration)
-		assert.Equal(t, 10*time.Second, cfg.Global.TLSHandshakeTimeout.Duration)
-		assert.Equal(t, 1*time.Second, cfg.Global.ExpectContinueTimeout.Duration)
+		assert.Equal(t, 30*time.Second, *cfg.Global.DialTimeout)
+		assert.Equal(t, 30*time.Second, *cfg.Global.KeepAliveTimeout)
+		assert.Equal(t, 90*time.Second, *cfg.Global.IdleConnTimeout)
+		assert.Equal(t, 10*time.Second, *cfg.Global.TLSHandshakeTimeout)
+		assert.Equal(t, 1*time.Second, *cfg.Global.ExpectContinueTimeout)
 	})
 
 	// Test metrics server timeout configuration
@@ -1729,7 +1754,8 @@ backend_addr = "localhost:8080"
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 
-		assert.Equal(t, 10*time.Second, cfg.Global.MetricsReadHeaderTimeout.Duration)
+		assert.NotNil(t, cfg.Global.MetricsReadHeaderTimeout)
+		assert.Equal(t, 10*time.Second, *cfg.Global.MetricsReadHeaderTimeout)
 	})
 
 	// Test metrics server timeout default
@@ -1754,7 +1780,8 @@ backend_addr = "localhost:8080"
 		require.NotNil(t, cfg)
 
 		// Check that default is set
-		assert.Equal(t, 5*time.Second, cfg.Global.MetricsReadHeaderTimeout.Duration)
+		assert.NotNil(t, cfg.Global.MetricsReadHeaderTimeout)
+		assert.Equal(t, 5*time.Second, *cfg.Global.MetricsReadHeaderTimeout)
 	})
 }
 
@@ -1866,7 +1893,7 @@ func TestProcessLoadedConfig(t *testing.T) {
 		}
 
 		// Verify defaults were set (ReadHeaderTimeout should have a default)
-		if cfg.Global.ReadHeaderTimeout.Duration == 0 {
+		if cfg.Global.ReadHeaderTimeout == nil || *cfg.Global.ReadHeaderTimeout == 0 {
 			t.Error("expected Global.ReadHeaderTimeout to have default value")
 		}
 	})
@@ -2037,13 +2064,15 @@ tags = ["tag:test"]
 
 			// Check global flush interval
 			if tt.checkGlobal {
-				assert.Equal(t, tt.expectedGlobal, cfg.Global.FlushInterval.Duration,
+				assert.NotNil(t, cfg.Global.FlushInterval)
+				assert.Equal(t, tt.expectedGlobal, *cfg.Global.FlushInterval,
 					"global flush interval mismatch")
 			}
 
 			// Check service flush interval
 			if tt.checkService && len(cfg.Services) > 0 {
-				assert.Equal(t, tt.expectedSvc, cfg.Services[0].FlushInterval.Duration,
+				assert.NotNil(t, cfg.Services[0].FlushInterval)
+				assert.Equal(t, tt.expectedSvc, *cfg.Services[0].FlushInterval,
 					"service flush interval mismatch")
 			}
 		})
@@ -2053,13 +2082,13 @@ tags = ["tag:test"]
 func TestFlushIntervalNormalization(t *testing.T) {
 	cfg := &Config{
 		Global: Global{
-			FlushInterval: makeDuration(100 * time.Millisecond),
+			FlushInterval: testhelpers.DurationPtr(100 * time.Millisecond),
 		},
 		Services: []Service{
 			{
 				Name:          "with-override",
 				BackendAddr:   "localhost:8080",
-				FlushInterval: makeDuration(50 * time.Millisecond),
+				FlushInterval: testhelpers.DurationPtr(50 * time.Millisecond),
 			},
 			{
 				Name:        "without-override",
@@ -2074,10 +2103,12 @@ func TestFlushIntervalNormalization(t *testing.T) {
 	cfg.Normalize()
 
 	// Service with override should keep its value
-	assert.Equal(t, 50*time.Millisecond, cfg.Services[0].FlushInterval.Duration)
+	assert.NotNil(t, cfg.Services[0].FlushInterval)
+	assert.Equal(t, 50*time.Millisecond, *cfg.Services[0].FlushInterval)
 
 	// Service without override should inherit global value
-	assert.Equal(t, 100*time.Millisecond, cfg.Services[1].FlushInterval.Duration)
+	assert.NotNil(t, cfg.Services[1].FlushInterval)
+	assert.Equal(t, 100*time.Millisecond, *cfg.Services[1].FlushInterval)
 }
 
 func TestTagsConfiguration(t *testing.T) {
@@ -2267,10 +2298,10 @@ func TestTagsInheritance(t *testing.T) {
 				DefaultTags:       []string{"tag:global", "tag:default"},
 			},
 			Global: Global{
-				ReadHeaderTimeout: makeDuration(30 * time.Second),
-				WriteTimeout:      makeDuration(30 * time.Second),
-				IdleTimeout:       makeDuration(120 * time.Second),
-				ShutdownTimeout:   makeDuration(30 * time.Second),
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+				ShutdownTimeout:   testhelpers.DurationPtr(30 * time.Second),
 			},
 			Services: []Service{
 				{
@@ -2323,9 +2354,9 @@ backend_addr = "localhost:8080"
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 
-		// Check that write_timeout is 0 and IsSet is true
-		assert.Equal(t, time.Duration(0), cfg.Global.WriteTimeout.Duration)
-		assert.True(t, cfg.Global.WriteTimeout.IsSet)
+		// Check that write_timeout is 0
+		assert.NotNil(t, cfg.Global.WriteTimeout)
+		assert.Equal(t, time.Duration(0), *cfg.Global.WriteTimeout)
 	})
 
 	// Test that missing value results in Duration{0, false}
@@ -2333,79 +2364,78 @@ backend_addr = "localhost:8080"
 		// Create a config directly without loading from file to test pre-SetDefaults state
 		cfg := &Config{
 			Global: Global{
-				ReadHeaderTimeout: Duration{Duration: 30 * time.Second, IsSet: true},
-				// WriteTimeout not set, should be Duration{0, false}
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				// WriteTimeout not set, should be nil
 			},
 		}
 
-		// Before SetDefaults, write_timeout should be Duration{0, false}
-		assert.Equal(t, time.Duration(0), cfg.Global.WriteTimeout.Duration)
-		assert.False(t, cfg.Global.WriteTimeout.IsSet)
+		// Before SetDefaults, write_timeout should be nil
+		assert.Nil(t, cfg.Global.WriteTimeout)
 
-		// After SetDefaults, it should have the default value with IsSet=true
+		// After SetDefaults, it should have the default value
 		cfg.SetDefaults()
-		assert.Equal(t, 30*time.Second, cfg.Global.WriteTimeout.Duration)
-		assert.True(t, cfg.Global.WriteTimeout.IsSet)
+		assert.NotNil(t, cfg.Global.WriteTimeout)
+		assert.Equal(t, 30*time.Second, *cfg.Global.WriteTimeout)
 	})
 
-	// Test that SetDefaults respects IsSet flag
-	t.Run("SetDefaults respects IsSet flag", func(t *testing.T) {
-		// Test case 1: When IsSet is false, should apply default
+	// Test that SetDefaults respects nil vs non-nil pointers
+	t.Run("SetDefaults respects pointer values", func(t *testing.T) {
+		// Test case 1: When WriteTimeout is nil, should apply default
 		cfg1 := &Config{
 			Global: Global{
-				WriteTimeout: Duration{Duration: 0, IsSet: false},
+				WriteTimeout: nil,
 			},
 		}
 		cfg1.SetDefaults()
-		assert.Equal(t, 30*time.Second, cfg1.Global.WriteTimeout.Duration)
-		assert.True(t, cfg1.Global.WriteTimeout.IsSet)
+		assert.NotNil(t, cfg1.Global.WriteTimeout)
+		assert.Equal(t, 30*time.Second, *cfg1.Global.WriteTimeout)
 
-		// Test case 2: When IsSet is true with 0 duration, should keep 0
+		// Test case 2: When WriteTimeout is set to 0, should keep 0
 		cfg2 := &Config{
 			Global: Global{
-				WriteTimeout: Duration{Duration: 0, IsSet: true},
+				WriteTimeout: testhelpers.DurationPtr(0),
 			},
 		}
 		cfg2.SetDefaults()
-		assert.Equal(t, time.Duration(0), cfg2.Global.WriteTimeout.Duration)
-		assert.True(t, cfg2.Global.WriteTimeout.IsSet)
+		assert.NotNil(t, cfg2.Global.WriteTimeout)
+		assert.Equal(t, time.Duration(0), *cfg2.Global.WriteTimeout)
 	})
 
-	// Test that Normalize respects IsSet flag
-	t.Run("Normalize respects IsSet flag", func(t *testing.T) {
+	// Test that Normalize respects pointer values
+	t.Run("Normalize respects pointer values", func(t *testing.T) {
 		// Test case 1: Service inherits global when not set
 		cfg1 := &Config{
 			Global: Global{
-				WriteTimeout: Duration{Duration: 60 * time.Second, IsSet: true},
+				WriteTimeout: testhelpers.DurationPtr(60 * time.Second),
 			},
 			Services: []Service{
 				{
 					Name:         "test",
 					BackendAddr:  "localhost:8080",
-					WriteTimeout: Duration{Duration: 0, IsSet: false},
+					WriteTimeout: nil,
 				},
 			},
 		}
 		cfg1.Normalize()
-		assert.Equal(t, 60*time.Second, cfg1.Services[0].WriteTimeout.Duration)
-		assert.True(t, cfg1.Services[0].WriteTimeout.IsSet)
+		assert.NotNil(t, cfg1.Services[0].WriteTimeout)
+		assert.Equal(t, 60*time.Second, *cfg1.Services[0].WriteTimeout)
 
-		// Test case 2: Service keeps its own value when IsSet is true
+		// Test case 2: Service keeps its own value when set
 		cfg2 := &Config{
 			Global: Global{
-				WriteTimeout: Duration{Duration: 60 * time.Second, IsSet: true},
+				WriteTimeout: testhelpers.DurationPtr(60 * time.Second),
 			},
 			Services: []Service{
 				{
 					Name:         "test",
 					BackendAddr:  "localhost:8080",
-					WriteTimeout: Duration{Duration: 0, IsSet: true},
+					WriteTimeout: testhelpers.DurationPtr(0),
 				},
 			},
 		}
 		cfg2.Normalize()
-		assert.Equal(t, time.Duration(0), cfg2.Services[0].WriteTimeout.Duration)
-		assert.True(t, cfg2.Services[0].WriteTimeout.IsSet)
+		assert.NotNil(t, cfg2.Services[0].WriteTimeout)
+		assert.Equal(t, time.Duration(0), *cfg2.Services[0].WriteTimeout)
 	})
 }
 
@@ -2417,10 +2447,10 @@ func TestValidateWithProvider(t *testing.T) {
 				OAuthClientSecret: "test-secret",
 			},
 			Global: Global{
-				ReadHeaderTimeout: makeDuration(5 * time.Second),
-				WriteTimeout:      makeDuration(10 * time.Second),
-				IdleTimeout:       makeDuration(120 * time.Second),
-				ShutdownTimeout:   makeDuration(15 * time.Second),
+				ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+				ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 			},
 			Services: []Service{},
 		}
@@ -2447,10 +2477,10 @@ func TestValidateWithProvider(t *testing.T) {
 				OAuthClientSecret: "test-secret",
 			},
 			Global: Global{
-				ReadHeaderTimeout: makeDuration(5 * time.Second),
-				WriteTimeout:      makeDuration(10 * time.Second),
-				IdleTimeout:       makeDuration(120 * time.Second),
-				ShutdownTimeout:   makeDuration(15 * time.Second),
+				ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+				ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 			},
 			Services: []Service{},
 		}
@@ -2470,10 +2500,10 @@ func TestValidateWithProvider(t *testing.T) {
 				OAuthClientSecret: "test-secret",
 			},
 			Global: Global{
-				ReadHeaderTimeout: makeDuration(5 * time.Second),
-				WriteTimeout:      makeDuration(10 * time.Second),
-				IdleTimeout:       makeDuration(120 * time.Second),
-				ShutdownTimeout:   makeDuration(15 * time.Second),
+				ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+				ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 			},
 			Services: []Service{
 				{
@@ -2608,23 +2638,20 @@ max_request_body_size = "-1"
 			require.NoError(t, err)
 
 			// Check global value
-			assert.Equal(t, tt.wantGlobal, cfg.Global.MaxRequestBodySize.Value)
+			assert.NotNil(t, cfg.Global.MaxRequestBodySize)
+			assert.Equal(t, tt.wantGlobal, *cfg.Global.MaxRequestBodySize)
 
 			// Check service value if expected
 			if len(cfg.Services) > 0 {
 				if tt.wantService != nil {
 					require.NotNil(t, cfg.Services[0].MaxRequestBodySize)
-					assert.Equal(t, *tt.wantService, cfg.Services[0].MaxRequestBodySize.Value)
+					assert.Equal(t, *tt.wantService, *cfg.Services[0].MaxRequestBodySize)
 
-					// Check string representation if provided
-					if tt.wantServiceStr != "" {
-						// Convert expected MB/GB to MiB/GiB for comparison
-						expected := strings.ReplaceAll(tt.wantServiceStr, "MB", "MiB")
-						expected = strings.ReplaceAll(expected, "GB", "GiB")
-						assert.Equal(t, expected, cfg.Services[0].MaxRequestBodySize.String())
-					}
+					// Skip string representation check since ByteSize type was removed
 				} else {
-					assert.Nil(t, cfg.Services[0].MaxRequestBodySize)
+					// Service inherits from global if not set
+					assert.NotNil(t, cfg.Services[0].MaxRequestBodySize)
+					assert.Equal(t, tt.wantGlobal, *cfg.Services[0].MaxRequestBodySize)
 				}
 			}
 		})

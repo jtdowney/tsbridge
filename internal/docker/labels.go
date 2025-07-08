@@ -126,15 +126,18 @@ func (p *labelParser) getInt(key string) *int {
 }
 
 // getDuration gets a duration from labels
-func (p *labelParser) getDuration(key string) config.Duration {
+func (p *labelParser) getDuration(key string) *time.Duration {
 	value := p.getString(key)
 	result, _ := parseDuration(value)
 	return result
 }
 
 // getByteSize gets a ByteSize pointer from labels
-func (p *labelParser) getByteSize(key string) *config.ByteSize {
+func (p *labelParser) getByteSize(key string) *int64 {
 	value := p.getString(key)
+	if value == "" {
+		return nil
+	}
 	result, err := parseByteSize(value)
 	if err != nil {
 		slog.Warn("failed to parse ByteSize from Docker label",
@@ -143,7 +146,7 @@ func (p *labelParser) getByteSize(key string) *config.ByteSize {
 			"error", err)
 		return nil
 	}
-	return result
+	return &result
 }
 
 // getStringSlice gets a string slice from labels
@@ -229,7 +232,7 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 
 	// Handle MaxRequestBodySize separately since it's a ByteSize type
 	if bs := parser.getByteSize("global.max_request_body_size"); bs != nil {
-		cfg.Global.MaxRequestBodySize = *bs
+		cfg.Global.MaxRequestBodySize = bs
 	}
 
 	return nil
@@ -322,16 +325,16 @@ func (p *Provider) getContainerAddress(container container.Summary) string {
 	return container.ID[:12]
 }
 
-// parseDuration parses a duration string and returns a config.Duration
-func parseDuration(value string) (config.Duration, error) {
+// parseDuration parses a duration string and returns a *time.Duration
+func parseDuration(value string) (*time.Duration, error) {
 	if value == "" {
-		return config.Duration{}, nil
+		return nil, nil
 	}
 	d, err := time.ParseDuration(value)
 	if err != nil {
-		return config.Duration{}, err
+		return nil, err
 	}
-	return config.Duration{Duration: d, IsSet: true}, nil
+	return &d, nil
 }
 
 // parseBool parses a boolean string and returns a pointer to bool
@@ -370,14 +373,10 @@ func parseStringSlice(value, separator string) []string {
 	return parts
 }
 
-// parseByteSize parses a byte size string and returns a pointer to ByteSize
-func parseByteSize(value string) (*config.ByteSize, error) {
+// parseByteSize parses a byte size string and returns an int64
+func parseByteSize(value string) (int64, error) {
 	if value == "" {
-		return nil, nil
+		return 0, nil
 	}
-	var b config.ByteSize
-	if err := b.UnmarshalText([]byte(value)); err != nil {
-		return nil, err
-	}
-	return &b, nil
+	return config.ParseByteSizeString(value)
 }

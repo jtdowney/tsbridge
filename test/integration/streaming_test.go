@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/jtdowney/tsbridge/test/integration/helpers"
 	"github.com/stretchr/testify/assert"
 )
@@ -73,18 +74,18 @@ func TestStreamingWithZeroTimeout(t *testing.T) {
 			},
 			Global: config.Global{
 				MetricsAddr:       "localhost:0",
-				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second, IsSet: true},
-				WriteTimeout:      config.Duration{Duration: 30 * time.Second, IsSet: true},
-				IdleTimeout:       config.Duration{Duration: 120 * time.Second, IsSet: true},
-				ShutdownTimeout:   config.Duration{Duration: 15 * time.Second, IsSet: true},
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+				ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
 			},
 			Services: []config.Service{
 				{
 					Name:              "streaming-test",
 					BackendAddr:       backend.Listener.Addr().String(),
-					WriteTimeout:      config.Duration{Duration: 0, IsSet: true}, // Disable timeout
-					ReadHeaderTimeout: config.Duration{Duration: 10 * time.Second, IsSet: true},
-					FlushInterval:     config.Duration{Duration: 100 * time.Millisecond, IsSet: true},
+					WriteTimeout:      testhelpers.DurationPtr(0), // Disable timeout
+					ReadHeaderTimeout: testhelpers.DurationPtr(10 * time.Second),
+					FlushInterval:     testhelpers.DurationPtr(100 * time.Millisecond),
 					TLSMode:           "off",
 				},
 			},
@@ -122,10 +123,10 @@ func TestStreamingWithZeroTimeout(t *testing.T) {
 			},
 			Global: config.Global{
 				MetricsAddr:       "localhost:0",
-				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second, IsSet: true},
-				WriteTimeout:      config.Duration{Duration: 30 * time.Second, IsSet: true},
-				IdleTimeout:       config.Duration{Duration: 120 * time.Second, IsSet: true},
-				ShutdownTimeout:   config.Duration{Duration: 10 * time.Second, IsSet: true},
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+				ShutdownTimeout:   testhelpers.DurationPtr(10 * time.Second),
 			},
 			Services: []config.Service{
 				{
@@ -137,13 +138,13 @@ func TestStreamingWithZeroTimeout(t *testing.T) {
 				{
 					Name:         "zero-timeout",
 					BackendAddr:  backend.Listener.Addr().String(),
-					WriteTimeout: config.Duration{Duration: 0, IsSet: true}, // Explicitly disabled
+					WriteTimeout: testhelpers.DurationPtr(0), // Explicitly disabled
 					TLSMode:      "off",
 				},
 				{
 					Name:         "custom-timeout",
 					BackendAddr:  backend.Listener.Addr().String(),
-					WriteTimeout: config.Duration{Duration: 60 * time.Second, IsSet: true},
+					WriteTimeout: testhelpers.DurationPtr(60 * time.Second),
 					TLSMode:      "off",
 				},
 			},
@@ -153,14 +154,14 @@ func TestStreamingWithZeroTimeout(t *testing.T) {
 		cfg.Normalize()
 
 		// Verify timeout values after normalization
-		assert.Equal(t, 30*time.Second, cfg.Services[0].WriteTimeout.Duration, "default-timeout should inherit global")
-		assert.True(t, cfg.Services[0].WriteTimeout.IsSet)
+		assert.NotNil(t, cfg.Services[0].WriteTimeout)
+		assert.Equal(t, 30*time.Second, *cfg.Services[0].WriteTimeout, "default-timeout should inherit global")
 
-		assert.Equal(t, time.Duration(0), cfg.Services[1].WriteTimeout.Duration, "zero-timeout should remain 0")
-		assert.True(t, cfg.Services[1].WriteTimeout.IsSet)
+		assert.NotNil(t, cfg.Services[1].WriteTimeout)
+		assert.Equal(t, time.Duration(0), *cfg.Services[1].WriteTimeout, "zero-timeout should remain 0")
 
-		assert.Equal(t, 60*time.Second, cfg.Services[2].WriteTimeout.Duration, "custom-timeout should keep its value")
-		assert.True(t, cfg.Services[2].WriteTimeout.IsSet)
+		assert.NotNil(t, cfg.Services[2].WriteTimeout)
+		assert.Equal(t, 60*time.Second, *cfg.Services[2].WriteTimeout, "custom-timeout should keep its value")
 
 		// Start tsbridge to verify it accepts the configuration
 		configPath := helpers.WriteConfigFile(t, cfg)
@@ -195,11 +196,11 @@ func TestFlushIntervalWithStreaming(t *testing.T) {
 		},
 		Global: config.Global{
 			MetricsAddr:       "localhost:0",
-			ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second, IsSet: true},
-			WriteTimeout:      config.Duration{Duration: 30 * time.Second, IsSet: true},
-			IdleTimeout:       config.Duration{Duration: 120 * time.Second, IsSet: true},
-			ShutdownTimeout:   config.Duration{Duration: 10 * time.Second, IsSet: true},
-			FlushInterval:     config.Duration{Duration: 1 * time.Second, IsSet: true}, // Global default
+			ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+			WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+			IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+			ShutdownTimeout:   testhelpers.DurationPtr(10 * time.Second),
+			FlushInterval:     testhelpers.DurationPtr(1 * time.Second), // Global default
 		},
 		Services: []config.Service{
 			{
@@ -211,13 +212,13 @@ func TestFlushIntervalWithStreaming(t *testing.T) {
 			{
 				Name:          "immediate-flush",
 				BackendAddr:   backend.Listener.Addr().String(),
-				FlushInterval: config.Duration{Duration: -1 * time.Millisecond, IsSet: true}, // Immediate flush
+				FlushInterval: testhelpers.DurationPtr(-1 * time.Millisecond), // Immediate flush
 				TLSMode:       "off",
 			},
 			{
 				Name:          "no-flush",
 				BackendAddr:   backend.Listener.Addr().String(),
-				FlushInterval: config.Duration{Duration: 0, IsSet: true}, // Default buffering
+				FlushInterval: testhelpers.DurationPtr(0), // Default buffering
 				TLSMode:       "off",
 			},
 		},
@@ -227,9 +228,12 @@ func TestFlushIntervalWithStreaming(t *testing.T) {
 	cfg.Normalize()
 
 	// Verify flush interval values after normalization
-	assert.Equal(t, 1*time.Second, cfg.Services[0].FlushInterval.Duration, "should inherit global")
-	assert.Equal(t, -1*time.Millisecond, cfg.Services[1].FlushInterval.Duration, "should keep immediate flush")
-	assert.Equal(t, time.Duration(0), cfg.Services[2].FlushInterval.Duration, "should keep zero")
+	assert.NotNil(t, cfg.Services[0].FlushInterval)
+	assert.Equal(t, 1*time.Second, *cfg.Services[0].FlushInterval, "should inherit global")
+	assert.NotNil(t, cfg.Services[1].FlushInterval)
+	assert.Equal(t, -1*time.Millisecond, *cfg.Services[1].FlushInterval, "should keep immediate flush")
+	assert.NotNil(t, cfg.Services[2].FlushInterval)
+	assert.Equal(t, time.Duration(0), *cfg.Services[2].FlushInterval, "should keep zero")
 
 	// Start tsbridge
 	configPath := helpers.WriteConfigFile(t, cfg)

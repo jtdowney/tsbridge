@@ -15,6 +15,7 @@ import (
 	"github.com/docker/docker/api/types/events"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,14 +99,14 @@ func TestParseServiceConfig(t *testing.T) {
 				assert.Equal(t, "web", svc.Name)
 				assert.Equal(t, "unix:///var/run/web.sock", svc.BackendAddr)
 				assert.True(t, *svc.WhoisEnabled)
-				assert.Equal(t, 2*time.Second, svc.WhoisTimeout.Duration)
+				assert.Equal(t, 2*time.Second, *svc.WhoisTimeout)
 				assert.Equal(t, "off", svc.TLSMode)
 				assert.False(t, *svc.AccessLog)
 				assert.True(t, *svc.FunnelEnabled)
 				assert.True(t, svc.Ephemeral)
 				assert.Equal(t, "value", svc.UpstreamHeaders["X-Custom"])
 				assert.Equal(t, []string{"X-Forwarded-For", "X-Real-IP"}, svc.RemoveUpstream)
-				assert.Equal(t, -1*time.Millisecond, svc.FlushInterval.Duration)
+				assert.Equal(t, -1*time.Millisecond, *svc.FlushInterval)
 			},
 		},
 		{
@@ -192,12 +193,12 @@ func TestParseGlobalConfig(t *testing.T) {
 
 		// Verify global config
 		assert.Equal(t, ":9090", cfg.Global.MetricsAddr)
-		assert.Equal(t, 30*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
-		assert.Equal(t, 30*time.Second, cfg.Global.WriteTimeout.Duration)
-		assert.Equal(t, 120*time.Second, cfg.Global.IdleTimeout.Duration)
+		assert.Equal(t, 30*time.Second, *cfg.Global.ReadHeaderTimeout)
+		assert.Equal(t, 30*time.Second, *cfg.Global.WriteTimeout)
+		assert.Equal(t, 120*time.Second, *cfg.Global.IdleTimeout)
 		assert.True(t, *cfg.Global.AccessLog)
 		assert.Equal(t, []string{"10.0.0.0/8", "172.16.0.0/12"}, cfg.Global.TrustedProxies)
-		assert.Equal(t, 10*time.Second, cfg.Global.FlushInterval.Duration)
+		assert.Equal(t, 10*time.Second, *cfg.Global.FlushInterval)
 	})
 
 	t.Run("with fallback to standard env vars", func(t *testing.T) {
@@ -340,24 +341,18 @@ func TestConfigEqual(t *testing.T) {
 			a: &config.Config{
 				Services: []config.Service{
 					{
-						Name:        "api",
-						BackendAddr: "http://localhost:8080",
-						WhoisTimeout: config.Duration{
-							Duration: 2 * time.Second,
-							IsSet:    true,
-						},
+						Name:         "api",
+						BackendAddr:  "http://localhost:8080",
+						WhoisTimeout: testhelpers.DurationPtr(2 * time.Second),
 					},
 				},
 			},
 			b: &config.Config{
 				Services: []config.Service{
 					{
-						Name:        "api",
-						BackendAddr: "http://localhost:8080",
-						WhoisTimeout: config.Duration{
-							Duration: 5 * time.Second,
-							IsSet:    true,
-						},
+						Name:         "api",
+						BackendAddr:  "http://localhost:8080",
+						WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 					},
 				},
 			},

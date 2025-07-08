@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 )
 
 // TestFixture provides a standard configuration builder for tests
@@ -28,10 +29,10 @@ func NewTestFixture(t *testing.T) *TestFixture {
 			},
 			Global: config.Global{
 				MetricsAddr:       "localhost:0",
-				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
-				ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+				ShutdownTimeout:   testhelpers.DurationPtr(10 * time.Second),
 			},
 			Services: []config.Service{
 				{
@@ -76,16 +77,15 @@ func (f *TestFixture) WithOAuth(clientID, clientSecret string) *TestFixture {
 
 // WithTimeout sets a specific timeout value
 func (f *TestFixture) WithTimeout(name string, duration time.Duration) *TestFixture {
-	d := config.Duration{Duration: duration}
 	switch name {
 	case "read":
-		f.cfg.Global.ReadHeaderTimeout = d
+		f.cfg.Global.ReadHeaderTimeout = testhelpers.DurationPtr(duration)
 	case "write":
-		f.cfg.Global.WriteTimeout = d
+		f.cfg.Global.WriteTimeout = testhelpers.DurationPtr(duration)
 	case "idle":
-		f.cfg.Global.IdleTimeout = d
+		f.cfg.Global.IdleTimeout = testhelpers.DurationPtr(duration)
 	case "shutdown":
-		f.cfg.Global.ShutdownTimeout = d
+		f.cfg.Global.ShutdownTimeout = testhelpers.DurationPtr(duration)
 	}
 	return f
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/stretchr/testify/require"
 )
 
@@ -99,10 +100,10 @@ func CreateTestConfig(t *testing.T, serviceName string, backendAddr string) *con
 		},
 		Global: config.Global{
 			MetricsAddr:       "localhost:0",
-			ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
-			WriteTimeout:      config.Duration{Duration: 30 * time.Second},
-			IdleTimeout:       config.Duration{Duration: 120 * time.Second},
-			ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
+			ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+			WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+			IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+			ShutdownTimeout:   testhelpers.DurationPtr(10 * time.Second),
 		},
 		Services: []config.Service{
 			{
@@ -127,10 +128,10 @@ func CreateMultiServiceConfig(t *testing.T, services map[string]string) *config.
 		},
 		Global: config.Global{
 			MetricsAddr:       "localhost:0",
-			ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
-			WriteTimeout:      config.Duration{Duration: 30 * time.Second},
-			IdleTimeout:       config.Duration{Duration: 120 * time.Second},
-			ShutdownTimeout:   config.Duration{Duration: 10 * time.Second},
+			ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+			WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+			IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+			ShutdownTimeout:   testhelpers.DurationPtr(10 * time.Second),
 		},
 	}
 
@@ -341,19 +342,29 @@ default_tags = [`
 		content += `]`
 	}
 
+	// Build global section
 	content += fmt.Sprintf(`
 
 [global]
-metrics_addr = "%s"
-read_header_timeout = "%s"
-write_timeout = "%s" 
-idle_timeout = "%s"
-shutdown_timeout = "%s"`,
-		cfg.Global.MetricsAddr,
-		cfg.Global.ReadHeaderTimeout.Duration,
-		cfg.Global.WriteTimeout.Duration,
-		cfg.Global.IdleTimeout.Duration,
-		cfg.Global.ShutdownTimeout.Duration)
+metrics_addr = "%s"`,
+		cfg.Global.MetricsAddr)
+
+	if cfg.Global.ReadHeaderTimeout != nil {
+		content += fmt.Sprintf(`
+read_header_timeout = "%s"`, *cfg.Global.ReadHeaderTimeout)
+	}
+	if cfg.Global.WriteTimeout != nil {
+		content += fmt.Sprintf(`
+write_timeout = "%s"`, *cfg.Global.WriteTimeout)
+	}
+	if cfg.Global.IdleTimeout != nil {
+		content += fmt.Sprintf(`
+idle_timeout = "%s"`, *cfg.Global.IdleTimeout)
+	}
+	if cfg.Global.ShutdownTimeout != nil {
+		content += fmt.Sprintf(`
+shutdown_timeout = "%s"`, *cfg.Global.ShutdownTimeout)
+	}
 
 	content += `
 
@@ -374,9 +385,9 @@ whois_enabled = %s
 `, svc.Name, svc.BackendAddr, svc.TLSMode, whoisEnabled)
 
 		// Add optional fields
-		if svc.WhoisTimeout.Duration > 0 {
+		if svc.WhoisTimeout != nil && *svc.WhoisTimeout > 0 {
 			content += fmt.Sprintf(`whois_timeout = "%s"
-`, svc.WhoisTimeout.Duration)
+`, *svc.WhoisTimeout)
 		}
 
 		// Add tags if present

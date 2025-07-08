@@ -131,7 +131,11 @@ func (a *App) setupMetrics() error {
 	a.registry.SetMetricsCollector(collector)
 
 	// Create metrics server (but don't start it yet)
-	a.metricsServer = metrics.NewServer(a.cfg.Global.MetricsAddr, reg, a.cfg.Global.MetricsReadHeaderTimeout.Duration)
+	var metricsTimeout time.Duration
+	if a.cfg.Global.MetricsReadHeaderTimeout != nil {
+		metricsTimeout = *a.cfg.Global.MetricsReadHeaderTimeout
+	}
+	a.metricsServer = metrics.NewServer(a.cfg.Global.MetricsAddr, reg, metricsTimeout)
 
 	return nil
 }

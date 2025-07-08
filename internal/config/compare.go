@@ -4,6 +4,7 @@ package config
 import (
 	"reflect"
 	"slices"
+	"time"
 )
 
 // ServiceConfigEqual compares two service configurations and returns true if they are equal.
@@ -35,23 +36,23 @@ func ServiceConfigEqual(a, b Service) bool {
 		return false
 	}
 
-	// Compare Duration fields
-	if !durationEqual(a.WhoisTimeout, b.WhoisTimeout) {
+	// Compare Duration pointer fields
+	if !durationPtrEqual(a.WhoisTimeout, b.WhoisTimeout) {
 		return false
 	}
-	if !durationEqual(a.ReadHeaderTimeout, b.ReadHeaderTimeout) {
+	if !durationPtrEqual(a.ReadHeaderTimeout, b.ReadHeaderTimeout) {
 		return false
 	}
-	if !durationEqual(a.WriteTimeout, b.WriteTimeout) {
+	if !durationPtrEqual(a.WriteTimeout, b.WriteTimeout) {
 		return false
 	}
-	if !durationEqual(a.IdleTimeout, b.IdleTimeout) {
+	if !durationPtrEqual(a.IdleTimeout, b.IdleTimeout) {
 		return false
 	}
-	if !durationEqual(a.ResponseHeaderTimeout, b.ResponseHeaderTimeout) {
+	if !durationPtrEqual(a.ResponseHeaderTimeout, b.ResponseHeaderTimeout) {
 		return false
 	}
-	if !durationEqual(a.FlushInterval, b.FlushInterval) {
+	if !durationPtrEqual(a.FlushInterval, b.FlushInterval) {
 		return false
 	}
 
@@ -74,8 +75,8 @@ func ServiceConfigEqual(a, b Service) bool {
 		return false
 	}
 
-	// Compare ByteSize pointer field
-	if !byteSizePtrEqual(a.MaxRequestBodySize, b.MaxRequestBodySize) {
+	// Compare int64 pointer field for max request body size
+	if !int64PtrEqual(a.MaxRequestBodySize, b.MaxRequestBodySize) {
 		return false
 	}
 
@@ -93,21 +94,26 @@ func boolPtrEqual(a, b *bool) bool {
 	return *a == *b
 }
 
-// byteSizePtrEqual compares two ByteSize pointers
-func byteSizePtrEqual(a, b *ByteSize) bool {
+// int64PtrEqual compares two int64 pointers
+func int64PtrEqual(a, b *int64) bool {
 	if a == nil && b == nil {
 		return true
 	}
 	if a == nil || b == nil {
 		return false
 	}
-	return a.Value == b.Value && a.IsSet == b.IsSet
+	return *a == *b
 }
 
-// durationEqual compares two Duration values
-func durationEqual(a, b Duration) bool {
-	// Compare both the duration value and whether it was explicitly set
-	return a.Duration == b.Duration && a.IsSet == b.IsSet
+// durationPtrEqual compares two time.Duration pointers
+func durationPtrEqual(a, b *time.Duration) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
 }
 
 // stringSliceEqual compares two string slices

@@ -7,6 +7,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,33 +16,33 @@ func TestParseDuration(t *testing.T) {
 	tests := []struct {
 		name     string
 		value    string
-		expected config.Duration
+		expected *time.Duration
 		wantErr  bool
 	}{
 		{
 			name:     "valid duration",
 			value:    "30s",
-			expected: config.Duration{Duration: 30 * time.Second, IsSet: true},
+			expected: testhelpers.DurationPtr(30 * time.Second),
 		},
 		{
 			name:     "valid duration with ms",
 			value:    "500ms",
-			expected: config.Duration{Duration: 500 * time.Millisecond, IsSet: true},
+			expected: testhelpers.DurationPtr(500 * time.Millisecond),
 		},
 		{
 			name:     "zero duration",
 			value:    "0s",
-			expected: config.Duration{Duration: 0, IsSet: true},
+			expected: testhelpers.DurationPtr(0),
 		},
 		{
 			name:     "empty string",
 			value:    "",
-			expected: config.Duration{Duration: 0, IsSet: false},
+			expected: nil,
 		},
 		{
 			name:     "invalid duration",
 			value:    "invalid",
-			expected: config.Duration{},
+			expected: nil,
 			wantErr:  true,
 		},
 	}
@@ -53,8 +54,12 @@ func TestParseDuration(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				require.NoError(t, err)
-				assert.Equal(t, tt.expected.Duration, result.Duration)
-				assert.Equal(t, tt.expected.IsSet, result.IsSet)
+				if tt.expected == nil {
+					assert.Nil(t, result)
+				} else {
+					require.NotNil(t, result)
+					assert.Equal(t, *tt.expected, *result)
+				}
 			}
 		})
 	}
@@ -69,8 +74,8 @@ func TestDockerZeroDurationParsing(t *testing.T) {
 		parser := newLabelParser(labels, "tsbridge")
 		duration := parser.getDuration("service.write_timeout")
 
-		assert.Equal(t, time.Duration(0), duration.Duration)
-		assert.True(t, duration.IsSet)
+		require.NotNil(t, duration)
+		assert.Equal(t, time.Duration(0), *duration)
 	})
 
 	t.Run("missing duration from Docker label", func(t *testing.T) {
@@ -81,8 +86,7 @@ func TestDockerZeroDurationParsing(t *testing.T) {
 		parser := newLabelParser(labels, "tsbridge")
 		duration := parser.getDuration("service.write_timeout")
 
-		assert.Equal(t, time.Duration(0), duration.Duration)
-		assert.False(t, duration.IsSet)
+		assert.Nil(t, duration)
 	})
 }
 
@@ -273,10 +277,11 @@ func TestLabelParser(t *testing.T) {
 
 	t.Run("getDuration", func(t *testing.T) {
 		result := parser.getDuration("service.read_header_timeout")
-		assert.Equal(t, 30*time.Second, result.Duration)
+		require.NotNil(t, result)
+		assert.Equal(t, 30*time.Second, *result)
 
 		result = parser.getDuration("nonexistent")
-		assert.Equal(t, time.Duration(0), result.Duration)
+		assert.Nil(t, result)
 	})
 
 	t.Run("getStringSlice", func(t *testing.T) {

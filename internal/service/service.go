@@ -160,9 +160,18 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 	// Create HTTP server with timeouts
 	svc.server = &http.Server{
 		Handler:           svc.handler,
-		ReadHeaderTimeout: svcCfg.ReadHeaderTimeout.Duration,
-		WriteTimeout:      svcCfg.WriteTimeout.Duration,
-		IdleTimeout:       svcCfg.IdleTimeout.Duration,
+		ReadHeaderTimeout: constants.DefaultReadHeaderTimeout, // Set default to satisfy linter
+	}
+
+	// Override with configured values if provided
+	if svcCfg.ReadHeaderTimeout != nil {
+		svc.server.ReadHeaderTimeout = *svcCfg.ReadHeaderTimeout
+	}
+	if svcCfg.WriteTimeout != nil {
+		svc.server.WriteTimeout = *svcCfg.WriteTimeout
+	}
+	if svcCfg.IdleTimeout != nil {
+		svc.server.IdleTimeout = *svcCfg.IdleTimeout
 	}
 
 	// Start serving in background
@@ -189,8 +198,9 @@ func (s *Service) SetHandler(h http.Handler) {
 // CreateHandler creates the HTTP handler for the service, returning an error if configuration is invalid
 func (s *Service) CreateHandler() (http.Handler, error) {
 	// Create transport config from global settings
-	transportConfig := &proxy.TransportConfig{
-		ResponseHeaderTimeout: s.Config.ResponseHeaderTimeout.Duration,
+	transportConfig := &proxy.TransportConfig{}
+	if s.Config.ResponseHeaderTimeout != nil {
+		transportConfig.ResponseHeaderTimeout = *s.Config.ResponseHeaderTimeout
 	}
 
 	// Get trusted proxies from global config
@@ -198,11 +208,21 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 	if s.globalConfig != nil {
 		trustedProxies = s.globalConfig.Global.TrustedProxies
 		// Set transport timeouts from global config
-		transportConfig.DialTimeout = s.globalConfig.Global.DialTimeout.Duration
-		transportConfig.KeepAliveTimeout = s.globalConfig.Global.KeepAliveTimeout.Duration
-		transportConfig.IdleConnTimeout = s.globalConfig.Global.IdleConnTimeout.Duration
-		transportConfig.TLSHandshakeTimeout = s.globalConfig.Global.TLSHandshakeTimeout.Duration
-		transportConfig.ExpectContinueTimeout = s.globalConfig.Global.ExpectContinueTimeout.Duration
+		if s.globalConfig.Global.DialTimeout != nil {
+			transportConfig.DialTimeout = *s.globalConfig.Global.DialTimeout
+		}
+		if s.globalConfig.Global.KeepAliveTimeout != nil {
+			transportConfig.KeepAliveTimeout = *s.globalConfig.Global.KeepAliveTimeout
+		}
+		if s.globalConfig.Global.IdleConnTimeout != nil {
+			transportConfig.IdleConnTimeout = *s.globalConfig.Global.IdleConnTimeout
+		}
+		if s.globalConfig.Global.TLSHandshakeTimeout != nil {
+			transportConfig.TLSHandshakeTimeout = *s.globalConfig.Global.TLSHandshakeTimeout
+		}
+		if s.globalConfig.Global.ExpectContinueTimeout != nil {
+			transportConfig.ExpectContinueTimeout = *s.globalConfig.Global.ExpectContinueTimeout
+		}
 	}
 
 	// Create proxy handler with unified configuration
@@ -216,7 +236,7 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 		DownstreamHeaders: s.Config.DownstreamHeaders,
 		RemoveUpstream:    s.Config.RemoveUpstream,
 		RemoveDownstream:  s.Config.RemoveDownstream,
-		FlushInterval:     &s.Config.FlushInterval.Duration,
+		FlushInterval:     s.Config.FlushInterval,
 	})
 	if err != nil {
 		return nil, err
@@ -240,8 +260,10 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 		// Get the tsnet server instance for this service
 		serviceServer := s.tsServer.GetServiceServer(s.Config.Name)
 		if serviceServer != nil {
-			whoisTimeout := s.Config.WhoisTimeout.Duration
-			if whoisTimeout == 0 {
+			var whoisTimeout time.Duration
+			if s.Config.WhoisTimeout != nil {
+				whoisTimeout = *s.Config.WhoisTimeout
+			} else {
 				whoisTimeout = constants.DefaultWhoisTimeout
 			}
 			// Create a whois client adapter for the tsnet server
@@ -286,13 +308,13 @@ func (s *Service) isAccessLogEnabled() bool {
 // It returns the service-specific override if set, otherwise the global value
 // A negative value means no limit should be applied
 func (s *Service) getMaxRequestBodySize() int64 {
-	if s.Config.MaxRequestBodySize != nil && s.Config.MaxRequestBodySize.IsSet {
+	if s.Config.MaxRequestBodySize != nil {
 		// If explicitly set, use the value as-is. 0 is a valid explicit limit.
-		return s.Config.MaxRequestBodySize.Value
+		return *s.Config.MaxRequestBodySize
 	}
-	if s.globalConfig != nil && s.globalConfig.Global.MaxRequestBodySize.IsSet {
+	if s.globalConfig != nil && s.globalConfig.Global.MaxRequestBodySize != nil {
 		// If explicitly set globally, use the value as-is.
-		return s.globalConfig.Global.MaxRequestBodySize.Value
+		return *s.globalConfig.Global.MaxRequestBodySize
 	}
 	// Default if no config available or not explicitly set anywhere
 	return constants.DefaultMaxRequestBodySize
@@ -497,16 +519,16 @@ func (r *Registry) validateServiceConfig(cfg config.Service) error {
 	}
 
 	// Validate timeout values
-	if cfg.ReadHeaderTimeout.Duration < 0 {
+	if cfg.ReadHeaderTimeout != nil && *cfg.ReadHeaderTimeout < 0 {
 		return fmt.Errorf("read header timeout must be non-negative")
 	}
-	if cfg.WriteTimeout.Duration < 0 {
+	if cfg.WriteTimeout != nil && *cfg.WriteTimeout < 0 {
 		return fmt.Errorf("write timeout must be non-negative")
 	}
-	if cfg.IdleTimeout.Duration < 0 {
+	if cfg.IdleTimeout != nil && *cfg.IdleTimeout < 0 {
 		return fmt.Errorf("idle timeout must be non-negative")
 	}
-	if cfg.ResponseHeaderTimeout.Duration < 0 {
+	if cfg.ResponseHeaderTimeout != nil && *cfg.ResponseHeaderTimeout < 0 {
 		return fmt.Errorf("response header timeout must be non-negative")
 	}
 

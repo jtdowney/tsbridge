@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,43 +44,43 @@ type Tailscale struct {
 
 // Global contains global default settings
 type Global struct {
-	FlushInterval         Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
-	AccessLog             *bool    `mapstructure:"access_log"`              // Enable access logging (default: true)
-	TrustedProxies        []string `mapstructure:"trusted_proxies"`         // List of trusted proxy IPs or CIDR ranges
-	MetricsAddr           string   `mapstructure:"metrics_addr"`            // Address for Prometheus metrics
-	ResponseHeaderTimeout Duration `mapstructure:"response_header_timeout"` // Timeout for backend response headers
-	ShutdownTimeout       Duration `mapstructure:"shutdown_timeout"`        // Max duration for graceful shutdown
-	WriteTimeout          Duration `mapstructure:"write_timeout"`           // Max duration for writing response
-	IdleTimeout           Duration `mapstructure:"idle_timeout"`            // Max time to wait for next request
-	ReadHeaderTimeout     Duration `mapstructure:"read_header_timeout"`     // Time allowed to read request headers
-	MaxRequestBodySize    ByteSize `mapstructure:"max_request_body_size"`   // Maximum request body size in bytes
+	FlushInterval         *time.Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
+	AccessLog             *bool          `mapstructure:"access_log"`              // Enable access logging (default: true)
+	TrustedProxies        []string       `mapstructure:"trusted_proxies"`         // List of trusted proxy IPs or CIDR ranges
+	MetricsAddr           string         `mapstructure:"metrics_addr"`            // Address for Prometheus metrics
+	ResponseHeaderTimeout *time.Duration `mapstructure:"response_header_timeout"` // Timeout for backend response headers
+	ShutdownTimeout       *time.Duration `mapstructure:"shutdown_timeout"`        // Max duration for graceful shutdown
+	WriteTimeout          *time.Duration `mapstructure:"write_timeout"`           // Max duration for writing response
+	IdleTimeout           *time.Duration `mapstructure:"idle_timeout"`            // Max time to wait for next request
+	ReadHeaderTimeout     *time.Duration `mapstructure:"read_header_timeout"`     // Time allowed to read request headers
+	MaxRequestBodySize    *int64         `mapstructure:"max_request_body_size"`   // Maximum request body size in bytes
 	// Transport timeouts
-	DialTimeout              Duration `mapstructure:"dial_timeout"`                // Max time for connection dial
-	KeepAliveTimeout         Duration `mapstructure:"keep_alive_timeout"`          // Keep-alive probe interval
-	IdleConnTimeout          Duration `mapstructure:"idle_conn_timeout"`           // Max idle connection duration
-	TLSHandshakeTimeout      Duration `mapstructure:"tls_handshake_timeout"`       // Max time for TLS handshake
-	ExpectContinueTimeout    Duration `mapstructure:"expect_continue_timeout"`     // Timeout for 100-continue response
-	MetricsReadHeaderTimeout Duration `mapstructure:"metrics_read_header_timeout"` // Read header timeout for metrics server
+	DialTimeout              *time.Duration `mapstructure:"dial_timeout"`                // Max time for connection dial
+	KeepAliveTimeout         *time.Duration `mapstructure:"keep_alive_timeout"`          // Keep-alive probe interval
+	IdleConnTimeout          *time.Duration `mapstructure:"idle_conn_timeout"`           // Max idle connection duration
+	TLSHandshakeTimeout      *time.Duration `mapstructure:"tls_handshake_timeout"`       // Max time for TLS handshake
+	ExpectContinueTimeout    *time.Duration `mapstructure:"expect_continue_timeout"`     // Timeout for 100-continue response
+	MetricsReadHeaderTimeout *time.Duration `mapstructure:"metrics_read_header_timeout"` // Read header timeout for metrics server
 }
 
 // Service represents a single service configuration
 type Service struct {
-	Name         string   `mapstructure:"name"`          // Service name (Tailscale hostname)
-	BackendAddr  string   `mapstructure:"backend_addr"`  // Backend server address
-	WhoisEnabled *bool    `mapstructure:"whois_enabled"` // Enable whois lookups (default: true)
-	WhoisTimeout Duration `mapstructure:"whois_timeout"` // Max time for whois lookup
-	TLSMode      string   `mapstructure:"tls_mode"`      // "auto" (default), "off"
-	Tags         []string `mapstructure:"tags"`          // Service-specific tags
+	Name         string         `mapstructure:"name"`          // Service name (Tailscale hostname)
+	BackendAddr  string         `mapstructure:"backend_addr"`  // Backend server address
+	WhoisEnabled *bool          `mapstructure:"whois_enabled"` // Enable whois lookups (default: true)
+	WhoisTimeout *time.Duration `mapstructure:"whois_timeout"` // Max time for whois lookup
+	TLSMode      string         `mapstructure:"tls_mode"`      // "auto" (default), "off"
+	Tags         []string       `mapstructure:"tags"`          // Service-specific tags
 	// Optional overrides
-	ReadHeaderTimeout     Duration  `mapstructure:"read_header_timeout"`     // Override global read header timeout
-	WriteTimeout          Duration  `mapstructure:"write_timeout"`           // Override global write timeout
-	IdleTimeout           Duration  `mapstructure:"idle_timeout"`            // Override global idle timeout
-	ResponseHeaderTimeout Duration  `mapstructure:"response_header_timeout"` // Override global response header timeout
-	AccessLog             *bool     `mapstructure:"access_log"`              // Override global access_log setting
-	MaxRequestBodySize    *ByteSize `mapstructure:"max_request_body_size"`   // Override global max request body size
-	FunnelEnabled         *bool     `mapstructure:"funnel_enabled"`          // Expose service via Tailscale Funnel
-	Ephemeral             bool      `mapstructure:"ephemeral"`               // Create ephemeral nodes
-	FlushInterval         Duration  `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
+	ReadHeaderTimeout     *time.Duration `mapstructure:"read_header_timeout"`     // Override global read header timeout
+	WriteTimeout          *time.Duration `mapstructure:"write_timeout"`           // Override global write timeout
+	IdleTimeout           *time.Duration `mapstructure:"idle_timeout"`            // Override global idle timeout
+	ResponseHeaderTimeout *time.Duration `mapstructure:"response_header_timeout"` // Override global response header timeout
+	AccessLog             *bool          `mapstructure:"access_log"`              // Override global access_log setting
+	MaxRequestBodySize    *int64         `mapstructure:"max_request_body_size"`   // Override global max request body size
+	FunnelEnabled         *bool          `mapstructure:"funnel_enabled"`          // Expose service via Tailscale Funnel
+	Ephemeral             bool           `mapstructure:"ephemeral"`               // Create ephemeral nodes
+	FlushInterval         *time.Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
 	// Header manipulation
 	UpstreamHeaders   map[string]string `mapstructure:"upstream_headers"`   // Headers to add to upstream requests
 	DownstreamHeaders map[string]string `mapstructure:"downstream_headers"` // Headers to add to downstream responses
@@ -131,9 +132,8 @@ func LoadWithProvider(path string, provider string) (*Config, error) {
 	var cfg Config
 	decoderConfig := &mapstructure.DecoderConfig{
 		DecodeHook: mapstructure.ComposeDecodeHookFunc(
-			mapstructure.StringToTimeDurationHookFunc(),
-			durationDecodeHook(),
 			byteSizeDecodeHook(),
+			mapstructure.StringToTimeDurationHookFunc(),
 			redactedStringDecodeHook(),
 		),
 		Result:           &cfg,
@@ -164,69 +164,116 @@ func Load(path string) (*Config, error) {
 	return LoadWithProvider(path, "file")
 }
 
-// durationDecodeHook creates a decode hook for the Duration type
-func durationDecodeHook() mapstructure.DecodeHookFunc {
-	return func(
-		from reflect.Type,
-		to reflect.Type,
-		data any,
-	) (any, error) {
-		// Check if we're converting to Duration
-		if to != reflect.TypeOf(Duration{}) {
-			return data, nil
-		}
-
-		// Handle string conversion
-		if from.Kind() == reflect.String {
-			strData := data.(string)
-			if strData == "" {
-				return Duration{}, nil
-			}
-			d, err := time.ParseDuration(strData)
-			if err != nil {
-				return nil, err
-			}
-			return Duration{Duration: d, IsSet: true}, nil
-		}
-
-		// Handle time.Duration conversion
-		if from == reflect.TypeOf(time.Duration(0)) {
-			return Duration{Duration: data.(time.Duration), IsSet: true}, nil
-		}
-
-		// Handle int64 conversion (nanoseconds)
-		if from.Kind() == reflect.Int64 {
-			return Duration{Duration: time.Duration(data.(int64)), IsSet: true}, nil
-		}
-
-		return data, nil
+// ParseByteSizeString parses a string like "10MB" into bytes
+func ParseByteSizeString(s string) (int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
 	}
+
+	// Try to parse as plain number first
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return v, nil
+	}
+
+	// Try to parse as float with unit suffix
+	var value float64
+	var unit string
+
+	// Find where the number ends and unit begins
+	i := 0
+	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == '.' || s[i] == ' ') {
+		i++
+	}
+
+	if i == 0 || i == len(s) {
+		return 0, fmt.Errorf("invalid byte size format: %q", s)
+	}
+
+	// Parse the numeric part
+	numStr := strings.TrimSpace(s[:i])
+	unit = strings.TrimSpace(s[i:])
+
+	value, err := strconv.ParseFloat(numStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid byte size format: %q", s)
+	}
+
+	if value < 0 {
+		return 0, fmt.Errorf("byte size cannot be negative: %q", s)
+	}
+
+	// Convert unit to bytes
+	var multiplier int64
+	switch strings.ToUpper(unit) {
+	case "B", "BYTE", "BYTES":
+		multiplier = 1
+	case "K", "KB":
+		multiplier = 1024
+	case "KIB":
+		multiplier = 1024
+	case "M", "MB":
+		multiplier = 1024 * 1024
+	case "MIB":
+		multiplier = 1024 * 1024
+	case "G", "GB":
+		multiplier = 1024 * 1024 * 1024
+	case "GIB":
+		multiplier = 1024 * 1024 * 1024
+	case "T", "TB":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	case "TIB":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	case "P", "PB":
+		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
+	case "PIB":
+		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
+	default:
+		return 0, fmt.Errorf("unknown unit %q in byte size: %q", unit, s)
+	}
+
+	return int64(value * float64(multiplier)), nil
 }
 
-// byteSizeDecodeHook creates a decode hook for the ByteSize type
-func byteSizeDecodeHook() mapstructure.DecodeHookFunc {
+// byteSizeDecodeHook creates a decode hook for parsing byte sizes into *int64
+// It uses a more targeted approach by looking at the mapstructure tag
+func byteSizeDecodeHook() mapstructure.DecodeHookFuncType {
 	return func(
-		from reflect.Type,
-		to reflect.Type,
+		f reflect.Type,
+		t reflect.Type,
 		data any,
 	) (any, error) {
-		// Check if we're converting to ByteSize
-		if to != reflect.TypeOf(ByteSize{}) {
+		// Only handle *int64 types
+		if t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Int64 {
 			return data, nil
 		}
 
-		// Handle string conversion
-		if from.Kind() == reflect.String {
-			strData := data.(string)
-			var b ByteSize
-			if err := b.UnmarshalText([]byte(strData)); err != nil {
-				return nil, err
-			}
-			return b, nil
+		// Skip if data is nil
+		if data == nil {
+			return (*int64)(nil), nil
 		}
 
-		// Handle int/int64 conversion
-		if from.Kind() == reflect.Int || from.Kind() == reflect.Int64 {
+		// Only process string data for byte size fields
+		if f.Kind() == reflect.String {
+			strData := data.(string)
+			if strData == "" {
+				return (*int64)(nil), nil
+			}
+
+			// Try to parse as byte size only if it contains a unit suffix
+			// This helps distinguish from duration strings
+			if containsByteSizeUnit(strData) {
+				value, err := ParseByteSizeString(strData)
+				if err != nil {
+					return nil, err
+				}
+				return &value, nil
+			}
+		}
+
+		// Handle int/int64/float64 conversion for numeric values
+		switch f.Kind() {
+		case reflect.Int, reflect.Int64:
 			var value int64
 			switch v := data.(type) {
 			case int:
@@ -236,16 +283,31 @@ func byteSizeDecodeHook() mapstructure.DecodeHookFunc {
 			default:
 				return data, nil
 			}
-			return ByteSize{Value: value, IsSet: true}, nil
-		}
-
-		// Handle float64 conversion (from JSON numbers)
-		if from.Kind() == reflect.Float64 {
-			return ByteSize{Value: int64(data.(float64)), IsSet: true}, nil
+			return &value, nil
+		case reflect.Float64:
+			value := int64(data.(float64))
+			return &value, nil
 		}
 
 		return data, nil
 	}
+}
+
+// containsByteSizeUnit checks if a string contains byte size units
+func containsByteSizeUnit(s string) bool {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	// Check for byte size units (but not time units)
+	units := []string{"B", "BYTE", "BYTES", "KB", "KIB", "MB", "MIB", "GB", "GIB", "TB", "TIB", "PB", "PIB"}
+	for _, unit := range units {
+		if strings.HasSuffix(s, unit) {
+			return true
+		}
+	}
+	// Also check for plain numbers without units (treated as bytes)
+	if _, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return true
+	}
+	return false
 }
 
 // redactedStringDecodeHook provides mapstructure hook for RedactedString
@@ -376,21 +438,21 @@ func ProcessLoadedConfigWithProvider(cfg *Config, provider string) error {
 // SetDefaults sets default values for any unspecified configuration
 func (c *Config) SetDefaults() {
 	// Set global defaults if not specified
-	if !c.Global.ReadHeaderTimeout.IsSet {
-		c.Global.ReadHeaderTimeout.Duration = constants.DefaultReadHeaderTimeout
-		c.Global.ReadHeaderTimeout.IsSet = true
+	if c.Global.ReadHeaderTimeout == nil {
+		defaultTimeout := constants.DefaultReadHeaderTimeout
+		c.Global.ReadHeaderTimeout = &defaultTimeout
 	}
-	if !c.Global.WriteTimeout.IsSet {
-		c.Global.WriteTimeout.Duration = constants.DefaultWriteTimeout
-		c.Global.WriteTimeout.IsSet = true
+	if c.Global.WriteTimeout == nil {
+		defaultTimeout := constants.DefaultWriteTimeout
+		c.Global.WriteTimeout = &defaultTimeout
 	}
-	if !c.Global.IdleTimeout.IsSet {
-		c.Global.IdleTimeout.Duration = constants.DefaultIdleTimeout
-		c.Global.IdleTimeout.IsSet = true
+	if c.Global.IdleTimeout == nil {
+		defaultTimeout := constants.DefaultIdleTimeout
+		c.Global.IdleTimeout = &defaultTimeout
 	}
-	if !c.Global.ShutdownTimeout.IsSet {
-		c.Global.ShutdownTimeout.Duration = constants.DefaultShutdownTimeout
-		c.Global.ShutdownTimeout.IsSet = true
+	if c.Global.ShutdownTimeout == nil {
+		defaultTimeout := constants.DefaultShutdownTimeout
+		c.Global.ShutdownTimeout = &defaultTimeout
 	}
 
 	// Default access_log to true if not specified
@@ -400,35 +462,35 @@ func (c *Config) SetDefaults() {
 	}
 
 	// Default max request body size if not specified
-	if !c.Global.MaxRequestBodySize.IsSet {
-		c.Global.MaxRequestBodySize.Value = constants.DefaultMaxRequestBodySize
-		c.Global.MaxRequestBodySize.IsSet = true
+	if c.Global.MaxRequestBodySize == nil {
+		defaultSize := int64(constants.DefaultMaxRequestBodySize)
+		c.Global.MaxRequestBodySize = &defaultSize
 	}
 
 	// Set transport timeout defaults if not specified
-	if !c.Global.DialTimeout.IsSet {
-		c.Global.DialTimeout.Duration = constants.DefaultDialTimeout
-		c.Global.DialTimeout.IsSet = true
+	if c.Global.DialTimeout == nil {
+		defaultTimeout := constants.DefaultDialTimeout
+		c.Global.DialTimeout = &defaultTimeout
 	}
-	if !c.Global.KeepAliveTimeout.IsSet {
-		c.Global.KeepAliveTimeout.Duration = constants.DefaultKeepAliveTimeout
-		c.Global.KeepAliveTimeout.IsSet = true
+	if c.Global.KeepAliveTimeout == nil {
+		defaultTimeout := constants.DefaultKeepAliveTimeout
+		c.Global.KeepAliveTimeout = &defaultTimeout
 	}
-	if !c.Global.IdleConnTimeout.IsSet {
-		c.Global.IdleConnTimeout.Duration = constants.DefaultIdleConnTimeout
-		c.Global.IdleConnTimeout.IsSet = true
+	if c.Global.IdleConnTimeout == nil {
+		defaultTimeout := constants.DefaultIdleConnTimeout
+		c.Global.IdleConnTimeout = &defaultTimeout
 	}
-	if !c.Global.TLSHandshakeTimeout.IsSet {
-		c.Global.TLSHandshakeTimeout.Duration = constants.DefaultTLSHandshakeTimeout
-		c.Global.TLSHandshakeTimeout.IsSet = true
+	if c.Global.TLSHandshakeTimeout == nil {
+		defaultTimeout := constants.DefaultTLSHandshakeTimeout
+		c.Global.TLSHandshakeTimeout = &defaultTimeout
 	}
-	if !c.Global.ExpectContinueTimeout.IsSet {
-		c.Global.ExpectContinueTimeout.Duration = constants.DefaultExpectContinueTimeout
-		c.Global.ExpectContinueTimeout.IsSet = true
+	if c.Global.ExpectContinueTimeout == nil {
+		defaultTimeout := constants.DefaultExpectContinueTimeout
+		c.Global.ExpectContinueTimeout = &defaultTimeout
 	}
-	if !c.Global.MetricsReadHeaderTimeout.IsSet {
-		c.Global.MetricsReadHeaderTimeout.Duration = constants.DefaultMetricsReadHeaderTimeout
-		c.Global.MetricsReadHeaderTimeout.IsSet = true
+	if c.Global.MetricsReadHeaderTimeout == nil {
+		defaultTimeout := constants.DefaultMetricsReadHeaderTimeout
+		c.Global.MetricsReadHeaderTimeout = &defaultTimeout
 	}
 
 	// Set service defaults
@@ -442,9 +504,9 @@ func (c *Config) SetDefaults() {
 		}
 
 		// Default whois_timeout to 5 seconds if not specified
-		if !svc.WhoisTimeout.IsSet {
-			svc.WhoisTimeout.Duration = constants.DefaultWhoisTimeout
-			svc.WhoisTimeout.IsSet = true
+		if svc.WhoisTimeout == nil {
+			defaultTimeout := constants.DefaultWhoisTimeout
+			svc.WhoisTimeout = &defaultTimeout
 		}
 
 		// Default tls_mode to "auto" if not specified
@@ -462,18 +524,23 @@ func (c *Config) Normalize() {
 	for i := range c.Services {
 		svc := &c.Services[i]
 
-		// Only copy if the service value is not set
-		if !svc.ReadHeaderTimeout.IsSet {
-			svc.ReadHeaderTimeout = c.Global.ReadHeaderTimeout
+		// Only copy if the service value is nil
+		if svc.ReadHeaderTimeout == nil && c.Global.ReadHeaderTimeout != nil {
+			// Copy the value, not the pointer
+			timeout := *c.Global.ReadHeaderTimeout
+			svc.ReadHeaderTimeout = &timeout
 		}
-		if !svc.WriteTimeout.IsSet {
-			svc.WriteTimeout = c.Global.WriteTimeout
+		if svc.WriteTimeout == nil && c.Global.WriteTimeout != nil {
+			timeout := *c.Global.WriteTimeout
+			svc.WriteTimeout = &timeout
 		}
-		if !svc.IdleTimeout.IsSet {
-			svc.IdleTimeout = c.Global.IdleTimeout
+		if svc.IdleTimeout == nil && c.Global.IdleTimeout != nil {
+			timeout := *c.Global.IdleTimeout
+			svc.IdleTimeout = &timeout
 		}
-		if !svc.ResponseHeaderTimeout.IsSet {
-			svc.ResponseHeaderTimeout = c.Global.ResponseHeaderTimeout
+		if svc.ResponseHeaderTimeout == nil && c.Global.ResponseHeaderTimeout != nil {
+			timeout := *c.Global.ResponseHeaderTimeout
+			svc.ResponseHeaderTimeout = &timeout
 		}
 
 		// Copy access log setting if not set
@@ -482,8 +549,15 @@ func (c *Config) Normalize() {
 		}
 
 		// Copy flush interval if not set
-		if !svc.FlushInterval.IsSet {
-			svc.FlushInterval = c.Global.FlushInterval
+		if svc.FlushInterval == nil && c.Global.FlushInterval != nil {
+			interval := *c.Global.FlushInterval
+			svc.FlushInterval = &interval
+		}
+
+		// Copy max request body size if not set
+		if svc.MaxRequestBodySize == nil && c.Global.MaxRequestBodySize != nil {
+			size := *c.Global.MaxRequestBodySize
+			svc.MaxRequestBodySize = &size
 		}
 
 		// Copy tags if not set
@@ -570,17 +644,17 @@ func (c *Config) validateOAuth() error {
 }
 
 func (c *Config) validateGlobal() error {
-	// Allow zero durations when explicitly set (IsSet = true)
-	if c.Global.ReadHeaderTimeout.Duration < 0 {
+	// Allow zero durations when explicitly set
+	if c.Global.ReadHeaderTimeout != nil && *c.Global.ReadHeaderTimeout < 0 {
 		return errors.NewValidationError("read_header_timeout cannot be negative")
 	}
-	if c.Global.WriteTimeout.Duration < 0 {
+	if c.Global.WriteTimeout != nil && *c.Global.WriteTimeout < 0 {
 		return errors.NewValidationError("write_timeout cannot be negative")
 	}
-	if c.Global.IdleTimeout.Duration < 0 {
+	if c.Global.IdleTimeout != nil && *c.Global.IdleTimeout < 0 {
 		return errors.NewValidationError("idle_timeout cannot be negative")
 	}
-	if c.Global.ShutdownTimeout.Duration <= 0 {
+	if c.Global.ShutdownTimeout != nil && *c.Global.ShutdownTimeout <= 0 {
 		return errors.NewValidationError("shutdown_timeout must be positive")
 	}
 
@@ -631,7 +705,7 @@ func (c *Config) validateService(svc *Service) error {
 
 	// Validate whois timeout if whois is enabled
 	if svc.WhoisEnabled == nil || *svc.WhoisEnabled {
-		if svc.WhoisTimeout.Duration < 0 {
+		if svc.WhoisTimeout != nil && *svc.WhoisTimeout < 0 {
 			return errors.NewValidationError("whois_timeout must be non-negative")
 		}
 	}
@@ -647,18 +721,18 @@ func (c *Config) validateService(svc *Service) error {
 	}
 
 	// Validate service-level overrides if provided
-	if svc.ReadHeaderTimeout.Duration < 0 {
+	if svc.ReadHeaderTimeout != nil && *svc.ReadHeaderTimeout < 0 {
 		return errors.NewValidationError("read_header_timeout must be non-negative")
 	}
-	if svc.WriteTimeout.Duration < 0 {
+	if svc.WriteTimeout != nil && *svc.WriteTimeout < 0 {
 		return errors.NewValidationError("write_timeout must be non-negative")
 	}
-	if svc.IdleTimeout.Duration < 0 {
+	if svc.IdleTimeout != nil && *svc.IdleTimeout < 0 {
 		return errors.NewValidationError("idle_timeout must be non-negative")
 	}
 
 	// Validate tags when using OAuth
-	if c.Tailscale.OAuthClientID != "" || c.Tailscale.OAuthClientSecret != "" {
+	if c.Tailscale.OAuthClientID != "" || c.Tailscale.OAuthClientSecret.Value() != "" {
 		if len(svc.Tags) == 0 {
 			return errors.NewValidationError("service must have at least one tag when using OAuth authentication")
 		}
@@ -678,7 +752,7 @@ func (t Tailscale) String() string {
 	b.WriteString(fmt.Sprintf("  OAuthClientIDFile: %s\n", t.OAuthClientIDFile))
 
 	// OAuth Client Secret (only the actual value is sensitive)
-	if t.OAuthClientSecret != "" {
+	if t.OAuthClientSecret.Value() != "" {
 		b.WriteString("  OAuthClientSecret: [REDACTED]\n")
 	} else {
 		b.WriteString("  OAuthClientSecret: \n")
@@ -687,7 +761,7 @@ func (t Tailscale) String() string {
 	b.WriteString(fmt.Sprintf("  OAuthClientSecretFile: %s\n", t.OAuthClientSecretFile))
 
 	// Auth Key (only the actual value is sensitive)
-	if t.AuthKey != "" {
+	if t.AuthKey.Value() != "" {
 		b.WriteString("  AuthKey: [REDACTED]\n")
 	} else {
 		b.WriteString("  AuthKey: \n")
@@ -713,11 +787,21 @@ func (c *Config) String() string {
 
 	// Global section
 	b.WriteString("\nGlobal:\n")
-	b.WriteString(fmt.Sprintf("  ReadHeaderTimeout: %s\n", c.Global.ReadHeaderTimeout.Duration))
-	b.WriteString(fmt.Sprintf("  WriteTimeout: %s\n", c.Global.WriteTimeout.Duration))
-	b.WriteString(fmt.Sprintf("  IdleTimeout: %s\n", c.Global.IdleTimeout.Duration))
-	b.WriteString(fmt.Sprintf("  ResponseHeaderTimeout: %s\n", c.Global.ResponseHeaderTimeout.Duration))
-	b.WriteString(fmt.Sprintf("  ShutdownTimeout: %s\n", c.Global.ShutdownTimeout.Duration))
+	if c.Global.ReadHeaderTimeout != nil {
+		b.WriteString(fmt.Sprintf("  ReadHeaderTimeout: %s\n", *c.Global.ReadHeaderTimeout))
+	}
+	if c.Global.WriteTimeout != nil {
+		b.WriteString(fmt.Sprintf("  WriteTimeout: %s\n", *c.Global.WriteTimeout))
+	}
+	if c.Global.IdleTimeout != nil {
+		b.WriteString(fmt.Sprintf("  IdleTimeout: %s\n", *c.Global.IdleTimeout))
+	}
+	if c.Global.ResponseHeaderTimeout != nil {
+		b.WriteString(fmt.Sprintf("  ResponseHeaderTimeout: %s\n", *c.Global.ResponseHeaderTimeout))
+	}
+	if c.Global.ShutdownTimeout != nil {
+		b.WriteString(fmt.Sprintf("  ShutdownTimeout: %s\n", *c.Global.ShutdownTimeout))
+	}
 	b.WriteString(fmt.Sprintf("  MetricsAddr: %s\n", c.Global.MetricsAddr))
 	if c.Global.AccessLog != nil {
 		b.WriteString(fmt.Sprintf("  AccessLog: %t\n", *c.Global.AccessLog))
@@ -734,7 +818,9 @@ func (c *Config) String() string {
 		if svc.WhoisEnabled != nil {
 			b.WriteString(fmt.Sprintf("    WhoisEnabled: %t\n", *svc.WhoisEnabled))
 		}
-		b.WriteString(fmt.Sprintf("    WhoisTimeout: %s\n", svc.WhoisTimeout.Duration))
+		if svc.WhoisTimeout != nil {
+			b.WriteString(fmt.Sprintf("    WhoisTimeout: %s\n", *svc.WhoisTimeout))
+		}
 		if svc.TLSMode != "" {
 			b.WriteString(fmt.Sprintf("    TLSMode: %s\n", svc.TLSMode))
 		}
@@ -742,17 +828,17 @@ func (c *Config) String() string {
 			b.WriteString(fmt.Sprintf("    Tags: %v\n", svc.Tags))
 		}
 		// Add service-level overrides if set
-		if svc.ReadHeaderTimeout.Duration > 0 {
-			b.WriteString(fmt.Sprintf("    ReadHeaderTimeout: %s\n", svc.ReadHeaderTimeout.Duration))
+		if svc.ReadHeaderTimeout != nil {
+			b.WriteString(fmt.Sprintf("    ReadHeaderTimeout: %s\n", *svc.ReadHeaderTimeout))
 		}
-		if svc.WriteTimeout.Duration > 0 {
-			b.WriteString(fmt.Sprintf("    WriteTimeout: %s\n", svc.WriteTimeout.Duration))
+		if svc.WriteTimeout != nil {
+			b.WriteString(fmt.Sprintf("    WriteTimeout: %s\n", *svc.WriteTimeout))
 		}
-		if svc.IdleTimeout.Duration > 0 {
-			b.WriteString(fmt.Sprintf("    IdleTimeout: %s\n", svc.IdleTimeout.Duration))
+		if svc.IdleTimeout != nil {
+			b.WriteString(fmt.Sprintf("    IdleTimeout: %s\n", *svc.IdleTimeout))
 		}
-		if svc.ResponseHeaderTimeout.Duration > 0 {
-			b.WriteString(fmt.Sprintf("    ResponseHeaderTimeout: %s\n", svc.ResponseHeaderTimeout.Duration))
+		if svc.ResponseHeaderTimeout != nil {
+			b.WriteString(fmt.Sprintf("    ResponseHeaderTimeout: %s\n", *svc.ResponseHeaderTimeout))
 		}
 		if svc.AccessLog != nil {
 			b.WriteString(fmt.Sprintf("    AccessLog: %t\n", *svc.AccessLog))

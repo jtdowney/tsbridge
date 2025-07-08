@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/jtdowney/tsbridge/test/integration/helpers"
 )
 
@@ -89,7 +90,7 @@ func TestE2EFullStartupWithOAuth(t *testing.T) {
 	// Add tags to all services and adjust whois timeout
 	for i := range cfg.Services {
 		cfg.Services[i].Tags = []string{"tag:test", "tag:integration"}
-		cfg.Services[i].WhoisTimeout = config.Duration{Duration: 100 * time.Millisecond}
+		cfg.Services[i].WhoisTimeout = testhelpers.DurationPtr(100 * time.Millisecond)
 	}
 
 	// Write config file using helper

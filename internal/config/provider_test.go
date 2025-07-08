@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 )
 
 // TestFixture represents a reusable test configuration
@@ -21,8 +22,6 @@ type TestFixture struct {
 
 // getTestFixtures returns all available test fixtures
 func getTestFixtures() []TestFixture {
-	// Helper to create bool pointers
-	boolPtr := func(b bool) *bool { return &b }
 
 	return []TestFixture{
 		{
@@ -98,26 +97,26 @@ tags = ["tag:test"]
 					OAuthClientSecret: "prod-client-secret",
 				},
 				Global: Global{
-					ReadHeaderTimeout:     makeDuration(30 * time.Second),
-					WriteTimeout:          makeDuration(30 * time.Second),
-					IdleTimeout:           makeDuration(120 * time.Second),
-					ShutdownTimeout:       makeDuration(30 * time.Second),
-					ResponseHeaderTimeout: makeDuration(10 * time.Second),
+					ReadHeaderTimeout:     testhelpers.DurationPtr(30 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(30 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:       testhelpers.DurationPtr(30 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(10 * time.Second),
 					MetricsAddr:           ":9090",
-					AccessLog:             boolPtr(true),
+					AccessLog:             testhelpers.BoolPtr(true),
 					TrustedProxies:        []string{"10.0.0.0/8", "172.16.0.0/12"},
 				},
 				Services: []Service{
 					{
 						Name:              "api",
 						BackendAddr:       "localhost:8080",
-						WhoisEnabled:      boolPtr(true),
-						WhoisTimeout:      makeDuration(5 * time.Second),
+						WhoisEnabled:      testhelpers.BoolPtr(true),
+						WhoisTimeout:      testhelpers.DurationPtr(5 * time.Second),
 						TLSMode:           "off",
-						ReadHeaderTimeout: makeDuration(60 * time.Second),
-						WriteTimeout:      makeDuration(60 * time.Second),
-						AccessLog:         boolPtr(false),
-						FunnelEnabled:     boolPtr(true),
+						ReadHeaderTimeout: testhelpers.DurationPtr(60 * time.Second),
+						WriteTimeout:      testhelpers.DurationPtr(60 * time.Second),
+						AccessLog:         testhelpers.BoolPtr(false),
+						FunnelEnabled:     testhelpers.BoolPtr(true),
 						Ephemeral:         false,
 						UpstreamHeaders: map[string]string{
 							"X-Custom-Header": "custom-value",
@@ -127,7 +126,7 @@ tags = ["tag:test"]
 					{
 						Name:         "web",
 						BackendAddr:  "localhost:3000",
-						WhoisEnabled: boolPtr(false),
+						WhoisEnabled: testhelpers.BoolPtr(false),
 						Tags:         []string{"tag:test"},
 					},
 				},
@@ -844,7 +843,7 @@ func TestProviderConfigProcessing(t *testing.T) {
 
 				// Check that defaults were applied
 				service := cfg.Services[0]
-				if service.IdleTimeout.Duration == 0 {
+				if service.IdleTimeout == nil || *service.IdleTimeout == 0 {
 					t.Error("Default IdleTimeout not applied")
 				}
 			})

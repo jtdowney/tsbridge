@@ -53,8 +53,8 @@ func TestTestFixtureWithTimeout(t *testing.T) {
 		WithTimeout("shutdown", 20*time.Second).
 		Build()
 
-	assert.Equal(t, 5*time.Second, cfg.Global.ReadHeaderTimeout.Duration)
-	assert.Equal(t, 10*time.Second, cfg.Global.WriteTimeout.Duration)
-	assert.Equal(t, 15*time.Second, cfg.Global.IdleTimeout.Duration)
-	assert.Equal(t, 20*time.Second, cfg.Global.ShutdownTimeout.Duration)
+	assert.Equal(t, 5*time.Second, *cfg.Global.ReadHeaderTimeout)
+	assert.Equal(t, 10*time.Second, *cfg.Global.WriteTimeout)
+	assert.Equal(t, 15*time.Second, *cfg.Global.IdleTimeout)
+	assert.Equal(t, 20*time.Second, *cfg.Global.ShutdownTimeout)
 }

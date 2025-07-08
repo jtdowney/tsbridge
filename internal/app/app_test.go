@@ -12,6 +12,7 @@ import (
 	"github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/tailscale"
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/jtdowney/tsbridge/internal/testutil"
 	"github.com/jtdowney/tsbridge/internal/tsnet"
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,11 +30,11 @@ func createTestConfig(t *testing.T) *config.Config {
 			AuthKey:  "test-auth-key", // Use auth key instead of OAuth to avoid API calls
 		},
 		Global: config.Global{
-			ShutdownTimeout:       config.Duration{Duration: 5 * time.Second},
-			ReadHeaderTimeout:     config.Duration{Duration: 30 * time.Second},
-			WriteTimeout:          config.Duration{Duration: 30 * time.Second},
-			IdleTimeout:           config.Duration{Duration: 120 * time.Second},
-			ResponseHeaderTimeout: config.Duration{Duration: 10 * time.Second},
+			ShutdownTimeout:       testhelpers.DurationPtr(5 * time.Second),
+			ReadHeaderTimeout:     testhelpers.DurationPtr(30 * time.Second),
+			WriteTimeout:          testhelpers.DurationPtr(30 * time.Second),
+			IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+			ResponseHeaderTimeout: testhelpers.DurationPtr(10 * time.Second),
 		},
 		Services: []config.Service{
 			{
@@ -57,7 +58,7 @@ func TestNewApp(t *testing.T) {
 			cfg: func() *config.Config {
 				cfg := &config.Config{
 					Global: config.Global{
-						ShutdownTimeout: config.Duration{Duration: 30 * time.Second},
+						ShutdownTimeout: testhelpers.DurationPtr(30 * time.Second),
 					},
 					Tailscale: config.Tailscale{
 						AuthKey: "test-key",
@@ -115,7 +116,7 @@ func TestNewApp(t *testing.T) {
 func TestNewAppWithOptions(t *testing.T) {
 	validConfig := &config.Config{
 		Global: config.Global{
-			ShutdownTimeout: config.Duration{Duration: 30 * time.Second},
+			ShutdownTimeout: testhelpers.DurationPtr(30 * time.Second),
 		},
 		Tailscale: config.Tailscale{
 			StateDir: t.TempDir(),
@@ -125,7 +126,7 @@ func TestNewAppWithOptions(t *testing.T) {
 			{
 				Name:         "test-service",
 				BackendAddr:  "unix:///tmp/test.sock",
-				WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+				WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 			},
 		},
 	}
@@ -206,7 +207,7 @@ func TestAppStart(t *testing.T) {
 
 				cfg := &config.Config{
 					Global: config.Global{
-						ShutdownTimeout: config.Duration{Duration: 1 * time.Second},
+						ShutdownTimeout: testhelpers.DurationPtr(1 * time.Second),
 					},
 					Tailscale: config.Tailscale{
 						StateDir: t.TempDir(),
@@ -216,7 +217,7 @@ func TestAppStart(t *testing.T) {
 						{
 							Name:         "test-service",
 							BackendAddr:  "unix://" + socketPath,
-							WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+							WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 						},
 					},
 				}
@@ -240,7 +241,7 @@ func TestAppStart(t *testing.T) {
 
 				cfg := &config.Config{
 					Global: config.Global{
-						ShutdownTimeout: config.Duration{Duration: 1 * time.Second},
+						ShutdownTimeout: testhelpers.DurationPtr(1 * time.Second),
 						MetricsAddr:     "127.0.0.1:0", // Use port 0 to get random available port
 					},
 					Tailscale: config.Tailscale{
@@ -251,7 +252,7 @@ func TestAppStart(t *testing.T) {
 						{
 							Name:         "test-service",
 							BackendAddr:  "unix://" + socketPath,
-							WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+							WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 						},
 					},
 				}
@@ -300,7 +301,7 @@ func TestAppStartIdempotency(t *testing.T) {
 	// Create test config
 	cfg := &config.Config{
 		Global: config.Global{
-			ShutdownTimeout: config.Duration{Duration: 1 * time.Second},
+			ShutdownTimeout: testhelpers.DurationPtr(1 * time.Second),
 		},
 		Tailscale: config.Tailscale{
 			StateDir: t.TempDir(),
@@ -310,7 +311,7 @@ func TestAppStartIdempotency(t *testing.T) {
 			{
 				Name:         "test-service",
 				BackendAddr:  "unix://" + socketPath,
-				WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+				WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 			},
 		},
 	}
@@ -422,10 +423,10 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with 3 services, 2 will fail
 		cfg := &config.Config{
 			Global: config.Global{
-				ShutdownTimeout:   config.Duration{Duration: 5 * time.Second},
-				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+				ShutdownTimeout:   testhelpers.DurationPtr(5 * time.Second),
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
 			},
 			Services: []config.Service{
 				{Name: "service1", BackendAddr: "127.0.0.1:9999", TLSMode: "off"},
@@ -480,10 +481,10 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with 2 services that have unreachable backends
 		cfg := &config.Config{
 			Global: config.Global{
-				ShutdownTimeout:   config.Duration{Duration: 5 * time.Second},
-				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+				ShutdownTimeout:   testhelpers.DurationPtr(5 * time.Second),
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
 			},
 			Services: []config.Service{
 				{Name: "service1", BackendAddr: "127.0.0.1:9999", TLSMode: "off"},
@@ -540,10 +541,10 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		// Create config with metrics and mixed services
 		cfg := &config.Config{
 			Global: config.Global{
-				ShutdownTimeout:   config.Duration{Duration: 5 * time.Second},
-				ReadHeaderTimeout: config.Duration{Duration: 30 * time.Second},
-				WriteTimeout:      config.Duration{Duration: 30 * time.Second},
-				IdleTimeout:       config.Duration{Duration: 120 * time.Second},
+				ShutdownTimeout:   testhelpers.DurationPtr(5 * time.Second),
+				ReadHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+				WriteTimeout:      testhelpers.DurationPtr(30 * time.Second),
+				IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
 				MetricsAddr:       "127.0.0.1:0", // Random port
 			},
 			Services: []config.Service{
@@ -675,7 +676,7 @@ func TestAppShutdownErrorTypes(t *testing.T) {
 func TestAppPerformShutdown(t *testing.T) {
 	cfg := &config.Config{
 		Global: config.Global{
-			ShutdownTimeout: config.Duration{Duration: 1 * time.Second},
+			ShutdownTimeout: testhelpers.DurationPtr(1 * time.Second),
 			MetricsAddr:     "127.0.0.1:0",
 		},
 		Tailscale: config.Tailscale{
@@ -686,7 +687,7 @@ func TestAppPerformShutdown(t *testing.T) {
 			{
 				Name:         "test-service",
 				BackendAddr:  "unix:///tmp/test.sock",
-				WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+				WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 			},
 		},
 	}
@@ -742,7 +743,7 @@ func TestAppSetupMetrics(t *testing.T) {
 					{
 						Name:         "test-service",
 						BackendAddr:  "unix:///tmp/test.sock",
-						WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+						WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 						Tags:         []string{"tag:test"},
 					},
 				},
@@ -785,7 +786,7 @@ func TestAppMetricsAddr(t *testing.T) {
 			setupApp: func(t *testing.T) *App {
 				cfg := &config.Config{
 					Global: config.Global{
-						ShutdownTimeout: config.Duration{Duration: 1 * time.Second},
+						ShutdownTimeout: testhelpers.DurationPtr(1 * time.Second),
 					},
 					Tailscale: config.Tailscale{
 						StateDir: t.TempDir(),
@@ -795,7 +796,7 @@ func TestAppMetricsAddr(t *testing.T) {
 						{
 							Name:         "test-service",
 							BackendAddr:  "unix:///tmp/test.sock", // Use unix socket that won't try to connect
-							WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+							WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 						},
 					},
 				}
@@ -813,7 +814,7 @@ func TestAppMetricsAddr(t *testing.T) {
 			setupApp: func(t *testing.T) *App {
 				cfg := &config.Config{
 					Global: config.Global{
-						ShutdownTimeout: config.Duration{Duration: 1 * time.Second},
+						ShutdownTimeout: testhelpers.DurationPtr(1 * time.Second),
 						MetricsAddr:     "127.0.0.1:0",
 					},
 					Tailscale: config.Tailscale{
@@ -824,7 +825,7 @@ func TestAppMetricsAddr(t *testing.T) {
 						{
 							Name:         "test-service",
 							BackendAddr:  "unix:///tmp/test.sock", // Use unix socket that won't try to connect
-							WhoisTimeout: config.Duration{Duration: 5 * time.Second},
+							WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 						},
 					},
 				}

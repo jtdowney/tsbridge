@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -192,12 +193,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:                  "test-service",
 				BackendAddr:           "http://localhost:8080",
-				ResponseHeaderTimeout: Duration{Duration: 30 * time.Second, IsSet: true},
+				ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
 			},
 			b: Service{
 				Name:                  "test-service",
 				BackendAddr:           "http://localhost:8080",
-				ResponseHeaderTimeout: Duration{Duration: 60 * time.Second, IsSet: true},
+				ResponseHeaderTimeout: testhelpers.DurationPtr(60 * time.Second),
 			},
 			expected: false,
 		},
@@ -290,12 +291,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:          "test-service",
 				BackendAddr:   "http://localhost:8080",
-				FlushInterval: Duration{Duration: 1 * time.Second, IsSet: true},
+				FlushInterval: testhelpers.DurationPtr(1 * time.Second),
 			},
 			b: Service{
 				Name:          "test-service",
 				BackendAddr:   "http://localhost:8080",
-				FlushInterval: Duration{Duration: 2 * time.Second, IsSet: true},
+				FlushInterval: testhelpers.DurationPtr(2 * time.Second),
 			},
 			expected: false,
 		},
@@ -304,12 +305,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:              "test-service",
 				BackendAddr:       "http://localhost:8080",
-				ReadHeaderTimeout: Duration{Duration: 10 * time.Second, IsSet: true},
+				ReadHeaderTimeout: testhelpers.DurationPtr(10 * time.Second),
 			},
 			b: Service{
 				Name:              "test-service",
 				BackendAddr:       "http://localhost:8080",
-				ReadHeaderTimeout: Duration{Duration: 20 * time.Second, IsSet: true},
+				ReadHeaderTimeout: testhelpers.DurationPtr(20 * time.Second),
 			},
 			expected: false,
 		},
@@ -318,12 +319,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:         "test-service",
 				BackendAddr:  "http://localhost:8080",
-				WriteTimeout: Duration{Duration: 30 * time.Second, IsSet: true},
+				WriteTimeout: testhelpers.DurationPtr(30 * time.Second),
 			},
 			b: Service{
 				Name:         "test-service",
 				BackendAddr:  "http://localhost:8080",
-				WriteTimeout: Duration{Duration: 60 * time.Second, IsSet: true},
+				WriteTimeout: testhelpers.DurationPtr(60 * time.Second),
 			},
 			expected: false,
 		},
@@ -332,12 +333,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:        "test-service",
 				BackendAddr: "http://localhost:8080",
-				IdleTimeout: Duration{Duration: 120 * time.Second, IsSet: true},
+				IdleTimeout: testhelpers.DurationPtr(120 * time.Second),
 			},
 			b: Service{
 				Name:        "test-service",
 				BackendAddr: "http://localhost:8080",
-				IdleTimeout: Duration{Duration: 240 * time.Second, IsSet: true},
+				IdleTimeout: testhelpers.DurationPtr(240 * time.Second),
 			},
 			expected: false,
 		},
@@ -346,12 +347,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:         "test-service",
 				BackendAddr:  "http://localhost:8080",
-				WhoisTimeout: Duration{Duration: 5 * time.Second, IsSet: true},
+				WhoisTimeout: testhelpers.DurationPtr(5 * time.Second),
 			},
 			b: Service{
 				Name:         "test-service",
 				BackendAddr:  "http://localhost:8080",
-				WhoisTimeout: Duration{Duration: 10 * time.Second, IsSet: true},
+				WhoisTimeout: testhelpers.DurationPtr(10 * time.Second),
 			},
 			expected: false,
 		},
