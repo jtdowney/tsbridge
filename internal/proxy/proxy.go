@@ -117,47 +117,10 @@ func NewHandler(cfg *HandlerConfig) (Handler, error) {
 	h.proxy.Transport = h.transport
 
 	// Configure ModifyResponse to handle downstream headers
-	h.proxy.ModifyResponse = func(resp *http.Response) error {
-		// Remove headers specified in removeDownstream
-		for _, header := range h.removeDownstream {
-			resp.Header.Del(header)
-		}
-
-		// Add/override headers specified in downstreamHeaders
-		for key, value := range h.downstreamHeaders {
-			resp.Header.Set(key, value)
-		}
-
-		return nil
-	}
+	h.proxy.ModifyResponse = createModifyResponse(h.removeDownstream, h.downstreamHeaders)
 
 	// Configure error handler
-	h.proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		// Drain request body to free resources
-		if r.Body != nil {
-			_, _ = io.Copy(io.Discard, r.Body)
-			r.Body.Close()
-		}
-
-		// Wrap as network error for internal use
-		networkErr := errors.WrapNetwork(err, "proxy request failed")
-
-		// Log with request ID from context
-		logger := middleware.LogWithRequestID(r.Context())
-		logger.Error("proxy error", "backend", cfg.BackendAddr, "path", r.URL.Path, "error", networkErr)
-
-		// Determine status code and message
-		status := http.StatusBadGateway
-		message := "Bad Gateway"
-
-		// Check for timeout errors using proper type assertion
-		if isTimeoutError(err) {
-			status = http.StatusGatewayTimeout
-			message = "Gateway Timeout"
-		}
-
-		http.Error(w, message, status)
-	}
+	h.proxy.ErrorHandler = createErrorHandler(cfg.BackendAddr)
 
 	// Start metrics collection if collector is provided
 	if cfg.MetricsCollector != nil {
@@ -410,4 +373,51 @@ func (h *httpHandler) Close() error {
 		close(h.stopMetrics)
 	}
 	return nil
+}
+
+// createModifyResponse creates a ModifyResponse function for handling downstream headers
+func createModifyResponse(removeDownstream []string, downstreamHeaders map[string]string) func(*http.Response) error {
+	return func(resp *http.Response) error {
+		// Remove headers specified in removeDownstream
+		for _, header := range removeDownstream {
+			resp.Header.Del(header)
+		}
+
+		// Add/override headers specified in downstreamHeaders
+		for key, value := range downstreamHeaders {
+			resp.Header.Set(key, value)
+		}
+
+		return nil
+	}
+}
+
+// createErrorHandler creates an error handler function for the reverse proxy
+func createErrorHandler(backendAddr string) func(http.ResponseWriter, *http.Request, error) {
+	return func(w http.ResponseWriter, r *http.Request, err error) {
+		// Drain request body to free resources
+		if r.Body != nil {
+			_, _ = io.Copy(io.Discard, r.Body)
+			r.Body.Close()
+		}
+
+		// Wrap as network error for internal use
+		networkErr := errors.WrapNetwork(err, "proxy request failed")
+
+		// Log with request ID from context
+		logger := middleware.LogWithRequestID(r.Context())
+		logger.Error("proxy error", "backend", backendAddr, "path", r.URL.Path, "error", networkErr)
+
+		// Determine status code and message
+		status := http.StatusBadGateway
+		message := "Bad Gateway"
+
+		// Check for timeout errors using proper type assertion
+		if isTimeoutError(err) {
+			status = http.StatusGatewayTimeout
+			message = "Gateway Timeout"
+		}
+
+		http.Error(w, message, status)
+	}
 }
