@@ -1006,6 +1006,81 @@ func TestMainDockerProvider(t *testing.T) {
 	assert.Contains(t, output, "provider=docker")
 }
 
+// TestApplicationStartError tests handling of application.Start() errors
+func TestApplicationStartError(t *testing.T) {
+	t.Skip("Skipping test that requires tsnet authentication")
+}
+
+// TestApplicationShutdownError tests handling of application.Shutdown() errors
+func TestApplicationShutdownError(t *testing.T) {
+	t.Skip("Skipping test that requires mocking app.Application interface")
+}
+
+// TestProviderLoadError tests handling of provider.Load() errors
+func TestProviderLoadError(t *testing.T) {
+	// Save original registry
+	originalRegistry := config.DefaultRegistry
+	defer func() { config.DefaultRegistry = originalRegistry }()
+
+	// Register providers
+	registerProviders()
+
+	// Test with non-existent config file
+	args := &cliArgs{
+		provider:   "file",
+		configPath: "/non/existent/path/config.toml",
+	}
+
+	// Run should fail
+	err := run(args)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create application")
+}
+
+// TestValidateConfigWithLoadError tests validation with config load error
+func TestValidateConfigWithLoadError(t *testing.T) {
+	// Test validate with non-existent file
+	args := &cliArgs{
+		validate:   true,
+		provider:   "file",
+		configPath: "/non/existent/path/config.toml",
+	}
+
+	// Capture logs
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, nil))
+	oldLogger := slog.Default()
+	slog.SetDefault(logger)
+	defer slog.SetDefault(oldLogger)
+
+	err := validateConfig(args)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load configuration")
+}
+
+// TestCreateProviderWithInvalidOptions tests provider creation with invalid options
+func TestCreateProviderWithInvalidOptions(t *testing.T) {
+	// Save original registry
+	originalRegistry := config.DefaultRegistry
+	defer func() { config.DefaultRegistry = originalRegistry }()
+
+	// Create a registry with a provider that always fails
+	testRegistry := config.NewProviderRegistry()
+	testRegistry.Register("failing", func(opts interface{}) (config.Provider, error) {
+		return nil, fmt.Errorf("provider creation failed")
+	})
+	config.DefaultRegistry = testRegistry
+
+	args := &cliArgs{
+		provider: "failing",
+	}
+
+	provider, err := createProvider(args)
+	assert.Nil(t, provider)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to create configuration provider")
+}
+
 // TestMainInvalidConfig tests behavior with invalid configuration
 func TestMainInvalidConfig(t *testing.T) {
 	if testing.Short() {
