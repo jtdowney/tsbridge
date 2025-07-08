@@ -550,7 +550,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "OAuth request fails",
+			name: "OAuth generates key successfully",
 			cfg: config.Config{
 				Tailscale: config.Tailscale{
 					OAuthClientID:     "test-client",
@@ -561,7 +561,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 				Name: "test-service",
 				Tags: []string{"tag:test"},
 			},
-			wantErr: false, // OAuth failures are logged but not returned as errors
+			wantErr: false,
 		},
 		{
 			name: "missing OAuth client ID",
@@ -604,6 +604,54 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestGenerateOrResolveAuthKeyOAuthFailure tests OAuth API failure handling
+func TestGenerateOrResolveAuthKeyOAuthFailure(t *testing.T) {
+	// Create a test server that returns errors
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/oauth/token":
+			// Successfully return OAuth token
+			w.Header().Set("Content-Type", "application/json")
+			token := map[string]interface{}{
+				"access_token": "mock-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			}
+			_ = json.NewEncoder(w).Encode(token)
+		case "/api/v2/tailnet/-/keys":
+			// Return API error for key generation
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"message": "internal server error",
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	// Set test OAuth endpoint
+	t.Setenv("TSBRIDGE_OAUTH_ENDPOINT", server.URL)
+
+	cfg := config.Config{
+		Tailscale: config.Tailscale{
+			OAuthClientID:     "test-client",
+			OAuthClientSecret: config.RedactedString("test-secret"),
+		},
+	}
+	svc := config.Service{
+		Name: "test-service",
+		Tags: []string{"tag:test"},
+	}
+
+	// OAuth failures should return an error
+	result, err := generateOrResolveAuthKey(cfg, svc)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "internal server error")
+	assert.Empty(t, result, "should return empty key on OAuth failure")
 }
 
 func TestResolveAuthConfiguration(t *testing.T) {
