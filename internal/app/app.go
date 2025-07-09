@@ -176,12 +176,8 @@ func (a *App) Start(ctx context.Context) error {
 				slog.Warn("some services failed to start",
 					"successful", startupErr.Successful,
 					"failed", startupErr.Failed,
-					"total", startupErr.Total)
-				for service, serviceErr := range startupErr.Failures {
-					slog.Error("service startup failed",
-						"service", service,
-						"error", serviceErr)
-				}
+					"total", startupErr.Total,
+					"failures", startupErr.Failures)
 				// Continue running with partial services
 			} else {
 				// All services failed or other error type
