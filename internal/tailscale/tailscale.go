@@ -140,8 +140,23 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 			return nil, err
 		}
 
-		// Prime the TLS certificate by making a request to ourselves
-		go s.primeCertificate(serviceServer, svc.Name)
+		// Prime the TLS certificate asynchronously with timeout and logging
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			start := time.Now()
+			if err := s.primeCertificate(ctx, serviceServer, svc.Name); err != nil {
+				slog.Warn("certificate priming failed",
+					"service", svc.Name,
+					"error", err,
+					"duration", time.Since(start))
+			} else {
+				slog.Debug("certificate primed successfully",
+					"service", svc.Name,
+					"duration", time.Since(start))
+			}
+		}()
 
 	case "off":
 		// Use plain Listen without TLS (traffic still encrypted via WireGuard)
@@ -242,60 +257,47 @@ func getDefaultStateDir() string {
 	return filepath.Join(xdg.DataHome, "tsbridge")
 }
 
-// primeCertificate makes an HTTPS request to the service to trigger certificate provisioning
-func (s *Server) primeCertificate(serviceServer tsnetpkg.TSNetServer, serviceName string) {
+// primeCertificate makes an HTTPS request to the service to trigger certificate provisioning with timeout
+func (s *Server) primeCertificate(ctx context.Context, serviceServer tsnetpkg.TSNetServer, serviceName string) error {
 	// Wait longer for the service to fully start and be reachable
 	// This is especially important in Docker environments
-	time.Sleep(5 * time.Second)
+	select {
+	case <-time.After(5 * time.Second):
+	case <-ctx.Done():
+		return fmt.Errorf("context cancelled during initial wait: %w", ctx.Err())
+	}
 
 	// Get the LocalClient to fetch status
 	lc, err := serviceServer.LocalClient()
 	if err != nil {
-		slog.Warn("failed to get LocalClient for certificate priming",
-			"service", serviceName,
-			"error", err)
-		return
+		return fmt.Errorf("failed to get LocalClient for certificate priming: %w", err)
 	}
 
-	// Get status to find our FQDN
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+	// Get status to find our FQDN using the provided context
 	status, err := lc.StatusWithoutPeers(ctx)
 	if err != nil {
-		slog.Warn("failed to get status for certificate priming",
-			"service", serviceName,
-			"error", err)
-		return
+		return fmt.Errorf("failed to get status for certificate priming: %w", err)
 	}
 
 	if status == nil || status.Self == nil {
-		slog.Warn("no self peer in status for certificate priming",
-			"service", serviceName)
-		return
+		return fmt.Errorf("no self peer in status for certificate priming")
 	}
 
 	// Get the FQDN (DNSName includes trailing dot, so remove it)
 	fqdn := strings.TrimSuffix(status.Self.DNSName, ".")
 	if fqdn == "" {
-		slog.Warn("no DNS name found for certificate priming",
-			"service", serviceName)
-		return
+		return fmt.Errorf("no DNS name found for certificate priming")
 	}
 
 	// Get the Tailscale IP address
 	if len(status.Self.TailscaleIPs) == 0 {
-		slog.Warn("no Tailscale IP found for certificate priming",
-			"service", serviceName)
-		return
+		return fmt.Errorf("no Tailscale IP found for certificate priming")
 	}
 
 	tsIP := status.Self.TailscaleIPs[0].String()
 
-	// Create a custom HTTP client with a short timeout
-	// Always use the IP address with SNI set to the FQDN
+	// Create a custom HTTP client that respects the context
 	client := &http.Client{
-		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				// Skip verification since we're just priming the cert
@@ -313,8 +315,14 @@ func (s *Server) primeCertificate(serviceServer tsnetpkg.TSNetServer, serviceNam
 		"url", url,
 		"sni", fqdn)
 
+	// Create request with context
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request for certificate priming: %w", err)
+	}
+
 	// Make the request - we don't care about the response
-	resp, err := client.Get(url)
+	resp, err := client.Do(req)
 	if err != nil {
 		// This is expected if the backend isn't ready yet
 		slog.Info("certificate priming request completed (certificate will be provisioned on first request)",
@@ -322,7 +330,7 @@ func (s *Server) primeCertificate(serviceServer tsnetpkg.TSNetServer, serviceNam
 			"url", url,
 			"sni", fqdn,
 			"error", err)
-		return
+		return nil // Don't return error for expected connection failures
 	}
 	resp.Body.Close()
 
@@ -330,4 +338,5 @@ func (s *Server) primeCertificate(serviceServer tsnetpkg.TSNetServer, serviceNam
 		"service", serviceName,
 		"url", url,
 		"sni", fqdn)
+	return nil
 }

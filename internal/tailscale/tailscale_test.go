@@ -761,7 +761,9 @@ func TestPrimeCertificate(t *testing.T) {
 	// Call primeCertificate in a goroutine (like it would be in real usage)
 	done := make(chan bool)
 	go func() {
-		server.primeCertificate(mockServer, "test-service")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		server.primeCertificate(ctx, mockServer, "test-service")
 		done <- true
 	}()
 
@@ -874,7 +876,9 @@ func TestPrimeCertificateErrorCases(t *testing.T) {
 			// Call primeCertificate in a goroutine
 			done := make(chan bool)
 			go func() {
-				server.primeCertificate(mockServer, "test-service")
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				server.primeCertificate(ctx, mockServer, "test-service")
 				done <- true
 			}()
 
@@ -887,6 +891,143 @@ func TestPrimeCertificateErrorCases(t *testing.T) {
 				t.Fatal("primeCertificate timed out")
 			}
 		})
+	}
+}
+
+// TestAsyncCertificatePriming tests that Listen returns immediately without waiting for certificate priming
+func TestAsyncCertificatePriming(t *testing.T) {
+	// Create a mock TSNet server that will simulate slow priming
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		return nil
+	}
+
+	mockServer.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
+		return &mockListener{addr: addr}, nil
+	}
+
+	// Create a slow LocalClient to simulate slow priming
+	primingStarted := make(chan bool)
+	mockLocalClient := &tsnet.MockLocalClient{
+		StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+			// Signal that priming has started
+			select {
+			case primingStarted <- true:
+			default:
+			}
+			// Simulate slow priming by sleeping
+			time.Sleep(2 * time.Second)
+			return &ipnstate.Status{
+				Self: &ipnstate.PeerStatus{
+					DNSName:      "test.tailnet.ts.net.",
+					TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+				},
+			}, nil
+		},
+	}
+
+	mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
+		return mockLocalClient, nil
+	}
+
+	// Create server with mock factory
+	factory := func() tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: config.RedactedString("test-key"),
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	// Create service config
+	svc := config.Service{
+		Name:        "test-service",
+		BackendAddr: "localhost:8080",
+	}
+
+	// Call Listen and measure time
+	start := time.Now()
+	listener, err := server.Listen(svc, "auto", false)
+	elapsed := time.Since(start)
+
+	// Verify Listen returned immediately (within 100ms)
+	assert.NoError(t, err)
+	assert.NotNil(t, listener)
+	assert.Less(t, elapsed, 100*time.Millisecond, "Listen should return immediately")
+
+	// Wait for priming to start (but not complete)
+	select {
+	case <-primingStarted:
+		// Priming started in background
+	case <-time.After(6 * time.Second):
+		t.Fatal("Certificate priming should have started")
+	}
+}
+
+// TestPrimeCertificateTimeout tests that certificate priming respects context timeout
+func TestPrimeCertificateTimeout(t *testing.T) {
+	// Create a mock TSNet server that will timeout
+	mockServer := tsnet.NewMockTSNetServer()
+
+	timeoutReached := make(chan bool, 1)
+	mockLocalClient := &tsnet.MockLocalClient{
+		StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+			// Check if context timeout works
+			select {
+			case <-ctx.Done():
+				timeoutReached <- true
+				return nil, ctx.Err()
+			case <-time.After(10 * time.Second):
+				// Should not reach here if timeout is working
+				return &ipnstate.Status{
+					Self: &ipnstate.PeerStatus{
+						DNSName:      "test.tailnet.ts.net.",
+						TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+					},
+				}, nil
+			}
+		},
+	}
+
+	mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
+		return mockLocalClient, nil
+	}
+
+	// Create server with mock factory
+	factory := func() tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: config.RedactedString("test-key"),
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	// Use a timeout that's longer than the initial 5s wait but still reasonable for testing
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	err = server.primeCertificate(ctx, mockServer, "test-service")
+	elapsed := time.Since(start)
+
+	// Should timeout during initial wait and return error
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "context cancelled during initial wait")
+	assert.Less(t, elapsed, 4*time.Second, "Should timeout within 4 seconds")
+	assert.Greater(t, elapsed, 2*time.Second, "Should timeout after at least 3 seconds")
+
+	// The timeout should occur during the initial wait, so StatusWithoutPeers shouldn't be called
+	select {
+	case <-timeoutReached:
+		t.Fatal("StatusWithoutPeers should not have been called due to early timeout")
+	default:
+		// Expected - timeout during initial wait
 	}
 }
 
