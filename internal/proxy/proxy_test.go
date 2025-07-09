@@ -1246,6 +1246,87 @@ func TestConnectionPoolMetricsCollection(t *testing.T) {
 	})
 }
 
+func TestActiveRequestsThreadSafety(t *testing.T) {
+	// This test verifies that activeRequests counter is accessed atomically
+	// and there are no race conditions between ServeHTTP and collectMetrics
+	t.Run("concurrent access to activeRequests", func(t *testing.T) {
+		// Create a test backend that holds connections to keep requests active
+		backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Hold the connection for a bit to simulate active requests
+			time.Sleep(50 * time.Millisecond)
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		}))
+		defer backend.Close()
+
+		// Create metrics collector
+		collector := metrics.NewCollector()
+		registry := prometheus.NewRegistry()
+		err := collector.Register(registry)
+		require.NoError(t, err)
+
+		// Create proxy handler with metrics
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:      backend.URL,
+			TransportConfig:  defaultTestTransportConfig(),
+			MetricsCollector: collector,
+			ServiceName:      "test-service",
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		httpHandler := handler.(*httpHandler)
+
+		// Number of concurrent operations
+		const numWorkers = 50
+		const numIterations = 100
+
+		// Use WaitGroup to coordinate goroutines
+		var wg sync.WaitGroup
+		wg.Add(numWorkers * 2) // Half for ServeHTTP, half for collectMetrics
+
+		// Start signal
+		start := make(chan struct{})
+
+		// Start goroutines that make requests (writing to activeRequests)
+		for i := 0; i < numWorkers; i++ {
+			go func() {
+				defer wg.Done()
+				<-start
+				for j := 0; j < numIterations; j++ {
+					req := httptest.NewRequest("GET", "/", nil)
+					w := httptest.NewRecorder()
+					httpHandler.ServeHTTP(w, req)
+				}
+			}()
+		}
+
+		// Start goroutines that collect metrics (reading activeRequests)
+		for i := 0; i < numWorkers; i++ {
+			go func() {
+				defer wg.Done()
+				<-start
+				for j := 0; j < numIterations; j++ {
+					// Test both the getter method and collectMetrics
+					_ = httpHandler.getActiveRequests()
+					httpHandler.collectMetrics()
+					// Small delay to increase likelihood of race
+					time.Sleep(time.Microsecond)
+				}
+			}()
+		}
+
+		// Start all goroutines simultaneously
+		close(start)
+
+		// Wait for all goroutines to complete
+		wg.Wait()
+
+		// If we get here without a race detected by -race flag, the test passes
+		// The race detector will automatically fail the test if a race is detected
+	})
+}
+
 func TestFlushIntervalConfiguration(t *testing.T) {
 	t.Run("default no flush interval", func(t *testing.T) {
 		// Create a backend that sends streaming data
@@ -1316,5 +1397,49 @@ func TestFlushIntervalConfiguration(t *testing.T) {
 		httpHandler := handler.(*httpHandler)
 		assert.NotNil(t, httpHandler.proxy)
 		assert.Equal(t, &flushInterval, httpHandler.flushInterval)
+	})
+}
+
+// BenchmarkActiveRequestsAccess benchmarks the performance of activeRequests counter operations
+func BenchmarkActiveRequestsAccess(b *testing.B) {
+	// Create a simple backend
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	// Create proxy handler
+	handler, err := NewHandler(&HandlerConfig{
+		BackendAddr:     backend.URL,
+		TransportConfig: defaultTestTransportConfig(),
+	})
+	require.NoError(b, err)
+	defer handler.Close()
+
+	httpHandler := handler.(*httpHandler)
+
+	b.Run("getActiveRequests", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_ = httpHandler.getActiveRequests()
+		}
+	})
+
+	b.Run("increment_decrement", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			atomic.AddInt64(&httpHandler.activeRequests, 1)
+			atomic.AddInt64(&httpHandler.activeRequests, -1)
+		}
+	})
+
+	b.Run("concurrent_access", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				atomic.AddInt64(&httpHandler.activeRequests, 1)
+				_ = httpHandler.getActiveRequests()
+				atomic.AddInt64(&httpHandler.activeRequests, -1)
+			}
+		})
 	})
 }

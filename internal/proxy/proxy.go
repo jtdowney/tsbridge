@@ -357,13 +357,18 @@ func (h *httpHandler) startMetricsCollection() {
 	}()
 }
 
+// getActiveRequests returns the current number of active requests
+func (h *httpHandler) getActiveRequests() int64 {
+	return atomic.LoadInt64(&h.activeRequests)
+}
+
 // collectMetrics collects current connection pool stats from the transport
 func (h *httpHandler) collectMetrics() {
 	if h.transport == nil || h.metricsCollector == nil {
 		return
 	}
 
-	active := int(atomic.LoadInt64(&h.activeRequests))
+	active := int(h.getActiveRequests())
 	h.metricsCollector.UpdateConnectionPoolMetrics(h.serviceName, active, 0, 0)
 }
 
