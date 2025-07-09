@@ -644,19 +644,86 @@ func (c *Config) validateOAuth() error {
 	return validateOAuthSources(c.Tailscale)
 }
 
+// validateTimeout validates a timeout duration field.
+// Most timeouts cannot be negative, but FlushInterval allows -1ms for immediate flushing.
+func validateTimeout(name string, d *time.Duration, allowNegativeOne bool) error {
+	if d == nil {
+		return nil // nil is valid - will use default
+	}
+
+	if allowNegativeOne && *d == -1*time.Millisecond {
+		return nil // -1ms is valid for immediate flushing
+	}
+
+	if *d < 0 {
+		if allowNegativeOne {
+			return errors.NewValidationError(fmt.Sprintf("%s can only be -1ms for immediate flushing", name))
+		}
+		return errors.NewValidationError(fmt.Sprintf("%s cannot be negative", name))
+	}
+
+	return nil
+}
+
+// validateTimeoutPositive validates that a timeout is positive (> 0).
+// Used for timeouts that must be positive, like ShutdownTimeout.
+func validateTimeoutPositive(name string, d *time.Duration) error {
+	if d == nil {
+		return nil // nil is valid - will use default
+	}
+
+	if *d <= 0 {
+		return errors.NewValidationError(fmt.Sprintf("%s must be positive", name))
+	}
+
+	return nil
+}
+
 func (c *Config) validateGlobal() error {
-	// Allow zero durations when explicitly set
-	if c.Global.ReadHeaderTimeout != nil && *c.Global.ReadHeaderTimeout < 0 {
-		return errors.NewValidationError("read_header_timeout cannot be negative")
+	// Validate server timeouts
+	if err := validateTimeout("read_header_timeout", c.Global.ReadHeaderTimeout, false); err != nil {
+		return err
 	}
-	if c.Global.WriteTimeout != nil && *c.Global.WriteTimeout < 0 {
-		return errors.NewValidationError("write_timeout cannot be negative")
+	if err := validateTimeout("write_timeout", c.Global.WriteTimeout, false); err != nil {
+		return err
 	}
-	if c.Global.IdleTimeout != nil && *c.Global.IdleTimeout < 0 {
-		return errors.NewValidationError("idle_timeout cannot be negative")
+	if err := validateTimeout("idle_timeout", c.Global.IdleTimeout, false); err != nil {
+		return err
 	}
-	if c.Global.ShutdownTimeout != nil && *c.Global.ShutdownTimeout <= 0 {
-		return errors.NewValidationError("shutdown_timeout must be positive")
+	if err := validateTimeoutPositive("shutdown_timeout", c.Global.ShutdownTimeout); err != nil {
+		return err
+	}
+
+	// Validate response timeout
+	if err := validateTimeout("response_header_timeout", c.Global.ResponseHeaderTimeout, false); err != nil {
+		return err
+	}
+
+	// Validate transport timeouts
+	if err := validateTimeout("dial_timeout", c.Global.DialTimeout, false); err != nil {
+		return err
+	}
+	if err := validateTimeout("keep_alive_timeout", c.Global.KeepAliveTimeout, false); err != nil {
+		return err
+	}
+	if err := validateTimeout("idle_conn_timeout", c.Global.IdleConnTimeout, false); err != nil {
+		return err
+	}
+	if err := validateTimeout("tls_handshake_timeout", c.Global.TLSHandshakeTimeout, false); err != nil {
+		return err
+	}
+	if err := validateTimeout("expect_continue_timeout", c.Global.ExpectContinueTimeout, false); err != nil {
+		return err
+	}
+
+	// Validate metrics timeout
+	if err := validateTimeout("metrics_read_header_timeout", c.Global.MetricsReadHeaderTimeout, false); err != nil {
+		return err
+	}
+
+	// Validate flush interval (allows -1ms)
+	if err := validateTimeout("flush_interval", c.Global.FlushInterval, true); err != nil {
+		return err
 	}
 
 	// Validate metrics address if provided
@@ -706,8 +773,8 @@ func (c *Config) validateService(svc *Service) error {
 
 	// Validate whois timeout if whois is enabled
 	if svc.WhoisEnabled == nil || *svc.WhoisEnabled {
-		if svc.WhoisTimeout != nil && *svc.WhoisTimeout < 0 {
-			return errors.NewValidationError("whois_timeout must be non-negative")
+		if err := validateTimeout("whois_timeout", svc.WhoisTimeout, false); err != nil {
+			return err
 		}
 	}
 
@@ -721,15 +788,23 @@ func (c *Config) validateService(svc *Service) error {
 		}
 	}
 
-	// Validate service-level overrides if provided
-	if svc.ReadHeaderTimeout != nil && *svc.ReadHeaderTimeout < 0 {
-		return errors.NewValidationError("read_header_timeout must be non-negative")
+	// Validate service-level timeout overrides
+	if err := validateTimeout("read_header_timeout", svc.ReadHeaderTimeout, false); err != nil {
+		return err
 	}
-	if svc.WriteTimeout != nil && *svc.WriteTimeout < 0 {
-		return errors.NewValidationError("write_timeout must be non-negative")
+	if err := validateTimeout("write_timeout", svc.WriteTimeout, false); err != nil {
+		return err
 	}
-	if svc.IdleTimeout != nil && *svc.IdleTimeout < 0 {
-		return errors.NewValidationError("idle_timeout must be non-negative")
+	if err := validateTimeout("idle_timeout", svc.IdleTimeout, false); err != nil {
+		return err
+	}
+	if err := validateTimeout("response_header_timeout", svc.ResponseHeaderTimeout, false); err != nil {
+		return err
+	}
+
+	// Validate flush interval (allows -1ms)
+	if err := validateTimeout("flush_interval", svc.FlushInterval, true); err != nil {
+		return err
 	}
 
 	// Validate tags when using OAuth

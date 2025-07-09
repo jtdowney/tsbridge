@@ -1060,6 +1060,314 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr: "",
 		},
+		// Comprehensive timeout validation tests
+		{
+			name: "negative global response_header_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:       testhelpers.DurationPtr(15 * time.Second),
+					ResponseHeaderTimeout: testhelpers.DurationPtr(-1 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "response_header_timeout cannot be negative",
+		},
+		{
+			name: "negative global dial_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+					DialTimeout:       testhelpers.DurationPtr(-1 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "dial_timeout cannot be negative",
+		},
+		{
+			name: "negative global keep_alive_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+					KeepAliveTimeout:  testhelpers.DurationPtr(-1 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "keep_alive_timeout cannot be negative",
+		},
+		{
+			name: "negative global idle_conn_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+					IdleConnTimeout:   testhelpers.DurationPtr(-1 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "idle_conn_timeout cannot be negative",
+		},
+		{
+			name: "negative global tls_handshake_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout:   testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:        testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:         testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:     testhelpers.DurationPtr(15 * time.Second),
+					TLSHandshakeTimeout: testhelpers.DurationPtr(-1 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "tls_handshake_timeout cannot be negative",
+		},
+		{
+			name: "negative global expect_continue_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout:     testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:       testhelpers.DurationPtr(15 * time.Second),
+					ExpectContinueTimeout: testhelpers.DurationPtr(-1 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "expect_continue_timeout cannot be negative",
+		},
+		{
+			name: "negative global metrics_read_header_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout:        testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:             testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:              testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:          testhelpers.DurationPtr(15 * time.Second),
+					MetricsReadHeaderTimeout: testhelpers.DurationPtr(-1 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "metrics_read_header_timeout cannot be negative",
+		},
+		{
+			name: "valid negative flush_interval (-1ms for immediate)",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+					FlushInterval:     testhelpers.DurationPtr(-1 * time.Millisecond),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "invalid negative flush_interval (not -1ms)",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+					FlushInterval:     testhelpers.DurationPtr(-2 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "flush_interval can only be -1ms for immediate flushing",
+		},
+		{
+			name: "negative service response_header_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:                  "api",
+						BackendAddr:           "127.0.0.1:8080",
+						Tags:                  []string{"tag:test"},
+						ResponseHeaderTimeout: testhelpers.DurationPtr(-1 * time.Second),
+					},
+				},
+			},
+			wantErr: "response_header_timeout cannot be negative",
+		},
+		{
+			name: "valid service negative flush_interval",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:          "api",
+						BackendAddr:   "127.0.0.1:8080",
+						Tags:          []string{"tag:test"},
+						FlushInterval: testhelpers.DurationPtr(-1 * time.Millisecond),
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "zero shutdown_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(0),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "shutdown_timeout must be positive",
+		},
+		{
+			name: "nil timeout values are valid",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					// All timeouts nil - should use defaults
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "",
+		},
 	}
 
 	for _, tt := range tests {
