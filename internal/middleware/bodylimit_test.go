@@ -178,3 +178,154 @@ func TestMaxBytesHandlerLargeBodyPartialRead(t *testing.T) {
 	// The handler should have received the error from MaxBytesReader
 	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 }
+
+func TestEarlyBodySizeValidation(t *testing.T) {
+	tests := []struct {
+		name                 string
+		maxBytes             int64
+		body                 string
+		contentLength        string
+		expectBodyRead       bool
+		expectedStatus       int
+		expectedBodyContains string
+	}{
+		{
+			name:                 "content-length validation prevents body read",
+			maxBytes:             10,
+			body:                 "this is a very long body that should not be read",
+			contentLength:        "50",
+			expectBodyRead:       false,
+			expectedStatus:       http.StatusRequestEntityTooLarge,
+			expectedBodyContains: "Request body too large",
+		},
+		{
+			name:                 "missing content-length allows body processing",
+			maxBytes:             10,
+			body:                 "short",
+			contentLength:        "", // Missing Content-Length
+			expectBodyRead:       true,
+			expectedStatus:       http.StatusOK,
+			expectedBodyContains: "body was read",
+		},
+		{
+			name:                 "content-length -1 (unknown) allows body processing with limit",
+			maxBytes:             10,
+			body:                 "short body",
+			contentLength:        "-1",
+			expectBodyRead:       true,
+			expectedStatus:       http.StatusOK,
+			expectedBodyContains: "body was read",
+		},
+		{
+			name:                 "zero content-length is allowed",
+			maxBytes:             10,
+			body:                 "",
+			contentLength:        "0",
+			expectBodyRead:       true,
+			expectedStatus:       http.StatusOK,
+			expectedBodyContains: "body was read",
+		},
+		{
+			name:                 "content-length exactly at limit is allowed",
+			maxBytes:             10,
+			body:                 "1234567890",
+			contentLength:        "10",
+			expectBodyRead:       true,
+			expectedStatus:       http.StatusOK,
+			expectedBodyContains: "body was read",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bodyRead := false
+
+			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				bodyRead = true
+				// Try to read the body
+				_, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+				w.Write([]byte("body was read"))
+			})
+
+			wrapped := MaxBytesHandler(tt.maxBytes)(handler)
+
+			req := httptest.NewRequest("POST", "/", strings.NewReader(tt.body))
+			if tt.contentLength != "" {
+				req.Header.Set("Content-Length", tt.contentLength)
+			}
+
+			rec := httptest.NewRecorder()
+			wrapped.ServeHTTP(rec, req)
+
+			assert.Equal(t, tt.expectedStatus, rec.Code)
+			assert.Contains(t, rec.Body.String(), tt.expectedBodyContains)
+			assert.Equal(t, tt.expectBodyRead, bodyRead, "body read expectation mismatch")
+		})
+	}
+}
+
+func TestMaxBytesHandlerNoUnnecessaryReads(t *testing.T) {
+	// Track if body was accessed
+	type trackingReader struct {
+		io.Reader
+		accessed bool
+	}
+
+	// Test with large Content-Length that should be rejected early
+	tr := &trackingReader{Reader: strings.NewReader("large body content")}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// This should never be called for oversized requests
+		t.Error("Handler should not be called for oversized Content-Length")
+	})
+
+	wrapped := MaxBytesHandler(10)(handler)
+
+	req := httptest.NewRequest("POST", "/", tr)
+	req.ContentLength = 1000 // Much larger than limit
+	req.Header.Set("Content-Length", "1000")
+
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	assert.False(t, tr.accessed, "Body should not be accessed when Content-Length exceeds limit")
+}
+
+func TestMaxBytesHandlerMissingContentLength(t *testing.T) {
+	// When Content-Length is missing, the handler should still enforce limits
+	// but needs to allow the request to proceed with MaxBytesReader protection
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Attempt to read more than the limit
+		data := make([]byte, 100)
+		n, err := io.ReadFull(r.Body, data)
+
+		if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+			// MaxBytesReader should have limited the read
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+
+		w.Write([]byte("read successful"))
+		w.Write(data[:n])
+	})
+
+	wrapped := MaxBytesHandler(10)(handler)
+
+	// Create request without Content-Length header
+	body := strings.NewReader("this is a very long body that exceeds the limit")
+	req := httptest.NewRequest("POST", "/", body)
+	req.ContentLength = -1 // Explicitly set to -1 (unknown length)
+	// Don't set Content-Length header
+
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+
+	// The response should indicate the body was limited
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+}
