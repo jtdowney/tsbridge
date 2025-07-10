@@ -816,6 +816,63 @@ func TestParseCLIArgs(t *testing.T) {
 	}
 }
 
+// TestParseCLIArgsWithTSBRIDGEDEBUG tests that TSBRIDGE_DEBUG environment variable enables verbose mode
+func TestParseCLIArgsWithTSBRIDGEDEBUG(t *testing.T) {
+	tests := []struct {
+		name      string
+		args      []string
+		envValue  string
+		wantDebug bool
+	}{
+		{
+			name:      "TSBRIDGE_DEBUG not set",
+			args:      []string{},
+			envValue:  "",
+			wantDebug: false,
+		},
+		{
+			name:      "TSBRIDGE_DEBUG set to 1",
+			args:      []string{},
+			envValue:  "1",
+			wantDebug: true,
+		},
+		{
+			name:      "TSBRIDGE_DEBUG set to any value",
+			args:      []string{},
+			envValue:  "true",
+			wantDebug: true,
+		},
+		{
+			name:      "verbose flag overrides TSBRIDGE_DEBUG",
+			args:      []string{"-verbose"},
+			envValue:  "",
+			wantDebug: true,
+		},
+		{
+			name:      "verbose flag takes precedence when both set",
+			args:      []string{"-verbose"},
+			envValue:  "1",
+			wantDebug: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set or unset the environment variable
+			if tt.envValue != "" {
+				t.Setenv("TSBRIDGE_DEBUG", tt.envValue)
+			} else {
+				// Ensure it's not set
+				os.Unsetenv("TSBRIDGE_DEBUG")
+			}
+
+			got, err := parseCLIArgs(tt.args)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantDebug, got.verbose, "verbose flag mismatch")
+		})
+	}
+}
+
 // TestRun tests the run function
 func TestRun(t *testing.T) {
 	// Save original version
