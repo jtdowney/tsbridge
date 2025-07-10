@@ -268,15 +268,20 @@ func TestEarlyBodySizeValidation(t *testing.T) {
 	}
 }
 
-func TestMaxBytesHandlerNoUnnecessaryReads(t *testing.T) {
-	// Track if body was accessed
-	type trackingReader struct {
-		io.Reader
-		accessed bool
-	}
+// trackingReader wraps an io.Reader to track if it was accessed
+type trackingReader struct {
+	r        io.Reader
+	accessed bool
+}
 
+func (tr *trackingReader) Read(p []byte) (n int, err error) {
+	tr.accessed = true
+	return tr.r.Read(p)
+}
+
+func TestMaxBytesHandlerNoUnnecessaryReads(t *testing.T) {
 	// Test with large Content-Length that should be rejected early
-	tr := &trackingReader{Reader: strings.NewReader("large body content")}
+	tr := &trackingReader{r: strings.NewReader("large body content")}
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// This should never be called for oversized requests
@@ -328,4 +333,5 @@ func TestMaxBytesHandlerMissingContentLength(t *testing.T) {
 
 	// The response should indicate the body was limited
 	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	assert.Contains(t, rec.Body.String(), "Request body too large")
 }
