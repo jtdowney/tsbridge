@@ -153,3 +153,27 @@ const (
 	// TsnetServerStartTimeout is the timeout for starting a tsnet server.
 	TsnetServerStartTimeout = 5 * time.Second
 )
+
+// Retry configuration constants.
+const (
+	// RetryInitialInterval is the initial interval between retry attempts.
+	RetryInitialInterval = 100 * time.Millisecond
+
+	// RetryMaxInterval is the maximum interval between retry attempts.
+	RetryMaxInterval = 2 * time.Second
+
+	// RetryMaxElapsedTime is the maximum total time for all retry attempts.
+	RetryMaxElapsedTime = 10 * time.Second
+
+	// RetryMultiplier is the multiplier for exponential backoff.
+	RetryMultiplier = 2.0
+
+	// RetryRandomizationFactor is the randomization factor for exponential backoff.
+	RetryRandomizationFactor = 0.1
+
+	// RetryMaxAttempts is the maximum number of retry attempts (2 retries = 3 total attempts).
+	RetryMaxAttempts = 2
+
+	// RetryMinTestDelay is the minimum expected delay for testing retry behavior.
+	RetryMinTestDelay = 50 * time.Millisecond
+)

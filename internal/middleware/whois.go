@@ -11,6 +11,7 @@ import (
 
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/golang-lru/v2/expirable"
+	"github.com/jtdowney/tsbridge/internal/constants"
 	"tailscale.com/client/tailscale/apitype"
 )
 
@@ -47,14 +48,14 @@ func Whois(client WhoisClient, enabled bool, timeout time.Duration, cacheSize in
 func performWhoisWithRetryLogic(client WhoisClient, timeout time.Duration, r *http.Request) (*apitype.WhoIsResponse, error) {
 	// Configure exponential backoff with attempt limit
 	b := backoff.NewExponentialBackOff()
-	b.InitialInterval = 100 * time.Millisecond
-	b.MaxInterval = 2 * time.Second
-	b.MaxElapsedTime = 10 * time.Second
-	b.Multiplier = 2.0
-	b.RandomizationFactor = 0.1
+	b.InitialInterval = constants.RetryInitialInterval
+	b.MaxInterval = constants.RetryMaxInterval
+	b.MaxElapsedTime = constants.RetryMaxElapsedTime
+	b.Multiplier = constants.RetryMultiplier
+	b.RandomizationFactor = constants.RetryRandomizationFactor
 
 	// Limit to 3 attempts using WithMaxRetries
-	backoffWithRetries := backoff.WithMaxRetries(b, 2) // 2 retries = 3 total attempts
+	backoffWithRetries := backoff.WithMaxRetries(b, constants.RetryMaxAttempts) // 2 retries = 3 total attempts
 
 	// Use context-aware backoff
 	ctxBackoff := backoff.WithContext(backoffWithRetries, r.Context())

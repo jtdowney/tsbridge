@@ -10,6 +10,7 @@ import (
 
 	"net/netip"
 
+	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/stretchr/testify/assert"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
@@ -631,7 +632,7 @@ func TestWhoisRetryBehavior(t *testing.T) {
 
 			// Verify retry timing (should have delays for retries)
 			if tt.expectedCalls > 1 {
-				minExpectedDuration := time.Duration(tt.expectedCalls-1) * 50 * time.Millisecond
+				minExpectedDuration := time.Duration(tt.expectedCalls-1) * constants.RetryMinTestDelay
 				assert.GreaterOrEqual(t, duration, minExpectedDuration)
 			}
 		})

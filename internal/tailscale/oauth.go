@@ -55,14 +55,14 @@ type authKeyResponse struct {
 func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool) (string, error) {
 	// Configure exponential backoff with attempt limit
 	b := backoff.NewExponentialBackOff()
-	b.InitialInterval = 100 * time.Millisecond
-	b.MaxInterval = 2 * time.Second
-	b.MaxElapsedTime = 10 * time.Second
-	b.Multiplier = 2.0
-	b.RandomizationFactor = 0.1
+	b.InitialInterval = constants.RetryInitialInterval
+	b.MaxInterval = constants.RetryMaxInterval
+	b.MaxElapsedTime = constants.RetryMaxElapsedTime
+	b.Multiplier = constants.RetryMultiplier
+	b.RandomizationFactor = constants.RetryRandomizationFactor
 
 	// Limit to 3 attempts using WithMaxRetries
-	backoffWithRetries := backoff.WithMaxRetries(b, 2) // 2 retries = 3 total attempts
+	backoffWithRetries := backoff.WithMaxRetries(b, constants.RetryMaxAttempts) // 2 retries = 3 total attempts
 
 	var authKey string
 	operation := func() error {
