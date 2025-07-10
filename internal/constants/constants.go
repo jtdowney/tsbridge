@@ -75,3 +75,81 @@ const (
 	// DefaultMaxRequestBodySize is the default maximum request body size (50 MB).
 	DefaultMaxRequestBodySize = 50 * 1024 * 1024
 )
+
+// Cache configuration constants define default values for caching behavior.
+const (
+	// DefaultWhoisCacheSize is the default maximum number of entries in the whois cache.
+	DefaultWhoisCacheSize = 1000
+
+	// DefaultWhoisCacheTTL is the default time-to-live for whois cache entries.
+	DefaultWhoisCacheTTL = 5 * time.Minute
+)
+
+// Connection pool constants define default values for HTTP transport configuration.
+const (
+	// DefaultMaxIdleConns is the default maximum number of idle connections across all hosts.
+	DefaultMaxIdleConns = 100
+
+	// DefaultMaxConnsPerHost is the default maximum number of connections per host.
+	DefaultMaxConnsPerHost = 50
+
+	// DefaultMaxIdleConnsPerHost is the default maximum number of idle connections per host.
+	DefaultMaxIdleConnsPerHost = 10
+
+	// DefaultMetricsCollectionInterval is the default interval for collecting metrics.
+	DefaultMetricsCollectionInterval = 10 * time.Second
+)
+
+// Docker provider constants define timeouts and delays for Docker operations.
+const (
+	// DockerPingTimeout is the timeout for Docker daemon ping operations.
+	DockerPingTimeout = 5 * time.Second
+
+	// DockerMaxReconnectBackoff is the maximum backoff duration for Docker event stream reconnection.
+	DockerMaxReconnectBackoff = 5 * time.Minute
+
+	// DockerEventDebounceDelay is the delay for debouncing Docker events.
+	DockerEventDebounceDelay = 500 * time.Millisecond
+)
+
+// Byte size constants for data size calculations.
+const (
+	// BytesPerKB is the number of bytes in a kilobyte.
+	BytesPerKB = 1024
+
+	// BytesPerMB is the number of bytes in a megabyte.
+	BytesPerMB = 1024 * 1024
+
+	// BytesPerGB is the number of bytes in a gigabyte.
+	BytesPerGB = 1024 * 1024 * 1024
+
+	// BytesPerTB is the number of bytes in a terabyte.
+	BytesPerTB = 1024 * 1024 * 1024 * 1024
+)
+
+// Special duration values.
+const (
+	// ImmediateFlushInterval is a special value indicating immediate flushing without buffering.
+	ImmediateFlushInterval = -1 * time.Millisecond
+)
+
+// Channel configuration constants.
+const (
+	// DefaultChannelBufferSize is the default buffer size for channels.
+	DefaultChannelBufferSize = 1
+)
+
+// Certificate priming constants.
+const (
+	// CertificatePrimingTimeout is the timeout for certificate priming operations.
+	CertificatePrimingTimeout = 30 * time.Second
+)
+
+// Service lifecycle constants.
+const (
+	// ServiceStopTimeout is the timeout for stopping a service gracefully.
+	ServiceStopTimeout = 5 * time.Second
+
+	// TsnetServerStartTimeout is the timeout for starting a tsnet server.
+	TsnetServerStartTimeout = 5 * time.Second
+)

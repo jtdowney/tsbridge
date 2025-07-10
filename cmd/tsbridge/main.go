@@ -213,7 +213,7 @@ func run(args *cliArgs, sigCh <-chan os.Signal) error {
 	}
 
 	// Create error channel for application startup
-	appErrCh := make(chan error, 1)
+	appErrCh := make(chan error, constants.DefaultChannelBufferSize)
 
 	// Start the application in a goroutine to avoid blocking
 	ctx := context.Background()
@@ -255,7 +255,7 @@ func main() {
 	}
 
 	// Setup signal handling for graceful shutdown
-	sigCh := make(chan os.Signal, 1)
+	sigCh := make(chan os.Signal, constants.DefaultChannelBufferSize)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
 	if err := run(args, sigCh); err != nil {

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/middleware"
@@ -285,9 +286,9 @@ func createProxyTransport(backendAddr string, config *TransportConfig) *http.Tra
 		},
 		DisableCompression:    true,
 		ForceAttemptHTTP2:     false,
-		MaxIdleConns:          100,
-		MaxConnsPerHost:       50,
-		MaxIdleConnsPerHost:   10,
+		MaxIdleConns:          constants.DefaultMaxIdleConns,
+		MaxConnsPerHost:       constants.DefaultMaxConnsPerHost,
+		MaxIdleConnsPerHost:   constants.DefaultMaxIdleConnsPerHost,
 		IdleConnTimeout:       config.IdleConnTimeout,
 		TLSHandshakeTimeout:   config.TLSHandshakeTimeout,
 		ExpectContinueTimeout: config.ExpectContinueTimeout,
@@ -340,7 +341,7 @@ func (h *httpHandler) startMetricsCollection() {
 	h.stopMetrics = make(chan struct{})
 
 	go func() {
-		ticker := time.NewTicker(10 * time.Second)
+		ticker := time.NewTicker(constants.DefaultMetricsCollectionInterval)
 		defer ticker.Stop()
 
 		// Collect initial metrics immediately

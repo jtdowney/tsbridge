@@ -264,7 +264,7 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 			// Create a whois client adapter for the tsnet server
 			whoisClient := tailscale.NewWhoisClientAdapter(serviceServer)
 			// Use the whois middleware with internalized cache
-			httpHandler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, 1000, 5*time.Minute)(httpHandler)
+			httpHandler = middleware.Whois(whoisClient, whoisEnabled, whoisTimeout, constants.DefaultWhoisCacheSize, constants.DefaultWhoisCacheTTL)(httpHandler)
 		}
 	}
 
@@ -435,7 +435,7 @@ func (r *Registry) RemoveService(name string) error {
 	}
 
 	// Stop the service (this will close listener and handler)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.ServiceStopTimeout)
 	defer cancel()
 
 	if err := svc.Stop(ctx); err != nil {

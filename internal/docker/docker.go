@@ -16,6 +16,7 @@ import (
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
 )
 
@@ -119,7 +120,7 @@ func NewProvider(opts Options) (*Provider, error) {
 	}
 
 	// Verify Docker connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DockerPingTimeout)
 	defer cancel()
 
 	if _, err := dockerClient.Ping(ctx); err != nil {
@@ -214,7 +215,7 @@ func (p *Provider) createEventOptions() events.ListOptions {
 // watchLoop runs the main event watching loop with reconnection
 func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) {
 	backoff := time.Second
-	const maxBackoff = 5 * time.Minute
+	const maxBackoff = constants.DockerMaxReconnectBackoff
 
 	for {
 		select {
@@ -385,7 +386,7 @@ func (p *Provider) debouncedReload(ctx context.Context, configCh chan<- *config.
 	}
 
 	// Set new timer
-	p.debounceTimer = time.AfterFunc(500*time.Millisecond, func() {
+	p.debounceTimer = time.AfterFunc(constants.DockerEventDebounceDelay, func() {
 		// Check if context is still valid
 		select {
 		case <-ctx.Done():

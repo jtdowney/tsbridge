@@ -17,6 +17,7 @@ import (
 
 	"github.com/adrg/xdg"
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/jtdowney/tsbridge/internal/constants"
 	tserrors "github.com/jtdowney/tsbridge/internal/errors"
 	tsnetpkg "github.com/jtdowney/tsbridge/internal/tsnet"
 )
@@ -142,7 +143,7 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 
 		// Prime the TLS certificate asynchronously with timeout and logging
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), constants.CertificatePrimingTimeout)
 			defer cancel()
 
 			start := time.Now()
@@ -262,7 +263,7 @@ func (s *Server) primeCertificate(ctx context.Context, serviceServer tsnetpkg.TS
 	// Wait longer for the service to fully start and be reachable
 	// This is especially important in Docker environments
 	select {
-	case <-time.After(5 * time.Second):
+	case <-time.After(constants.TsnetServerStartTimeout):
 	case <-ctx.Done():
 		return fmt.Errorf("context cancelled during initial wait: %w", ctx.Err())
 	}

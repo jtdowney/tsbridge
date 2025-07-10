@@ -210,25 +210,21 @@ func ParseByteSizeString(s string) (int64, error) {
 	case "B", "BYTE", "BYTES":
 		multiplier = 1
 	case "K", "KB":
-		multiplier = 1024
+		multiplier = constants.BytesPerKB
 	case "KIB":
-		multiplier = 1024
+		multiplier = constants.BytesPerKB
 	case "M", "MB":
-		multiplier = 1024 * 1024
+		multiplier = constants.BytesPerMB
 	case "MIB":
-		multiplier = 1024 * 1024
+		multiplier = constants.BytesPerMB
 	case "G", "GB":
-		multiplier = 1024 * 1024 * 1024
+		multiplier = constants.BytesPerGB
 	case "GIB":
-		multiplier = 1024 * 1024 * 1024
+		multiplier = constants.BytesPerGB
 	case "T", "TB":
-		multiplier = 1024 * 1024 * 1024 * 1024
+		multiplier = constants.BytesPerTB
 	case "TIB":
-		multiplier = 1024 * 1024 * 1024 * 1024
-	case "P", "PB":
-		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
-	case "PIB":
-		multiplier = 1024 * 1024 * 1024 * 1024 * 1024
+		multiplier = constants.BytesPerTB
 	default:
 		return 0, fmt.Errorf("unknown unit %q in byte size: %q", unit, s)
 	}
@@ -651,13 +647,13 @@ func validateTimeout(name string, d *time.Duration, allowNegativeOne bool) error
 		return nil // nil is valid - will use default
 	}
 
-	if allowNegativeOne && *d == -1*time.Millisecond {
+	if allowNegativeOne && *d == constants.ImmediateFlushInterval {
 		return nil // -1ms is valid for immediate flushing
 	}
 
 	if *d < 0 {
 		if allowNegativeOne {
-			return errors.NewValidationError(fmt.Sprintf("%s can only be -1ms for immediate flushing", name))
+			return errors.NewValidationError(fmt.Sprintf("%s can only be %v for immediate flushing", name, constants.ImmediateFlushInterval))
 		}
 		return errors.NewValidationError(fmt.Sprintf("%s cannot be negative", name))
 	}
