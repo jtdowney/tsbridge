@@ -3,8 +3,11 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"strings"
+	"syscall"
 	"time"
 
 	"log/slog"
@@ -12,6 +15,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"github.com/jtdowney/tsbridge/internal/constants"
+	tserrors "github.com/jtdowney/tsbridge/internal/errors"
 	"tailscale.com/client/tailscale/apitype"
 )
 
@@ -91,18 +95,51 @@ func isWhoisRetryableError(err error) bool {
 		return false
 	}
 
+	// Check for our custom network errors with retryable status codes
+	var tsbridgeErr *tserrors.Error
+	if errors.As(err, &tsbridgeErr) && tsbridgeErr.Type == tserrors.ErrTypeNetwork {
+		// Retry on 5xx server errors if status code is set
+		if tsbridgeErr.HTTPStatusCode >= 500 && tsbridgeErr.HTTPStatusCode < 600 {
+			return true
+		}
+	}
+
 	// Retry on timeout and context cancellation errors
-	if err == context.DeadlineExceeded || err == context.Canceled {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 		return true
 	}
 
-	// Check for network-related errors that might be temporary
+	// Check for standard library network errors
+	var netErr net.Error
+	if errors.As(err, &netErr) {
+		// Retry on timeouts
+		return netErr.Timeout()
+	}
+
+	// Check for specific syscall errors
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if opErr.Timeout() {
+			return true
+		}
+		// Check for connection refused
+		if errors.Is(opErr.Err, syscall.ECONNREFUSED) {
+			return true
+		}
+	}
+
+	// Check for DNS errors
+	var dnsErr *net.DNSError
+	if errors.As(err, &dnsErr) {
+		// Retry on DNS not found errors (might be transient)
+		return dnsErr.IsNotFound
+	}
+
+	// As a last resort, check for specific error messages
+	// This is less reliable but catches errors from libraries that don't use standard types
 	errStr := err.Error()
-	return strings.Contains(errStr, "timeout") ||
-		strings.Contains(errStr, "connection refused") ||
-		strings.Contains(errStr, "no such host") ||
-		strings.Contains(errStr, "network is unreachable") ||
-		strings.Contains(errStr, "temporary failure") // For testing
+	return strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "network is unreachable")
 }
 
 func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Request, cache *expirable.LRU[string, *apitype.WhoIsResponse]) {

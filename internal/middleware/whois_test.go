@@ -591,7 +591,7 @@ func TestWhoisRetryBehavior(t *testing.T) {
 
 					// Fail for the first N calls, then succeed
 					if callCount <= tt.failureCount {
-						return nil, errors.New("temporary failure")
+						return nil, errors.New("connection refused")
 					}
 
 					// Success response

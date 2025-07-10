@@ -34,9 +34,10 @@ const (
 
 // Error is the standard error type with classification
 type Error struct {
-	Type    ErrorType
-	Message string
-	Err     error
+	Type           ErrorType
+	Message        string
+	Err            error
+	HTTPStatusCode int // Optional HTTP status code for network errors
 }
 
 // Error implements the error interface
@@ -70,6 +71,15 @@ func NewNetworkError(message string) error {
 	return &Error{
 		Type:    ErrTypeNetwork,
 		Message: message,
+	}
+}
+
+// NewNetworkErrorWithStatus creates a new network error with HTTP status code
+func NewNetworkErrorWithStatus(message string, statusCode int) error {
+	return &Error{
+		Type:           ErrTypeNetwork,
+		Message:        message,
+		HTTPStatusCode: statusCode,
 	}
 }
 
@@ -112,6 +122,16 @@ func WrapNetwork(err error, message string) error {
 		Type:    ErrTypeNetwork,
 		Message: message,
 		Err:     err,
+	}
+}
+
+// WrapNetworkWithStatus wraps an error as a network error with HTTP status code
+func WrapNetworkWithStatus(err error, message string, statusCode int) error {
+	return &Error{
+		Type:           ErrTypeNetwork,
+		Message:        message,
+		Err:            err,
+		HTTPStatusCode: statusCode,
 	}
 }
 

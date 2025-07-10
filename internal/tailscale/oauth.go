@@ -95,10 +95,14 @@ func isRetryableError(err error) bool {
 	// Check for HTTP status codes that indicate temporary failures
 	var tsbridgeErr *tserrors.Error
 	if errors.As(err, &tsbridgeErr) && tsbridgeErr.Type == tserrors.ErrTypeNetwork {
+		// Retry on 5xx server errors
+		if tsbridgeErr.HTTPStatusCode >= 500 && tsbridgeErr.HTTPStatusCode < 600 {
+			return true
+		}
+
+		// Also check for other retryable network errors in the message
 		errStr := tsbridgeErr.Error()
-		// Retry on 5xx server errors and timeouts
-		return strings.Contains(errStr, "status 5") ||
-			strings.Contains(errStr, "timeout") ||
+		return strings.Contains(errStr, "timeout") ||
 			strings.Contains(errStr, "connection refused") ||
 			strings.Contains(errStr, "no such host")
 	}
@@ -161,7 +165,7 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 	if resp.StatusCode != http.StatusOK {
 		var errResp map[string]interface{}
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
-		return "", tserrors.NewNetworkError(fmt.Sprintf("API returned status %d: %v", resp.StatusCode, errResp))
+		return "", tserrors.NewNetworkErrorWithStatus(fmt.Sprintf("API returned status %d: %v", resp.StatusCode, errResp), resp.StatusCode)
 	}
 
 	// Parse response
