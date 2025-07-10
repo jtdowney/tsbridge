@@ -10,6 +10,7 @@ import (
 
 	"net/netip"
 
+	"github.com/stretchr/testify/assert"
 	"tailscale.com/client/tailscale/apitype"
 	"tailscale.com/tailcfg"
 )
@@ -543,6 +544,95 @@ func TestWhois_HandlesPartialResponse(t *testing.T) {
 						t.Errorf("Header %s should not be set, but got %q", header, val)
 					}
 				}
+			}
+		})
+	}
+}
+
+func TestWhoisRetryBehavior(t *testing.T) {
+	tests := []struct {
+		name          string
+		failureCount  int
+		expectedCalls int
+		shouldSucceed bool
+		timeout       time.Duration
+	}{
+		{
+			name:          "succeeds immediately",
+			failureCount:  0,
+			expectedCalls: 1,
+			shouldSucceed: true,
+			timeout:       1 * time.Second,
+		},
+		{
+			name:          "succeeds after 2 failures",
+			failureCount:  2,
+			expectedCalls: 3,
+			shouldSucceed: true,
+			timeout:       5 * time.Second, // Longer timeout for retries
+		},
+		{
+			name:          "fails after max retries",
+			failureCount:  5,
+			expectedCalls: 3, // Default max attempts
+			shouldSucceed: false,
+			timeout:       5 * time.Second,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			callCount := 0
+
+			whoisClient := &MockWhoisClient{
+				WhoIsFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+					callCount++
+
+					// Fail for the first N calls, then succeed
+					if callCount <= tt.failureCount {
+						return nil, errors.New("temporary failure")
+					}
+
+					// Success response
+					return &apitype.WhoIsResponse{
+						UserProfile: &tailcfg.UserProfile{
+							LoginName:   "user@example.com",
+							DisplayName: "Test User",
+						},
+					}, nil
+				},
+			}
+
+			nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			// Use whois middleware (now includes retry)
+			middleware := Whois(whoisClient, true, tt.timeout, 0, 0)
+			handler := middleware(nextHandler)
+
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req.RemoteAddr = "100.64.1.2:12345"
+			w := httptest.NewRecorder()
+
+			start := time.Now()
+			handler.ServeHTTP(w, req)
+			duration := time.Since(start)
+
+			// Verify expected number of calls
+			assert.Equal(t, tt.expectedCalls, callCount)
+
+			// Verify headers are set on success
+			if tt.shouldSucceed {
+				assert.Equal(t, "user@example.com", req.Header.Get("X-Tailscale-User"))
+			} else {
+				assert.Empty(t, req.Header.Get("X-Tailscale-User"))
+			}
+
+			// Verify retry timing (should have delays for retries)
+			if tt.expectedCalls > 1 {
+				minExpectedDuration := time.Duration(tt.expectedCalls-1) * 50 * time.Millisecond
+				assert.GreaterOrEqual(t, duration, minExpectedDuration)
 			}
 		})
 	}

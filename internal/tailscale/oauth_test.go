@@ -15,6 +15,8 @@ import (
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 )
 
@@ -613,5 +615,107 @@ func TestAuthKeyGenerationLogging(t *testing.T) {
 	}
 	if !strings.Contains(logOutput, `service=test-service`) {
 		t.Error("expected service name in log")
+	}
+}
+
+func TestOAuthRetryBehavior(t *testing.T) {
+	tests := []struct {
+		name          string
+		failureCount  int
+		expectedCalls int
+		shouldSucceed bool
+	}{
+		{
+			name:          "succeeds immediately",
+			failureCount:  0,
+			expectedCalls: 1,
+			shouldSucceed: true,
+		},
+		{
+			name:          "succeeds after 2 failures",
+			failureCount:  2,
+			expectedCalls: 3,
+			shouldSucceed: true,
+		},
+		{
+			name:          "fails after max retries",
+			failureCount:  5,
+			expectedCalls: 3, // Default max attempts
+			shouldSucceed: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokenCallCount := 0
+			apiCallCount := 0
+
+			// Mock OAuth2 token endpoint (always succeeds)
+			tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				tokenCallCount++
+				w.Header().Set("Content-Type", "application/json")
+				token := map[string]interface{}{
+					"access_token": "mock-access-token",
+					"token_type":   "Bearer",
+					"expires_in":   3600,
+				}
+				_ = json.NewEncoder(w).Encode(token)
+			}))
+			defer tokenServer.Close()
+
+			// Mock Tailscale API endpoint (fails then succeeds)
+			apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				apiCallCount++
+
+				// Fail for the first N calls, then succeed
+				if apiCallCount <= tt.failureCount {
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte(`{"error": "temporary failure"}`))
+					return
+				}
+
+				// Success response
+				w.Header().Set("Content-Type", "application/json")
+				response := map[string]interface{}{
+					"key":     "tskey-auth-mock123",
+					"created": time.Now().Format(time.RFC3339),
+				}
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+			defer apiServer.Close()
+
+			// Configure OAuth
+			oauthConfig := &oauth2.Config{
+				ClientID:     "test-client-id",
+				ClientSecret: "test-client-secret",
+				Endpoint: oauth2.Endpoint{
+					TokenURL: tokenServer.URL + "/oauth/token",
+				},
+			}
+
+			// Attempt to generate auth key with retry
+			start := time.Now()
+			authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+			duration := time.Since(start)
+
+			// Verify results
+			if tt.shouldSucceed {
+				require.NoError(t, err)
+				assert.Equal(t, "tskey-auth-mock123", authKey)
+			} else {
+				require.Error(t, err)
+				// cenkalti/backoff returns the last error encountered, not a "max attempts" message
+				assert.Contains(t, err.Error(), "status 500")
+			}
+
+			// Verify expected number of API calls
+			assert.Equal(t, tt.expectedCalls, apiCallCount)
+
+			// Verify retry timing (should have delays for retries)
+			if tt.expectedCalls > 1 {
+				minExpectedDuration := time.Duration(tt.expectedCalls-1) * 50 * time.Millisecond // Minimum delay
+				assert.GreaterOrEqual(t, duration, minExpectedDuration)
+			}
+		})
 	}
 }

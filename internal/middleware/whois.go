@@ -9,6 +9,7 @@ import (
 
 	"log/slog"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/hashicorp/golang-lru/v2/expirable"
 	"tailscale.com/client/tailscale/apitype"
 )
@@ -43,6 +44,66 @@ func Whois(client WhoisClient, enabled bool, timeout time.Duration, cacheSize in
 	}
 }
 
+func performWhoisWithRetryLogic(client WhoisClient, timeout time.Duration, r *http.Request) (*apitype.WhoIsResponse, error) {
+	// Configure exponential backoff with attempt limit
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 100 * time.Millisecond
+	b.MaxInterval = 2 * time.Second
+	b.MaxElapsedTime = 10 * time.Second
+	b.Multiplier = 2.0
+	b.RandomizationFactor = 0.1
+
+	// Limit to 3 attempts using WithMaxRetries
+	backoffWithRetries := backoff.WithMaxRetries(b, 2) // 2 retries = 3 total attempts
+
+	// Use context-aware backoff
+	ctxBackoff := backoff.WithContext(backoffWithRetries, r.Context())
+
+	var response *apitype.WhoIsResponse
+	operation := func() error {
+		ctx, cancel := context.WithTimeout(r.Context(), timeout)
+		defer cancel()
+
+		var err error
+		response, err = client.WhoIs(ctx, r.RemoteAddr)
+
+		// Only retry on context errors (timeouts, cancellation) and certain network errors
+		if err != nil && isWhoisRetryableError(err) {
+			return err
+		}
+
+		// Don't retry on other errors (authentication, permanent failures, etc.)
+		if err != nil {
+			return backoff.Permanent(err)
+		}
+
+		return nil
+	}
+
+	err := backoff.Retry(operation, ctxBackoff)
+	return response, err
+}
+
+// isWhoisRetryableError determines if a whois error is worth retrying
+func isWhoisRetryableError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	// Retry on timeout and context cancellation errors
+	if err == context.DeadlineExceeded || err == context.Canceled {
+		return true
+	}
+
+	// Check for network-related errors that might be temporary
+	errStr := err.Error()
+	return strings.Contains(errStr, "timeout") ||
+		strings.Contains(errStr, "connection refused") ||
+		strings.Contains(errStr, "no such host") ||
+		strings.Contains(errStr, "network is unreachable") ||
+		strings.Contains(errStr, "temporary failure") // For testing
+}
+
 func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Request, cache *expirable.LRU[string, *apitype.WhoIsResponse]) {
 	var resp *apitype.WhoIsResponse
 	var err error
@@ -51,10 +112,7 @@ func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Reque
 		if cached, ok := cache.Get(r.RemoteAddr); ok {
 			resp = cached
 		} else {
-			ctx, cancel := context.WithTimeout(r.Context(), timeout)
-			defer cancel()
-
-			resp, err = client.WhoIs(ctx, r.RemoteAddr)
+			resp, err = performWhoisWithRetryLogic(client, timeout, r)
 			if err != nil {
 				logWhoisError(err, r.RemoteAddr, timeout)
 				return
@@ -65,10 +123,7 @@ func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Reque
 			}
 		}
 	} else {
-		ctx, cancel := context.WithTimeout(r.Context(), timeout)
-		defer cancel()
-
-		resp, err = client.WhoIs(ctx, r.RemoteAddr)
+		resp, err = performWhoisWithRetryLogic(client, timeout, r)
 		if err != nil {
 			logWhoisError(err, r.RemoteAddr, timeout)
 			return

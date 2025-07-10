@@ -6,6 +6,7 @@ toolchain go1.24.4
 
 require (
 	github.com/adrg/xdg v0.5.3
+	github.com/cenkalti/backoff/v4 v4.3.0
 	github.com/docker/docker v28.3.1+incompatible
 	github.com/go-viper/mapstructure/v2 v2.3.0
 	github.com/google/go-cmp v0.7.0
