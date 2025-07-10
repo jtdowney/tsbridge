@@ -30,19 +30,15 @@ sudo useradd --system --shell /bin/false --home-dir /var/lib/tsbridge --create-h
 ### 2. Install the binary
 
 ```bash
-# Copy the tsbridge binary to system location
-sudo cp tsbridge /usr/local/bin/
-sudo chmod 755 /usr/local/bin/tsbridge
-sudo chown root:root /usr/local/bin/tsbridge
+# Install binary with appropriate permissions
+sudo install -o root -g root -m 755 tsbridge /usr/local/bin/
 ```
 
 ### 3. Create configuration directory
 
 ```bash
-# Create config directory
-sudo mkdir -p /etc/tsbridge
-sudo chown tsbridge:tsbridge /etc/tsbridge
-sudo chmod 755 /etc/tsbridge
+# Create config directory with appropriate permissions
+sudo install -d -o tsbridge -g tsbridge -m 755 /etc/tsbridge
 ```
 
 **Note**: The state directory (`/var/lib/tsbridge`) is automatically created and managed by systemd using the `StateDirectory` directive in the service file. You don't need to create it manually.
@@ -50,24 +46,19 @@ sudo chmod 755 /etc/tsbridge
 ### 4. Install configuration files
 
 ```bash
-# Copy your TOML configuration
-sudo cp config.toml /etc/tsbridge/config.toml
-sudo chown tsbridge:tsbridge /etc/tsbridge/config.toml
-sudo chmod 640 /etc/tsbridge/config.toml
+# Install your TOML configuration
+sudo install -o tsbridge -g tsbridge -m 640 config.toml /etc/tsbridge/
 
-# Copy and edit environment file (optional)
-sudo cp tsbridge.env.example /etc/tsbridge/tsbridge.env
-sudo chown tsbridge:tsbridge /etc/tsbridge/tsbridge.env
-sudo chmod 600 /etc/tsbridge/tsbridge.env
+# Install and edit environment file (optional)
+sudo install -o tsbridge -g tsbridge -m 600 tsbridge.env.example /etc/tsbridge/tsbridge.env
 # Edit /etc/tsbridge/tsbridge.env with your OAuth credentials
 ```
 
 ### 5. Install systemd service
 
 ```bash
-# Copy service file
-sudo cp tsbridge.service /etc/systemd/system/
-sudo chmod 644 /etc/systemd/system/tsbridge.service
+# Install service file
+sudo install -m 644 tsbridge.service /etc/systemd/system/
 
 # Reload systemd
 sudo systemctl daemon-reload
