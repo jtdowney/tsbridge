@@ -40,6 +40,7 @@ type Tailscale struct {
 	AuthKeyEnv            string         `mapstructure:"auth_key_env"`             // Env var containing auth key
 	AuthKeyFile           string         `mapstructure:"auth_key_file"`            // File containing auth key
 	StateDir              string         `mapstructure:"state_dir"`                // Directory for Tailscale state
+	StateDirEnv           string         `mapstructure:"state_dir_env"`            // Env var containing state directory
 	DefaultTags           []string       `mapstructure:"default_tags"`             // Default tags for services
 }
 
@@ -398,6 +399,16 @@ func resolveSecrets(cfg *Config) error {
 		if val := os.Getenv("TS_AUTHKEY"); val != "" {
 			cfg.Tailscale.AuthKey = RedactedString(val)
 		}
+	}
+
+	// Resolve State Directory (only if state_dir is not already set)
+	if cfg.Tailscale.StateDir == "" && cfg.Tailscale.StateDirEnv != "" {
+		resolved := os.Getenv(cfg.Tailscale.StateDirEnv)
+		if resolved == "" {
+			return fmt.Errorf("resolving state directory: environment variable %q is not set", cfg.Tailscale.StateDirEnv)
+		}
+		cfg.Tailscale.StateDir = resolved
+		cfg.Tailscale.StateDirEnv = ""
 	}
 
 	return nil
@@ -843,6 +854,7 @@ func (t Tailscale) String() string {
 
 	// State Directory (not sensitive)
 	b.WriteString(fmt.Sprintf("  StateDir: %s\n", t.StateDir))
+	b.WriteString(fmt.Sprintf("  StateDirEnv: %s\n", t.StateDirEnv))
 
 	// Default Tags (not sensitive)
 	b.WriteString(fmt.Sprintf("  DefaultTags: %v\n", t.DefaultTags))

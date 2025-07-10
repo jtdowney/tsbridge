@@ -82,9 +82,23 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 	serviceServer.SetHostname(svc.Name)
 	serviceServer.SetEphemeral(svc.Ephemeral)
 
-	// Priority for state directory
+	// Priority for state directory resolution:
+	// 1. Explicit config.StateDir
+	// 2. Config.StateDirEnv (resolved during config loading)
+	// 3. STATE_DIRECTORY env var (systemd standard)
+	// 4. TSBRIDGE_STATE_DIR env var (tsbridge specific)
+	// 5. XDG data directory as default
 	stateDir := s.config.StateDir
 	if stateDir == "" {
+		// Check STATE_DIRECTORY (systemd standard)
+		stateDir = os.Getenv("STATE_DIRECTORY")
+		// If STATE_DIRECTORY contains multiple paths (colon-separated), use the first one
+		if stateDir != "" && strings.Contains(stateDir, ":") {
+			stateDir = strings.Split(stateDir, ":")[0]
+		}
+	}
+	if stateDir == "" {
+		// Check TSBRIDGE_STATE_DIR (tsbridge specific)
 		stateDir = os.Getenv("TSBRIDGE_STATE_DIR")
 	}
 	if stateDir == "" {

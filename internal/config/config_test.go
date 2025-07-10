@@ -111,6 +111,96 @@ tags = ["tag:test"]
 		assert.Equal(t, "file-secret", cfg.Tailscale.OAuthClientSecret.Value())
 	})
 
+	// Test state_dir_env resolution
+	t.Run("resolve state_dir from state_dir_env", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+state_dir_env = "CUSTOM_STATE_DIR"
+
+[global]
+read_header_timeout = "30s"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+`
+
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		// Set the custom environment variable
+		t.Setenv("CUSTOM_STATE_DIR", "/custom/state/directory")
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		// State directory should be resolved from the specified env var
+		assert.Equal(t, "/custom/state/directory", cfg.Tailscale.StateDir)
+		assert.Empty(t, cfg.Tailscale.StateDirEnv) // Should be cleared after resolution
+	})
+
+	// Test state_dir_env with missing env var
+	t.Run("state_dir_env with missing env var returns error", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+state_dir_env = "NONEXISTENT_ENV_VAR"
+
+[global]
+read_header_timeout = "30s"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+`
+
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		_, err := Load(tmpFile)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "state directory")
+	})
+
+	// Test state_dir takes precedence over state_dir_env
+	t.Run("state_dir takes precedence over state_dir_env", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+state_dir = "/explicit/state/dir"
+state_dir_env = "CUSTOM_STATE_DIR"
+
+[global]
+read_header_timeout = "30s"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+`
+
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		// Set the custom environment variable
+		t.Setenv("CUSTOM_STATE_DIR", "/custom/state/directory")
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		// Explicit state_dir should take precedence
+		assert.Equal(t, "/explicit/state/dir", cfg.Tailscale.StateDir)
+		assert.Equal(t, "CUSTOM_STATE_DIR", cfg.Tailscale.StateDirEnv) // Should not be cleared when state_dir is set
+	})
+
 	// Test default values
 	t.Run("applies default values", func(t *testing.T) {
 		configContent := `

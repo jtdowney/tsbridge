@@ -170,19 +170,46 @@ auth_key_file = "/path/to/key.txt"   # From file
 
 ### State Directory
 
-Each service gets its own subdirectory under the configured state directory:
+Each service gets its own subdirectory under the configured state directory. The state directory is resolved in the following order of precedence:
+
+1. **Explicit configuration**: `state_dir` in the config file
+2. **Config environment variable**: Environment variable specified in `state_dir_env`
+3. **STATE_DIRECTORY**: systemd's standard state directory environment variable
+4. **TSBRIDGE_STATE_DIR**: tsbridge-specific environment variable
+5. **XDG default**: Platform-specific default location
 
 ```toml
 [tailscale]
 # State directory - choose one method:
-state_dir = "/var/lib/tsbridge"      # Direct path
-state_dir_env = "TSBRIDGE_STATE_DIR" # From environment variable
+state_dir = "/var/lib/tsbridge"      # Direct path (highest priority)
+state_dir_env = "CUSTOM_STATE_DIR"   # From custom environment variable
 
-# If not specified, defaults to:
+# If not specified, tsbridge checks these environment variables:
+# 1. STATE_DIRECTORY (systemd standard)
+# 2. TSBRIDGE_STATE_DIR (tsbridge specific)
+#
+# If none are set, defaults to:
 # - Linux: $XDG_DATA_HOME/tsbridge or ~/.local/share/tsbridge
 # - macOS: ~/Library/Application Support/tsbridge
 # - Windows: %APPDATA%/tsbridge
 ```
+
+#### systemd Integration
+
+When running under systemd with `StateDirectory=tsbridge` configured, systemd automatically:
+- Creates the directory at `/var/lib/tsbridge`
+- Sets correct permissions (750 by default)
+- Sets the `STATE_DIRECTORY` environment variable
+- Handles cleanup when the service is removed
+
+Example systemd service configuration:
+```ini
+[Service]
+StateDirectory=tsbridge
+StateDirectoryMode=0750
+```
+
+With this configuration, tsbridge will automatically use `/var/lib/tsbridge` as its state directory without any additional configuration needed.
 
 ### Default Tags
 

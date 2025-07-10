@@ -6,7 +6,17 @@ This directory contains systemd service files and related configuration for depl
 
 - `tsbridge.service` - The main systemd service unit file
 - `tsbridge.env.example` - Example environment file for sensitive configuration
-- `tsbridge.logrotate` - Logrotate configuration for log management
+
+## systemd State Directory Integration
+
+The service file uses systemd's `StateDirectory` directive, which provides several benefits:
+
+- **Automatic creation**: systemd creates `/var/lib/tsbridge` automatically with correct permissions
+- **Automatic cleanup**: The directory can be removed when the service is uninstalled
+- **Environment variable**: systemd sets `STATE_DIRECTORY=/var/lib/tsbridge` automatically
+- **Security**: The directory is only accessible by the tsbridge user
+
+tsbridge automatically detects and uses the `STATE_DIRECTORY` environment variable when available, requiring no additional configuration.
 
 ## Installation
 
@@ -26,24 +36,16 @@ sudo chmod 755 /usr/local/bin/tsbridge
 sudo chown root:root /usr/local/bin/tsbridge
 ```
 
-### 3. Create configuration directories
+### 3. Create configuration directory
 
 ```bash
 # Create config directory
 sudo mkdir -p /etc/tsbridge
 sudo chown tsbridge:tsbridge /etc/tsbridge
 sudo chmod 755 /etc/tsbridge
-
-# Create state directory (for Tailscale state)
-sudo mkdir -p /var/lib/tsbridge
-sudo chown tsbridge:tsbridge /var/lib/tsbridge
-sudo chmod 700 /var/lib/tsbridge
-
-# Create log directory
-sudo mkdir -p /var/log/tsbridge
-sudo chown tsbridge:tsbridge /var/log/tsbridge
-sudo chmod 755 /var/log/tsbridge
 ```
+
+**Note**: The state directory (`/var/lib/tsbridge`) is automatically created and managed by systemd using the `StateDirectory` directive in the service file. You don't need to create it manually.
 
 ### 4. Install configuration files
 
@@ -71,15 +73,7 @@ sudo chmod 644 /etc/systemd/system/tsbridge.service
 sudo systemctl daemon-reload
 ```
 
-### 6. Configure logrotate (optional)
-
-```bash
-# Install logrotate config
-sudo cp tsbridge.logrotate /etc/logrotate.d/tsbridge
-sudo chmod 644 /etc/logrotate.d/tsbridge
-```
-
-### 7. Validate configuration
+### 6. Validate configuration
 
 Before starting the service, validate your configuration:
 
@@ -88,7 +82,7 @@ Before starting the service, validate your configuration:
 sudo -u tsbridge /usr/local/bin/tsbridge -config /etc/tsbridge/config.toml -validate
 ```
 
-### 8. Start and enable the service
+### 7. Start and enable the service
 
 ```bash
 # Start the service

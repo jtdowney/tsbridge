@@ -30,8 +30,12 @@ RestrictRealtime=true
 RestrictSUIDSGID=true
 RemoveIPC=true
 
-# Allow writing to state directory and logs
-ReadWritePaths=/var/lib/tsbridge /var/log/tsbridge
+# State directory management (systemd will create and manage /var/lib/tsbridge)
+StateDirectory=tsbridge
+StateDirectoryMode=0750
+
+# Allow writing to state directory
+ReadWritePaths=/var/lib/tsbridge
 
 # Resource limits
 LimitNOFILE=65535

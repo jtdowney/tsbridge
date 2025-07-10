@@ -420,6 +420,132 @@ func TestGetDefaultStateDir(t *testing.T) {
 	assert.True(t, strings.HasSuffix(dir, "tsbridge"))
 }
 
+func TestStateDirResolution(t *testing.T) {
+	tests := []struct {
+		name           string
+		configStateDir string
+		stateDirEnv    string
+		envVars        map[string]string
+		expectedDir    string
+		serviceName    string
+	}{
+		{
+			name:           "config state_dir takes highest priority",
+			configStateDir: "/custom/config/dir",
+			stateDirEnv:    "STATE_DIR_ENV_VAR",
+			envVars: map[string]string{
+				"STATE_DIR_ENV_VAR":  "/env/specified/dir",
+				"STATE_DIRECTORY":    "/systemd/state",
+				"TSBRIDGE_STATE_DIR": "/tsbridge/state",
+			},
+			expectedDir: "/custom/config/dir/test-service",
+			serviceName: "test-service",
+		},
+		{
+			name:           "state_dir with resolved env takes priority over STATE_DIRECTORY",
+			configStateDir: "/custom/env/state", // This simulates state_dir_env being resolved during config loading
+			envVars: map[string]string{
+				"STATE_DIRECTORY":    "/systemd/state",
+				"TSBRIDGE_STATE_DIR": "/tsbridge/state",
+			},
+			expectedDir: "/custom/env/state/test-service",
+			serviceName: "test-service",
+		},
+		{
+			name: "STATE_DIRECTORY is used when no config or state_dir_env",
+			envVars: map[string]string{
+				"STATE_DIRECTORY":    "/var/lib/tsbridge",
+				"TSBRIDGE_STATE_DIR": "/tsbridge/state",
+			},
+			expectedDir: "/var/lib/tsbridge/test-service",
+			serviceName: "test-service",
+		},
+		{
+			name: "TSBRIDGE_STATE_DIR is used when STATE_DIRECTORY is not set",
+			envVars: map[string]string{
+				"TSBRIDGE_STATE_DIR": "/tsbridge/custom/state",
+			},
+			expectedDir: "/tsbridge/custom/state/test-service",
+			serviceName: "test-service",
+		},
+		{
+			name:        "XDG default is used when no env vars are set",
+			expectedDir: getDefaultStateDir() + "/test-service",
+			serviceName: "test-service",
+		},
+		{
+			name: "STATE_DIRECTORY with multiple paths uses first one",
+			envVars: map[string]string{
+				"STATE_DIRECTORY": "/var/lib/tsbridge:/var/lib/tsbridge2",
+			},
+			expectedDir: "/var/lib/tsbridge/test-service",
+			serviceName: "test-service",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clear all environment variables first
+			t.Setenv("STATE_DIRECTORY", "")
+			t.Setenv("TSBRIDGE_STATE_DIR", "")
+
+			// Set test environment variables
+			for key, value := range tt.envVars {
+				t.Setenv(key, value)
+			}
+
+			// Create mock TSNet server
+			mockServer := tsnet.NewMockTSNetServer()
+			mockServer.StartFunc = func() error { return nil }
+			mockServer.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
+				return &mockListener{addr: addr}, nil
+			}
+
+			// Create mock LocalClient for certificate priming
+			mockLocalClient := &tsnet.MockLocalClient{
+				StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+					return &ipnstate.Status{
+						Self: &ipnstate.PeerStatus{
+							DNSName:      "test-service.tailnet.ts.net.",
+							TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+						},
+					}, nil
+				},
+			}
+			mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
+				return mockLocalClient, nil
+			}
+
+			// Create server with mock factory
+			factory := func() tsnet.TSNetServer {
+				return mockServer
+			}
+
+			cfg := config.Tailscale{
+				AuthKey:     config.RedactedString("test-key"),
+				StateDir:    tt.configStateDir,
+				StateDirEnv: tt.stateDirEnv,
+			}
+
+			server, err := NewServerWithFactory(cfg, factory)
+			require.NoError(t, err)
+
+			// Create service config
+			svc := config.Service{
+				Name:        tt.serviceName,
+				BackendAddr: "localhost:8080",
+			}
+
+			// Call Listen to trigger state directory resolution
+			_, err = server.Listen(svc, "auto", false)
+			require.NoError(t, err)
+
+			// Verify the correct directory was set
+			assert.Equal(t, tt.expectedDir, mockServer.Dir)
+		})
+	}
+}
+
 // Mock listener implementation
 type mockListener struct {
 	addr string
