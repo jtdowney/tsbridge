@@ -3,7 +3,9 @@ package tsnet
 
 import (
 	"context"
+	"log/slog"
 	"net"
+	"time"
 
 	"tailscale.com/client/local"
 	"tailscale.com/client/tailscale/apitype"
@@ -67,17 +69,86 @@ func NewRealTSNetServer() *RealTSNetServer {
 
 // Listen implements TSNetServer.
 func (s *RealTSNetServer) Listen(network, addr string) (net.Listener, error) {
-	return s.Server.Listen(network, addr)
+	start := time.Now()
+	slog.Debug("tsnet Listen() called",
+		"hostname", s.Hostname,
+		"network", network,
+		"addr", addr,
+	)
+
+	listener, err := s.Server.Listen(network, addr)
+
+	if err != nil {
+		slog.Debug("tsnet Listen() failed",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"error", err,
+		)
+	} else {
+		slog.Debug("tsnet Listen() succeeded",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"listener_addr", listener.Addr(),
+		)
+	}
+
+	return listener, err
 }
 
 // ListenTLS implements TSNetServer.
 func (s *RealTSNetServer) ListenTLS(network, addr string) (net.Listener, error) {
-	return s.Server.ListenTLS(network, addr)
+	start := time.Now()
+	slog.Debug("tsnet ListenTLS() called",
+		"hostname", s.Hostname,
+		"network", network,
+		"addr", addr,
+	)
+
+	listener, err := s.Server.ListenTLS(network, addr)
+
+	if err != nil {
+		slog.Debug("tsnet ListenTLS() failed",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"error", err,
+		)
+	} else {
+		slog.Debug("tsnet ListenTLS() succeeded",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"listener_addr", listener.Addr(),
+		)
+	}
+
+	return listener, err
 }
 
 // ListenFunnel implements TSNetServer.
 func (s *RealTSNetServer) ListenFunnel(network, addr string) (net.Listener, error) {
-	return s.Server.ListenFunnel(network, addr)
+	start := time.Now()
+	slog.Debug("tsnet ListenFunnel() called",
+		"hostname", s.Hostname,
+		"network", network,
+		"addr", addr,
+	)
+
+	listener, err := s.Server.ListenFunnel(network, addr)
+
+	if err != nil {
+		slog.Debug("tsnet ListenFunnel() failed",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"error", err,
+		)
+	} else {
+		slog.Debug("tsnet ListenFunnel() succeeded",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"listener_addr", listener.Addr(),
+		)
+	}
+
+	return listener, err
 }
 
 // Close implements TSNetServer.
@@ -87,7 +158,30 @@ func (s *RealTSNetServer) Close() error {
 
 // Start implements TSNetServer.
 func (s *RealTSNetServer) Start() error {
-	return s.Server.Start()
+	start := time.Now()
+	slog.Debug("tsnet server Start() called",
+		"hostname", s.Hostname,
+		"ephemeral", s.Ephemeral,
+		"dir", s.Dir,
+		"has_auth_key", s.AuthKey != "",
+	)
+
+	err := s.Server.Start()
+
+	if err != nil {
+		slog.Debug("tsnet server Start() failed",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"error", err,
+		)
+	} else {
+		slog.Debug("tsnet server Start() succeeded",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+		)
+	}
+
+	return err
 }
 
 // LocalClient implements TSNetServer.

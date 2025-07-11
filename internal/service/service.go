@@ -96,18 +96,39 @@ func (r *Registry) StartServices() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	startTime := time.Now()
 	totalServices := len(r.config.Services)
 	failedServices := make(map[string]error)
 	successfulCount := 0
 
-	for _, svcCfg := range r.config.Services {
+	slog.Debug("starting all configured services",
+		"total_services", totalServices,
+	)
+
+	for i, svcCfg := range r.config.Services {
+		serviceStart := time.Now()
+		slog.Debug("starting service",
+			"service", svcCfg.Name,
+			"index", i+1,
+			"of", totalServices,
+		)
+
 		svc, err := r.startService(svcCfg)
 		if err != nil {
+			slog.Debug("service start failed",
+				"service", svcCfg.Name,
+				"duration", time.Since(serviceStart),
+				"error", err,
+			)
 			failedServices[svcCfg.Name] = err
 			continue // Skip failed services as per spec
 		}
 		r.services[svcCfg.Name] = svc
 		slog.Info("started service", "service", svcCfg.Name)
+		slog.Debug("service started successfully",
+			"service", svcCfg.Name,
+			"duration", time.Since(serviceStart),
+		)
 		successfulCount++
 	}
 
@@ -118,6 +139,13 @@ func (r *Registry) StartServices() error {
 
 	// Create ServiceStartupError if any services failed
 	failedCount := len(failedServices)
+	slog.Debug("service startup complete",
+		"total_services", totalServices,
+		"successful", successfulCount,
+		"failed", failedCount,
+		"total_duration", time.Since(startTime),
+	)
+
 	if failedCount > 0 {
 		return tserrors.NewServiceStartupError(totalServices, successfulCount, failedCount, failedServices)
 	}
@@ -127,12 +155,23 @@ func (r *Registry) StartServices() error {
 
 // startService starts a single service
 func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
+	phaseStart := time.Now()
+	slog.Debug("creating listener for service",
+		"service", svcCfg.Name,
+		"tls_mode", svcCfg.TLSMode,
+		"funnel_enabled", svcCfg.FunnelEnabled != nil && *svcCfg.FunnelEnabled,
+	)
 
 	// Create listener for this service
 	listener, err := r.tsServer.Listen(svcCfg, svcCfg.TLSMode, svcCfg.FunnelEnabled != nil && *svcCfg.FunnelEnabled)
 	if err != nil {
 		return nil, tserrors.WrapResource(err, "creating listener")
 	}
+	slog.Debug("listener created for service",
+		"service", svcCfg.Name,
+		"duration", time.Since(phaseStart),
+		"address", listener.Addr(),
+	)
 
 	// Create service instance
 	svc := &Service{
@@ -145,12 +184,26 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 	}
 
 	// Create handler early to catch configuration errors
+	handlerStart := time.Now()
+	slog.Debug("creating handler for service",
+		"service", svcCfg.Name,
+		"backend_addr", svcCfg.BackendAddr,
+	)
 	handler, err := svc.CreateHandler()
 	if err != nil {
 		_ = listener.Close()
+		slog.Debug("handler creation failed",
+			"service", svcCfg.Name,
+			"duration", time.Since(handlerStart),
+			"error", err,
+		)
 		return nil, err
 	}
 	svc.handler = handler
+	slog.Debug("handler created for service",
+		"service", svcCfg.Name,
+		"duration", time.Since(handlerStart),
+	)
 
 	// Create HTTP server with timeouts
 	svc.server = &http.Server{
@@ -168,6 +221,13 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 	if svcCfg.IdleTimeout != nil {
 		svc.server.IdleTimeout = *svcCfg.IdleTimeout
 	}
+
+	slog.Debug("HTTP server configured",
+		"service", svcCfg.Name,
+		"read_header_timeout", svc.server.ReadHeaderTimeout,
+		"write_timeout", svc.server.WriteTimeout,
+		"idle_timeout", svc.server.IdleTimeout,
+	)
 
 	// Start serving in background
 	go func() {

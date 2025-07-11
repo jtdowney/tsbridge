@@ -75,6 +75,15 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	listenStart := time.Now()
+	slog.Debug("starting listener creation for service",
+		"service", svc.Name,
+		"tls_mode", tlsMode,
+		"funnel_enabled", funnelEnabled,
+		"ephemeral", svc.Ephemeral,
+		"tags", svc.Tags,
+	)
+
 	// Create a new server for this service
 	serviceServer := s.serverFactory()
 
@@ -89,6 +98,7 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 	// 4. TSBRIDGE_STATE_DIR env var (tsbridge specific)
 	// 5. XDG data directory as default
 	stateDir := s.config.StateDir
+	stateDirSource := "config"
 	if stateDir == "" {
 		// Check STATE_DIRECTORY (systemd standard)
 		stateDir = os.Getenv("STATE_DIRECTORY")
@@ -96,23 +106,46 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 		if stateDir != "" && strings.Contains(stateDir, ":") {
 			stateDir = strings.Split(stateDir, ":")[0]
 		}
+		if stateDir != "" {
+			stateDirSource = "STATE_DIRECTORY env"
+		}
 	}
 	if stateDir == "" {
 		// Check TSBRIDGE_STATE_DIR (tsbridge specific)
 		stateDir = os.Getenv("TSBRIDGE_STATE_DIR")
+		if stateDir != "" {
+			stateDirSource = "TSBRIDGE_STATE_DIR env"
+		}
 	}
 	if stateDir == "" {
 		// Use XDG data directory as default
 		stateDir = getDefaultStateDir()
+		stateDirSource = "XDG default"
 	}
 	// Each service needs its own unique state directory to avoid conflicts
 	// when multiple tsnet.Server instances write to the same directory
 	serviceStateDir := filepath.Join(stateDir, svc.Name)
 	serviceServer.SetDir(serviceStateDir)
 
+	slog.Debug("state directory resolved for service",
+		"service", svc.Name,
+		"state_dir", serviceStateDir,
+		"source", stateDirSource,
+	)
+
 	// Check if this service already has state
 	// If state exists, tsnet will use it and doesn't need an auth key
-	if !hasExistingState(stateDir, svc.Name) {
+	hasState := hasExistingState(stateDir, svc.Name)
+	slog.Debug("checking for existing state",
+		"service", svc.Name,
+		"has_existing_state", hasState,
+		"state_dir", stateDir,
+	)
+
+	if !hasState {
+		slog.Debug("no existing state found, generating auth key",
+			"service", svc.Name,
+		)
 		// Generate or resolve auth key with OAuth support only for new nodes
 		cfg := config.Config{
 			Tailscale: s.config,
@@ -122,6 +155,13 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 			return nil, tserrors.WrapConfig(err, fmt.Sprintf("resolving auth key for service %q", svc.Name))
 		}
 		serviceServer.SetAuthKey(authKey)
+		slog.Debug("auth key set for service",
+			"service", svc.Name,
+		)
+	} else {
+		slog.Debug("using existing state, no auth key needed",
+			"service", svc.Name,
+		)
 	}
 	// If state exists, we don't set an auth key - tsnet will use the stored state
 
@@ -129,9 +169,22 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 	s.serviceServers[svc.Name] = serviceServer
 
 	// Start the service server before listening
+	startTime := time.Now()
+	slog.Debug("starting tsnet server",
+		"service", svc.Name,
+	)
 	if err := serviceServer.Start(); err != nil {
+		slog.Debug("tsnet server start failed",
+			"service", svc.Name,
+			"duration", time.Since(startTime),
+			"error", err,
+		)
 		return nil, tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", svc.Name))
 	}
+	slog.Debug("tsnet server started successfully",
+		"service", svc.Name,
+		"duration", time.Since(startTime),
+	)
 
 	// Choose the appropriate listener based on TLS mode and funnel settings
 	var listener net.Listener
@@ -139,10 +192,25 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 
 	if funnelEnabled {
 		// Funnel requires HTTPS on port 443
+		listenerStart := time.Now()
+		slog.Debug("creating funnel listener",
+			"service", svc.Name,
+			"address", ":443",
+		)
 		listener, err = serviceServer.ListenFunnel("tcp", ":443")
 		if err != nil {
+			slog.Debug("funnel listener creation failed",
+				"service", svc.Name,
+				"duration", time.Since(listenerStart),
+				"error", err,
+			)
 			return nil, err
 		}
+		slog.Debug("funnel listener created successfully",
+			"service", svc.Name,
+			"duration", time.Since(listenerStart),
+			"total_duration", time.Since(listenStart),
+		)
 		// Note: Funnel already handles certificates, no priming needed
 		return listener, nil
 	}
@@ -150,10 +218,25 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 	switch tlsMode {
 	case "auto":
 		// Use ListenTLS for automatic TLS certificate provisioning
+		listenerStart := time.Now()
+		slog.Debug("creating TLS listener",
+			"service", svc.Name,
+			"address", ":443",
+		)
 		listener, err = serviceServer.ListenTLS("tcp", ":443")
 		if err != nil {
+			slog.Debug("TLS listener creation failed",
+				"service", svc.Name,
+				"duration", time.Since(listenerStart),
+				"error", err,
+			)
 			return nil, err
 		}
+		slog.Debug("TLS listener created successfully",
+			"service", svc.Name,
+			"duration", time.Since(listenerStart),
+			"total_duration", time.Since(listenStart),
+		)
 
 		// Prime the TLS certificate asynchronously with timeout and logging
 		go func() {
@@ -175,10 +258,25 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 
 	case "off":
 		// Use plain Listen without TLS (traffic still encrypted via WireGuard)
+		listenerStart := time.Now()
+		slog.Debug("creating plain listener",
+			"service", svc.Name,
+			"address", ":80",
+		)
 		listener, err = serviceServer.Listen("tcp", ":80")
 		if err != nil {
+			slog.Debug("plain listener creation failed",
+				"service", svc.Name,
+				"duration", time.Since(listenerStart),
+				"error", err,
+			)
 			return nil, err
 		}
+		slog.Debug("plain listener created successfully",
+			"service", svc.Name,
+			"duration", time.Since(listenerStart),
+			"total_duration", time.Since(listenStart),
+		)
 
 	default:
 		return nil, tserrors.NewValidationError(fmt.Sprintf("invalid TLS mode: %q", tlsMode))

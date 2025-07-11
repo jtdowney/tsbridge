@@ -53,6 +53,13 @@ type authKeyResponse struct {
 
 // generateAuthKeyWithOAuth generates a Tailscale auth key using OAuth2 client credentials with retry logic
 func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool) (string, error) {
+	start := time.Now()
+	slog.Debug("starting OAuth authentication for auth key generation",
+		"api_base", apiBaseURL,
+		"tags", tags,
+		"ephemeral", ephemeral,
+	)
+
 	// Configure exponential backoff with attempt limit
 	b := backoff.NewExponentialBackOff()
 	b.InitialInterval = constants.RetryInitialInterval
@@ -65,9 +72,33 @@ func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tag
 	backoffWithRetries := backoff.WithMaxRetries(b, constants.RetryMaxAttempts) // 2 retries = 3 total attempts
 
 	var authKey string
+	attemptCount := 0
 	operation := func() error {
+		attemptCount++
+		attemptStart := time.Now()
+
+		slog.Debug("attempting OAuth auth key generation",
+			"attempt", attemptCount,
+			"max_attempts", constants.RetryMaxAttempts+1,
+		)
+
 		var err error
 		authKey, err = generateAuthKeyWithOAuthDirect(oauthConfig, apiBaseURL, tags, ephemeral)
+
+		if err != nil {
+			slog.Debug("OAuth auth key generation attempt failed",
+				"attempt", attemptCount,
+				"duration", time.Since(attemptStart),
+				"error", err,
+				"is_network_error", tserrors.IsNetwork(err),
+				"is_retryable", isRetryableError(err),
+			)
+		} else {
+			slog.Debug("OAuth auth key generation attempt succeeded",
+				"attempt", attemptCount,
+				"duration", time.Since(attemptStart),
+			)
+		}
 
 		// Only retry on network errors and 5xx server errors
 		if err != nil && (tserrors.IsNetwork(err) || isRetryableError(err)) {
@@ -83,6 +114,20 @@ func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tag
 	}
 
 	err := backoff.Retry(operation, backoffWithRetries)
+
+	if err != nil {
+		slog.Debug("OAuth auth key generation failed after all attempts",
+			"total_attempts", attemptCount,
+			"total_duration", time.Since(start),
+			"error", err,
+		)
+	} else {
+		slog.Debug("OAuth auth key generation completed successfully",
+			"total_attempts", attemptCount,
+			"total_duration", time.Since(start),
+		)
+	}
+
 	return authKey, err
 }
 
@@ -113,6 +158,12 @@ func isRetryableError(err error) bool {
 // generateAuthKeyWithOAuthDirect generates a Tailscale auth key using OAuth2 client credentials (no retry)
 func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool) (string, error) {
 	ctx := context.Background()
+	start := time.Now()
+
+	slog.Debug("starting OAuth token exchange",
+		"token_url", oauthConfig.Endpoint.TokenURL,
+		"client_id", oauthConfig.ClientID,
+	)
 
 	// Create a client credentials config for automatic token management
 	ccConfig := &clientcredentials.Config{
@@ -122,7 +173,11 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 	}
 
 	// Get HTTP client with automatic token refresh
+	tokenStart := time.Now()
 	client := ccConfig.Client(ctx)
+	slog.Debug("OAuth client created",
+		"duration", time.Since(tokenStart),
+	)
 
 	// Create auth key request
 	req := authKeyRequest{
@@ -142,6 +197,14 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 		return "", tserrors.WrapInternal(err, "marshaling auth key request")
 	}
 
+	slog.Debug("sending auth key creation request",
+		"url", apiBaseURL+"/api/v2/tailnet/-/keys",
+		"request_size", len(body),
+		"ephemeral", ephemeral,
+		"tags", tags,
+		"expiry_seconds", constants.AuthKeyExpirySeconds,
+	)
+
 	// Create HTTP request
 	url := apiBaseURL + "/api/v2/tailnet/-/keys"
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
@@ -151,8 +214,13 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	// Make request
+	apiStart := time.Now()
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		slog.Debug("auth key API request failed",
+			"duration", time.Since(apiStart),
+			"error", err,
+		)
 		return "", tserrors.WrapNetwork(err, "making request")
 	}
 	defer func() {
@@ -161,10 +229,21 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 		}
 	}()
 
+	slog.Debug("auth key API response received",
+		"duration", time.Since(apiStart),
+		"status_code", resp.StatusCode,
+		"headers", resp.Header,
+	)
+
 	// Check status
 	if resp.StatusCode != http.StatusOK {
 		var errResp map[string]interface{}
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
+		slog.Debug("auth key API error response",
+			"status_code", resp.StatusCode,
+			"error_response", errResp,
+			"total_duration", time.Since(start),
+		)
 		return "", tserrors.NewNetworkErrorWithStatus(fmt.Sprintf("API returned status %d: %v", resp.StatusCode, errResp), resp.StatusCode)
 	}
 
@@ -173,6 +252,12 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 	if err := json.NewDecoder(resp.Body).Decode(&authKeyResp); err != nil {
 		return "", tserrors.WrapInternal(err, "decoding response")
 	}
+
+	slog.Debug("auth key created successfully",
+		"total_duration", time.Since(start),
+		"key_created_at", authKeyResp.Created,
+		"has_key", authKeyResp.Key != "",
+	)
 
 	return authKeyResp.Key, nil
 }
@@ -184,14 +269,29 @@ func generateOrResolveAuthKey(cfg config.Config, svc config.Service) (string, er
 	clientSecret := cfg.Tailscale.OAuthClientSecret.Value()
 	authKey := cfg.Tailscale.AuthKey.Value()
 
+	slog.Debug("resolving authentication method for service",
+		"service", svc.Name,
+		"has_oauth_client_id", clientID != "",
+		"has_oauth_client_secret", clientSecret != "",
+		"has_auth_key", authKey != "",
+	)
+
 	// If OAuth is configured, use it to generate auth key
 	if clientID != "" && clientSecret != "" {
+		slog.Debug("using OAuth authentication for service",
+			"service", svc.Name,
+		)
+
 		// Check for test endpoint override
 		tokenURL := tailscaleTokenURL
 		apiBase := tailscaleAPIBase
 		if testEndpoint := os.Getenv("TSBRIDGE_OAUTH_ENDPOINT"); testEndpoint != "" {
 			tokenURL = testEndpoint + "/api/v2/oauth/token"
 			apiBase = testEndpoint
+			slog.Debug("using custom OAuth endpoint",
+				"service", svc.Name,
+				"endpoint", testEndpoint,
+			)
 		}
 
 		oauthConfig := &oauth2.Config{
@@ -217,9 +317,15 @@ func generateOrResolveAuthKey(cfg config.Config, svc config.Service) (string, er
 
 	// Otherwise, use the resolved auth key
 	if authKey != "" {
+		slog.Debug("using pre-configured auth key for service",
+			"service", svc.Name,
+		)
 		return authKey, nil
 	}
 
 	// No auth method configured
+	slog.Debug("no authentication method configured for service",
+		"service", svc.Name,
+	)
 	return "", tserrors.NewConfigError("no authentication method configured")
 }
