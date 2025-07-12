@@ -280,6 +280,169 @@ func TestListen(t *testing.T) {
 	}
 }
 
+func TestListen_EphemeralServices(t *testing.T) {
+	tests := []struct {
+		name             string
+		svc              config.Service
+		existingState    bool
+		expectAuthKeySet bool
+		setupOAuth       bool
+	}{
+		{
+			name: "ephemeral service with existing state should generate auth key",
+			svc: config.Service{
+				Name:        "test-ephemeral",
+				BackendAddr: "localhost:8080",
+				Ephemeral:   true,
+				Tags:        []string{"tag:test"},
+			},
+			existingState:    true,
+			expectAuthKeySet: true,
+			setupOAuth:       true,
+		},
+		{
+			name: "non-ephemeral service with existing state should NOT generate auth key",
+			svc: config.Service{
+				Name:        "test-persistent",
+				BackendAddr: "localhost:8080",
+				Ephemeral:   false,
+			},
+			existingState:    true,
+			expectAuthKeySet: false,
+			setupOAuth:       false,
+		},
+		{
+			name: "ephemeral service without state should generate auth key",
+			svc: config.Service{
+				Name:        "test-ephemeral-new",
+				BackendAddr: "localhost:8080",
+				Ephemeral:   true,
+				Tags:        []string{"tag:test"},
+			},
+			existingState:    false,
+			expectAuthKeySet: true,
+			setupOAuth:       true,
+		},
+		{
+			name: "non-ephemeral service without state should generate auth key",
+			svc: config.Service{
+				Name:        "test-persistent-new",
+				BackendAddr: "localhost:8080",
+				Ephemeral:   false,
+				Tags:        []string{"tag:test"},
+			},
+			existingState:    false,
+			expectAuthKeySet: true,
+			setupOAuth:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary directory for state
+			tempDir := t.TempDir()
+
+			// Create mock TSNet server
+			mockServer := tsnet.NewMockTSNetServer()
+			mockServer.StartFunc = func() error {
+				return nil
+			}
+			mockServer.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
+				return &mockListener{addr: addr}, nil
+			}
+
+			// Create a mock LocalClient for certificate priming
+			mockLocalClient := &tsnet.MockLocalClient{
+				StatusWithoutPeersFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+					return &ipnstate.Status{
+						Self: &ipnstate.PeerStatus{
+							DNSName:      "test-service.tailnet.ts.net.",
+							TailscaleIPs: []netip.Addr{netip.MustParseAddr("100.64.0.1")},
+						},
+					}, nil
+				},
+			}
+
+			mockServer.LocalClientFunc = func() (tsnet.LocalClient, error) {
+				return mockLocalClient, nil
+			}
+
+			// Create server with mock factory
+			factory := func() tsnet.TSNetServer {
+				return mockServer
+			}
+
+			var cfg config.Tailscale
+			if tt.setupOAuth {
+				// Setup OAuth mock server
+				oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch r.URL.Path {
+					case "/api/v2/oauth/token":
+						response := map[string]interface{}{
+							"access_token": "test-access-token",
+							"token_type":   "Bearer",
+							"expires_in":   3600,
+						}
+						w.Header().Set("Content-Type", "application/json")
+						json.NewEncoder(w).Encode(response)
+					case "/api/v2/tailnet/-/keys":
+						response := map[string]interface{}{
+							"key":     "tskey-auth-test123",
+							"created": time.Now(),
+						}
+						w.Header().Set("Content-Type", "application/json")
+						json.NewEncoder(w).Encode(response)
+					default:
+						w.WriteHeader(http.StatusNotFound)
+					}
+				}))
+				defer oauthServer.Close()
+
+				// Set test endpoint
+				t.Setenv("TSBRIDGE_OAUTH_ENDPOINT", oauthServer.URL)
+
+				cfg = config.Tailscale{
+					OAuthClientID:     "test-client-id",
+					OAuthClientSecret: config.RedactedString("test-client-secret"),
+					StateDir:          tempDir,
+				}
+			} else {
+				cfg = config.Tailscale{
+					AuthKey:  config.RedactedString("test-auth-key"),
+					StateDir: tempDir,
+				}
+			}
+
+			server, err := NewServerWithFactory(cfg, factory)
+			require.NoError(t, err)
+
+			// Create existing state if needed
+			if tt.existingState {
+				serviceStateDir := fmt.Sprintf("%s/%s", tempDir, tt.svc.Name)
+				err := os.MkdirAll(serviceStateDir, 0755)
+				require.NoError(t, err)
+				stateFile := fmt.Sprintf("%s/tailscaled.state", serviceStateDir)
+				err = os.WriteFile(stateFile, []byte("dummy state"), 0644)
+				require.NoError(t, err)
+			}
+
+			// Call Listen
+			_, err = server.Listen(tt.svc, "auto", false)
+			require.NoError(t, err)
+
+			// Verify auth key was set or not based on expectation
+			if tt.expectAuthKeySet {
+				assert.NotEmpty(t, mockServer.AuthKey, "expected auth key to be set")
+			} else {
+				assert.Empty(t, mockServer.AuthKey, "expected auth key NOT to be set")
+			}
+
+			// Verify ephemeral flag is always set correctly
+			assert.Equal(t, tt.svc.Ephemeral, mockServer.Ephemeral)
+		})
+	}
+}
+
 func TestClose(t *testing.T) {
 	// Create mock TSNet servers
 	mockServer1 := tsnet.NewMockTSNetServer()

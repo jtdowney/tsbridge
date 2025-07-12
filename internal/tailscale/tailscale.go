@@ -133,20 +133,38 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 		"source", stateDirSource,
 	)
 
-	// Check if this service already has state
-	// If state exists, tsnet will use it and doesn't need an auth key
-	hasState := hasExistingState(stateDir, svc.Name)
-	slog.Debug("checking for existing state",
-		"service", svc.Name,
-		"has_existing_state", hasState,
-		"state_dir", stateDir,
-	)
+	// For ephemeral services, always generate a new auth key
+	// For non-ephemeral services, only generate if no state exists
+	var needsAuthKey bool
+	var authKeyReason string
 
-	if !hasState {
-		slog.Debug("no existing state found, generating auth key",
+	if svc.Ephemeral {
+		needsAuthKey = true
+		authKeyReason = "ephemeral service"
+		slog.Debug("skipping state check for ephemeral service",
 			"service", svc.Name,
 		)
-		// Generate or resolve auth key with OAuth support only for new nodes
+	} else {
+		// Check if this service already has state
+		// If state exists, tsnet will use it and doesn't need an auth key
+		hasState := hasExistingState(stateDir, svc.Name)
+		needsAuthKey = !hasState
+		if needsAuthKey {
+			authKeyReason = "no existing state found"
+		}
+		slog.Debug("checking for existing state",
+			"service", svc.Name,
+			"has_existing_state", hasState,
+			"state_dir", stateDir,
+		)
+	}
+
+	if needsAuthKey {
+		slog.Debug("generating auth key",
+			"service", svc.Name,
+			"reason", authKeyReason,
+		)
+		// Generate or resolve auth key with OAuth support
 		cfg := config.Config{
 			Tailscale: s.config,
 		}
@@ -163,7 +181,7 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 			"service", svc.Name,
 		)
 	}
-	// If state exists, we don't set an auth key - tsnet will use the stored state
+	// For non-ephemeral services with state, we don't set an auth key - tsnet will use the stored state
 
 	// Store the service server for later operations
 	s.serviceServers[svc.Name] = serviceServer
