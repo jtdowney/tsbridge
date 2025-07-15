@@ -70,6 +70,7 @@ labels:
 
   # State directory
   - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+  - "tsbridge.tailscale.state_dir_env=<env_var>"
 
   # Default tags for all services (comma-separated)
   - "tsbridge.tailscale.default_tags=tag:tsbridge,tag:proxy"

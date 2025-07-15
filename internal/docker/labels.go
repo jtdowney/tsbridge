@@ -208,6 +208,7 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 		AuthKeyEnv:            parser.getString("tailscale.auth_key_env"),
 		AuthKeyFile:           parser.getString("tailscale.auth_key_file"),
 		StateDir:              parser.getString("tailscale.state_dir"),
+		StateDirEnv:           parser.getString("tailscale.state_dir_env"),
 		DefaultTags:           parser.getStringSlice("tailscale.default_tags", ","),
 	}
 

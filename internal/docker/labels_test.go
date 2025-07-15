@@ -628,6 +628,26 @@ func TestConfigParityBetweenTOMLAndDocker(t *testing.T) {
 				field.Name, mapstructureTag)
 		}
 	})
+
+	t.Run("Tailscale config fields", func(t *testing.T) {
+		// Get all fields from the Tailscale struct
+		tailscaleType := reflect.TypeOf(config.Tailscale{})
+		dockerParsedFields := getDockerParsedTailscaleFields()
+
+		for i := 0; i < tailscaleType.NumField(); i++ {
+			field := tailscaleType.Field(i)
+			mapstructureTag := field.Tag.Get("mapstructure")
+			if mapstructureTag == "" {
+				continue // Skip fields without mapstructure tag
+			}
+
+			// Check if this field is parsed in Docker
+			dockerKey := "tailscale." + mapstructureTag
+			assert.Contains(t, dockerParsedFields, dockerKey,
+				"Field %s (%s) is in config.Tailscale but not parsed in Docker labels",
+				field.Name, mapstructureTag)
+		}
+	})
 }
 
 // getDockerParsedGlobalFields returns all global.* fields that are parsed in Docker
@@ -677,5 +697,24 @@ func getDockerParsedServiceFields() map[string]bool {
 		"service.remove_downstream":       true,
 		"service.tags":                    true,
 		"service.max_request_body_size":   true,
+	}
+}
+
+// getDockerParsedTailscaleFields returns all tailscale.* fields that are parsed in Docker
+// This list must be kept in sync with parseGlobalConfig() in labels.go
+func getDockerParsedTailscaleFields() map[string]bool {
+	return map[string]bool{
+		"tailscale.oauth_client_id":          true,
+		"tailscale.oauth_client_id_env":      true,
+		"tailscale.oauth_client_id_file":     true,
+		"tailscale.oauth_client_secret":      true,
+		"tailscale.oauth_client_secret_env":  true,
+		"tailscale.oauth_client_secret_file": true,
+		"tailscale.auth_key":                 true,
+		"tailscale.auth_key_env":             true,
+		"tailscale.auth_key_file":            true,
+		"tailscale.state_dir":                true,
+		"tailscale.state_dir_env":            true,
+		"tailscale.default_tags":             true,
 	}
 }
