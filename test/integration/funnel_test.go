@@ -69,7 +69,7 @@ func TestFunnelIntegration(t *testing.T) {
 		var listenCalled bool
 
 		// Create mock factory that tracks which listen method is called
-		factory := func() tsnetpkg.TSNetServer {
+		factory := func(serviceName string) tsnetpkg.TSNetServer {
 			mock := tsnetpkg.NewMockTSNetServer()
 
 			// Override listen functions to track calls
@@ -143,7 +143,7 @@ func TestFunnelIntegration(t *testing.T) {
 		var listenCalled bool
 
 		// Create mock factory that tracks which listen method is called
-		factory := func() tsnetpkg.TSNetServer {
+		factory := func(serviceName string) tsnetpkg.TSNetServer {
 			mock := tsnetpkg.NewMockTSNetServer()
 
 			// Override listen functions to track calls
@@ -215,7 +215,7 @@ func TestFunnelIntegration(t *testing.T) {
 		var listenCalled bool
 
 		// Create mock factory that tracks which listen method is called
-		factory := func() tsnetpkg.TSNetServer {
+		factory := func(serviceName string) tsnetpkg.TSNetServer {
 			mock := tsnetpkg.NewMockTSNetServer()
 
 			// Override listen functions to track calls

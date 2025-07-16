@@ -66,8 +66,11 @@ type RealTSNetServer struct {
 }
 
 // NewRealTSNetServer creates a new RealTSNetServer instance.
-func NewRealTSNetServer() *RealTSNetServer {
-	return &RealTSNetServer{}
+func NewRealTSNetServer(serviceName string) *RealTSNetServer {
+	server := &RealTSNetServer{}
+	server.Logf = slogAdapter(serviceName)         // Backend/debugging logs
+	server.UserLogf = userSlogAdapter(serviceName) // User-facing logs (AuthURL, etc.)
+	return server
 }
 
 // Listen implements TSNetServer.
@@ -390,4 +393,4 @@ func (m *MockLocalClient) StatusWithoutPeers(ctx context.Context) (*ipnstate.Sta
 }
 
 // TSNetServerFactory is a function that creates new TSNetServer instances.
-type TSNetServerFactory func() TSNetServer
+type TSNetServerFactory func(serviceName string) TSNetServer

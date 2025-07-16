@@ -30,7 +30,7 @@ import (
 // testTailscaleServerFactory creates a tailscale server for testing
 func testTailscaleServerFactory() (*tailscale.Server, error) {
 	// Create a factory that returns mock tsnet servers
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return tsnet.NewMockTSNetServer()
 	}
 
@@ -279,7 +279,7 @@ func TestServiceStartupPartialFailures(t *testing.T) {
 
 		// For this test, we need a custom factory that will fail listener creation for service1
 		serviceCount := 0
-		failService1Factory := func() tsnet.TSNetServer {
+		failService1Factory := func(serviceName string) tsnet.TSNetServer {
 			serviceCount++
 			mock := tsnet.NewMockTSNetServer()
 			// Only fail for the first service (service1)

@@ -54,8 +54,8 @@ func NewServerWithFactory(cfg config.Tailscale, factory tsnetpkg.TSNetServerFact
 // NewServer creates a new tailscale server instance
 func NewServer(cfg config.Tailscale) (*Server, error) {
 	// Default factory creates real TSNet servers
-	factory := func() tsnetpkg.TSNetServer {
-		return tsnetpkg.NewRealTSNetServer()
+	factory := func(serviceName string) tsnetpkg.TSNetServer {
+		return tsnetpkg.NewRealTSNetServer(serviceName)
 	}
 
 	return NewServerWithFactory(cfg, factory)
@@ -75,7 +75,7 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 		"tags", svc.Tags,
 	)
 
-	serviceServer := s.serverFactory()
+	serviceServer := s.serverFactory(svc.Name)
 	serviceServer.SetHostname(svc.Name)
 	serviceServer.SetEphemeral(svc.Ephemeral)
 

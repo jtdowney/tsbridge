@@ -83,7 +83,7 @@ func TestNewServer(t *testing.T) {
 			}
 
 			// Use a mock factory for testing
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return tsnet.NewMockTSNetServer()
 			}
 
@@ -217,7 +217,7 @@ func TestListen(t *testing.T) {
 			}
 
 			// Create server with mock factory
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return mockServer
 			}
 
@@ -366,7 +366,7 @@ func TestListen_EphemeralServices(t *testing.T) {
 			}
 
 			// Create server with mock factory
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return mockServer
 			}
 
@@ -606,7 +606,7 @@ func TestClose(t *testing.T) {
 	}
 
 	// Create server with mock factory
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return tsnet.NewMockTSNetServer()
 	}
 
@@ -640,7 +640,7 @@ func TestGetServiceServer(t *testing.T) {
 	mockServer := tsnet.NewMockTSNetServer()
 
 	// Create server with mock factory
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return tsnet.NewMockTSNetServer()
 	}
 
@@ -827,7 +827,7 @@ func TestStateDirResolution(t *testing.T) {
 			}
 
 			// Create server with mock factory
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return mockServer
 			}
 
@@ -1135,7 +1135,7 @@ func TestResolveAuthConfiguration(t *testing.T) {
 					t.Setenv(k, v)
 				}
 
-				factory := func() tsnet.TSNetServer {
+				factory := func(serviceName string) tsnet.TSNetServer {
 					return tsnet.NewMockTSNetServer()
 				}
 
@@ -1183,7 +1183,7 @@ func TestPrimeCertificate(t *testing.T) {
 	}
 
 	// Create server with mock factory
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return mockServer
 	}
 
@@ -1298,7 +1298,7 @@ func TestPrimeCertificateErrorCases(t *testing.T) {
 			}
 
 			// Create server with mock factory
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return mockServer
 			}
 
@@ -1367,7 +1367,7 @@ func TestAsyncCertificatePriming(t *testing.T) {
 	}
 
 	// Create server with mock factory
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return mockServer
 	}
 
@@ -1433,7 +1433,7 @@ func TestPrimeCertificateTimeout(t *testing.T) {
 	}
 
 	// Create server with mock factory
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return mockServer
 	}
 
@@ -1474,7 +1474,7 @@ func TestListenWithControlURL(t *testing.T) {
 	expectedControlURL := "https://headscale.example.com"
 
 	// Create factory that verifies control URL is set
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return &mockTSNetServerWithControlURL{
 			MockTSNetServer: tsnet.NewMockTSNetServer(),
 			onSetControlURL: func(url string) {
@@ -1613,7 +1613,7 @@ func TestListenWithPrimeCertificate(t *testing.T) {
 			}
 
 			// Create server with mock factory
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return mockServer
 			}
 
@@ -1687,7 +1687,7 @@ func TestCloseService(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create server with mock factory
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return tsnet.NewMockTSNetServer()
 			}
 
@@ -1787,7 +1787,7 @@ func TestDetermineListenPort(t *testing.T) {
 	}
 
 	// Create a server instance to test the method
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return &tsnet.MockTSNetServer{}
 	}
 	cfg := config.Tailscale{
