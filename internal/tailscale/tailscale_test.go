@@ -65,14 +65,14 @@ func TestNewServer(t *testing.T) {
 			cfg: config.Tailscale{
 				OAuthClientID: "test-client-id",
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 		{
 			name: "incomplete OAuth - missing ID is still allowed",
 			cfg: config.Tailscale{
 				OAuthClientSecret: config.RedactedString("test-client-secret"),
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 	}
 
@@ -1124,7 +1124,7 @@ func TestResolveAuthConfiguration(t *testing.T) {
 					OAuthClientID: "client-id",
 					// Missing secret
 				},
-				wantErr: false,
+				wantErr: true,
 			},
 		}
 

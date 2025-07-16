@@ -35,6 +35,15 @@ type Server struct {
 
 // NewServerWithFactory creates a new tailscale server instance with a custom TSNetServer factory
 func NewServerWithFactory(cfg config.Tailscale, factory tsnetpkg.TSNetServerFactory) (*Server, error) {
+	// Validate OAuth credentials if provided - both must be present or neither
+	if (cfg.OAuthClientID != "" && cfg.OAuthClientSecret == "") ||
+		(cfg.OAuthClientID == "" && cfg.OAuthClientSecret != "") {
+		if cfg.OAuthClientID == "" {
+			return nil, tserrors.NewConfigError("OAuth client secret provided without client ID")
+		}
+		return nil, tserrors.NewConfigError("OAuth client ID provided without client secret")
+	}
+
 	return &Server{
 		config:         cfg,
 		serviceServers: make(map[string]tsnetpkg.TSNetServer),
