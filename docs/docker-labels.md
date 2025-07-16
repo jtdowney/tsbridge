@@ -248,13 +248,13 @@ Unlike polling-based systems, tsbridge uses Docker's event stream for immediate 
 ```yaml
 # Example: Rolling deployment with zero downtime
 # 1. Start new version of your service
-docker-compose up -d api-v2  # tsbridge detects and adds the service
+docker compose up -d api-v2  # tsbridge detects and adds the service
 
 # 2. Verify new version is working
 curl https://api-v2.example.ts.net/health
 
 # 3. Stop old version
-docker-compose stop api-v1   # tsbridge detects and removes the service
+docker compose stop api-v1   # tsbridge detects and removes the service
 ```
 
 ### Important Notes

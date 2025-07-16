@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- Fixed docker-compose example for v0.7.0 breaking change
+- Fixed docker compose example for v0.7.0 breaking change
 - Removed redundant ReadWritePaths from systemd service documentation
 
 ## [0.9.1] - 2025-07-10

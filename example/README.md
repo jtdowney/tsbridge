@@ -18,7 +18,7 @@ Basic tsbridge setup with OAuth authentication and simple backend services.
 cd simple
 export TS_OAUTH_CLIENT_ID="your-client-id"
 export TS_OAUTH_CLIENT_SECRET="your-client-secret"
-docker-compose up --build
+docker compose up --build
 ```
 
 ### 2. Docker Labels Example (`docker-labels/`)
@@ -35,7 +35,7 @@ Dynamic service discovery using Docker container labels.
 cd docker-labels
 export TS_OAUTH_CLIENT_ID="your-client-id"
 export TS_OAUTH_CLIENT_SECRET="your-client-secret"
-docker-compose up --build
+docker compose up --build
 ```
 
 ### 3. Headscale Example (`headscale/`)
@@ -52,7 +52,7 @@ Self-hosted Tailscale control server setup using Headscale with built-in testing
 
 ```bash
 cd headscale
-docker-compose up -d
+docker compose up -d
 
 # Create user and auth key
 docker compose exec headscale headscale users create testuser
@@ -60,7 +60,7 @@ docker compose exec headscale headscale --user 1 preauthkeys create --reusable -
 
 # Set auth key and restart services
 export TS_AUTHKEY="<auth-key-from-above>"
-docker-compose up -d tsbridge tailscale-client
+docker compose up -d tsbridge tailscale-client
 
 # Test the setup
 ./test-client.sh
@@ -86,20 +86,19 @@ All examples require:
 
 ## Getting OAuth Credentials
 
-For the simple and docker-labels examples, get OAuth credentials from:
-https://login.tailscale.com/admin/settings/oauth
+For the simple and docker-labels examples, get OAuth credentials from [Tailscale OAuth settings](https://login.tailscale.com/admin/settings/oauth).
 
 ## Common Commands
 
 ```bash
 # View logs
-docker-compose logs -f tsbridge
+docker compose logs -f tsbridge
 
 # Check metrics
 curl http://localhost:9090/metrics
 
 # Clean up
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Which Example Should I Use?
