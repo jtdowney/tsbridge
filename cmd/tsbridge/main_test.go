@@ -1019,8 +1019,8 @@ backend_addr = "localhost:8080"
 				require.NoError(t, err)
 				return configPath
 			},
-			wantErr: true,
-			errMsg:  "OAuth client ID must be provided",
+			wantErr:    false, // No longer an error - missing auth is allowed
+			wantOutput: []string{"configuration is valid"},
 		},
 	}
 
@@ -1069,13 +1069,17 @@ backend_addr = "localhost:8080"
 
 			// Check output
 			outputStr := string(output)
+			logStr := logBuf.String()
 			// For help, also check if it printed "Usage of tsbridge:" but without the full content
 			if tt.name == "help flag" && outputStr != "" {
 				// Help was printed, we're good
 				assert.Contains(t, outputStr, "Usage of tsbridge:")
 			} else {
 				for _, want := range tt.wantOutput {
-					assert.Contains(t, outputStr, want)
+					// Check both stdout and logs
+					if !strings.Contains(outputStr, want) && !strings.Contains(logStr, want) {
+						t.Errorf("expected output to contain %q, got stdout: %q, logs: %q", want, outputStr, logStr)
+					}
 				}
 			}
 		})
