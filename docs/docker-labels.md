@@ -74,6 +74,9 @@ labels:
 
   # Default tags for all services (comma-separated)
   - "tsbridge.tailscale.default_tags=tag:tsbridge,tag:proxy"
+
+  # Control server URL (optional - for Headscale or custom control servers)
+  - "tsbridge.tailscale.control_url=https://headscale.example.com"
 ```
 
 #### Global Defaults
@@ -141,6 +144,9 @@ labels:
 
   # TLS mode
   - "tsbridge.service.tls_mode=auto" # or "off"
+  
+  # Listen port (optional, defaults: 443 for TLS, 80 for non-TLS)
+  - "tsbridge.service.listen_port=8443"
 
   # Service-specific timeouts (override global)
   - "tsbridge.service.read_header_timeout=60s"

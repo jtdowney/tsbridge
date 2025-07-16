@@ -47,6 +47,9 @@ type TSNetServer interface {
 
 	// SetEphemeral sets whether this server should be ephemeral.
 	SetEphemeral(ephemeral bool)
+
+	// SetControlURL sets the control server URL.
+	SetControlURL(controlURL string)
 }
 
 // LocalClient is an interface for tailscale LocalClient operations.
@@ -213,6 +216,11 @@ func (s *RealTSNetServer) SetEphemeral(ephemeral bool) {
 	s.Ephemeral = ephemeral
 }
 
+// SetControlURL implements TSNetServer.
+func (s *RealTSNetServer) SetControlURL(controlURL string) {
+	s.ControlURL = controlURL
+}
+
 // RealLocalClient wraps a real local.Client.
 type RealLocalClient struct {
 	lc *local.Client
@@ -352,6 +360,11 @@ func (m *MockTSNetServer) SetAuthKey(authKey string) {
 // SetEphemeral implements TSNetServer.
 func (m *MockTSNetServer) SetEphemeral(ephemeral bool) {
 	m.Ephemeral = ephemeral
+}
+
+// SetControlURL implements TSNetServer.
+func (m *MockTSNetServer) SetControlURL(controlURL string) {
+	// No-op for mock
 }
 
 // MockLocalClient is a mock implementation of LocalClient for testing.

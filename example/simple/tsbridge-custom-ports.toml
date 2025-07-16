@@ -1,0 +1,31 @@
+# Example configuration demonstrating custom listen ports
+
+[tailscale]
+# OAuth credentials (replace with your actual values)
+oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
+oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
+state_dir = "/var/lib/tsbridge"
+default_tags = ["tag:tsbridge"]
+
+[global]
+# Metrics endpoint
+metrics_addr = ":9090"
+
+# Services with custom ports
+[[services]]
+name = "api-https"
+backend_addr = "127.0.0.1:8080"
+tls_mode = "auto"        # HTTPS with automatic certificates
+listen_port = "8443"     # Custom HTTPS port instead of default 443
+
+[[services]]
+name = "api-http"
+backend_addr = "127.0.0.1:8081"
+tls_mode = "off"         # HTTP only (still encrypted via WireGuard)
+listen_port = "8080"     # Custom HTTP port instead of default 80
+
+[[services]]
+name = "metrics"
+backend_addr = "127.0.0.1:9100"
+tls_mode = "auto"        # Uses default port 443
+# No listen_port specified, so uses default

@@ -535,6 +535,32 @@ tags = ["tag:test"]
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "resolving OAuth client ID")
 	})
+
+	t.Run("control_url configuration", func(t *testing.T) {
+		configContent := `
+[tailscale]
+oauth_client_id = "test-id"
+oauth_client_secret = "test-secret"
+control_url = "https://headscale.example.com"
+
+[global]
+read_header_timeout = "30s"
+
+[[services]]
+name = "test-service"
+backend_addr = "localhost:8080"
+tags = ["tag:test"]
+`
+
+		tmpFile := filepath.Join(t.TempDir(), "config.toml")
+		require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+		cfg, err := Load(tmpFile)
+		require.NoError(t, err)
+		require.NotNil(t, cfg)
+
+		assert.Equal(t, "https://headscale.example.com", cfg.Tailscale.ControlURL)
+	})
 }
 func TestResolveSecrets(t *testing.T) {
 	t.Run("resolves OAuth client ID from env", func(t *testing.T) {

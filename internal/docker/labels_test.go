@@ -697,6 +697,7 @@ func getDockerParsedServiceFields() map[string]bool {
 		"service.remove_downstream":       true,
 		"service.tags":                    true,
 		"service.max_request_body_size":   true,
+		"service.listen_port":             true,
 	}
 }
 
@@ -716,5 +717,29 @@ func getDockerParsedTailscaleFields() map[string]bool {
 		"tailscale.state_dir":                true,
 		"tailscale.state_dir_env":            true,
 		"tailscale.default_tags":             true,
+		"tailscale.control_url":              true,
 	}
+}
+
+// TestDockerControlURLParsing tests that control_url is properly parsed from Docker labels
+func TestDockerControlURLParsing(t *testing.T) {
+	provider := &Provider{
+		labelPrefix: "tsbridge",
+	}
+
+	container := &container.Summary{
+		Names: []string{"/tsbridge"},
+		Labels: map[string]string{
+			"tsbridge.tailscale.oauth_client_id":     "test-client-id",
+			"tsbridge.tailscale.oauth_client_secret": "test-secret",
+			"tsbridge.tailscale.control_url":         "https://headscale.example.com",
+		},
+	}
+
+	cfg := &config.Config{}
+	err := provider.parseGlobalConfig(container, cfg)
+	require.NoError(t, err)
+
+	assert.Equal(t, "https://headscale.example.com", cfg.Tailscale.ControlURL)
+	assert.Equal(t, "test-client-id", cfg.Tailscale.OAuthClientID)
 }

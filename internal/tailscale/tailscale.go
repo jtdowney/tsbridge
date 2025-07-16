@@ -84,25 +84,55 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 		"tags", svc.Tags,
 	)
 
-	// Create a new server for this service
 	serviceServer := s.serverFactory()
-
-	// Configure the service server
 	serviceServer.SetHostname(svc.Name)
 	serviceServer.SetEphemeral(svc.Ephemeral)
 
-	// Priority for state directory resolution:
-	// 1. Explicit config.StateDir
-	// 2. Config.StateDirEnv (resolved during config loading)
-	// 3. STATE_DIRECTORY env var (systemd standard)
-	// 4. TSBRIDGE_STATE_DIR env var (tsbridge specific)
-	// 5. XDG data directory as default
+	if s.config.ControlURL != "" {
+		serviceServer.SetControlURL(s.config.ControlURL)
+		slog.Debug("control URL set for service", "service", svc.Name, "control_url", s.config.ControlURL)
+	}
+
+	// Resolve base state directory and set service-specific path
+	baseStateDir, stateDirSource := s.resolveBaseStateDir()
+	serviceStateDir := filepath.Join(baseStateDir, svc.Name)
+	serviceServer.SetDir(serviceStateDir)
+	slog.Debug("state directory resolved for service",
+		"service", svc.Name,
+		"state_dir", serviceStateDir,
+		"source", stateDirSource,
+	)
+
+	// Prepare auth key based on service type and existing state
+	if err := s.prepareServiceAuth(serviceServer, svc, baseStateDir); err != nil {
+		return nil, err
+	}
+
+	// Store the service server for later operations
+	s.serviceServers[svc.Name] = serviceServer
+
+	// Start the service server before listening
+	if err := s.startServiceServer(serviceServer, svc.Name); err != nil {
+		return nil, err
+	}
+
+	// Create the appropriate listener (funnel, TLS, or plain)
+	listener, err := s.createServiceListener(serviceServer, svc, tlsMode, funnelEnabled, listenStart)
+	if err != nil {
+		slog.Debug("listener creation failed", "service", svc.Name, "error", err)
+		return nil, err
+	}
+	slog.Debug("listener created successfully", "service", svc.Name, "total_duration", time.Since(listenStart))
+
+	return listener, nil
+}
+
+// resolveBaseStateDir determines the base state directory and its source.
+func (s *Server) resolveBaseStateDir() (string, string) {
 	stateDir := s.config.StateDir
 	stateDirSource := "config"
 	if stateDir == "" {
-		// Check STATE_DIRECTORY (systemd standard)
 		stateDir = os.Getenv("STATE_DIRECTORY")
-		// If STATE_DIRECTORY contains multiple paths (colon-separated), use the first one
 		if stateDir != "" && strings.Contains(stateDir, ":") {
 			stateDir = strings.Split(stateDir, ":")[0]
 		}
@@ -111,43 +141,29 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 		}
 	}
 	if stateDir == "" {
-		// Check TSBRIDGE_STATE_DIR (tsbridge specific)
 		stateDir = os.Getenv("TSBRIDGE_STATE_DIR")
 		if stateDir != "" {
 			stateDirSource = "TSBRIDGE_STATE_DIR env"
 		}
 	}
 	if stateDir == "" {
-		// Use XDG data directory as default
 		stateDir = getDefaultStateDir()
 		stateDirSource = "XDG default"
 	}
-	// Each service needs its own unique state directory to avoid conflicts
-	// when multiple tsnet.Server instances write to the same directory
-	serviceStateDir := filepath.Join(stateDir, svc.Name)
-	serviceServer.SetDir(serviceStateDir)
+	return stateDir, stateDirSource
+}
 
-	slog.Debug("state directory resolved for service",
-		"service", svc.Name,
-		"state_dir", serviceStateDir,
-		"source", stateDirSource,
-	)
-
-	// For ephemeral services, always generate a new auth key
-	// For non-ephemeral services, only generate if no state exists
+// prepareServiceAuth handles auth key generation/resolution based on service type and existing state.
+func (s *Server) prepareServiceAuth(serviceServer tsnetpkg.TSNetServer, svc config.Service, baseStateDir string) error {
 	var needsAuthKey bool
 	var authKeyReason string
 
 	if svc.Ephemeral {
 		needsAuthKey = true
 		authKeyReason = "ephemeral service"
-		slog.Debug("skipping state check for ephemeral service",
-			"service", svc.Name,
-		)
+		slog.Debug("skipping state check for ephemeral service", "service", svc.Name)
 	} else {
-		// Check if this service already has state
-		// If state exists, tsnet will use it and doesn't need an auth key
-		hasState := hasExistingState(stateDir, svc.Name)
+		hasState := hasExistingState(baseStateDir, svc.Name)
 		needsAuthKey = !hasState
 		if needsAuthKey {
 			authKeyReason = "no existing state found"
@@ -155,152 +171,148 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 		slog.Debug("checking for existing state",
 			"service", svc.Name,
 			"has_existing_state", hasState,
-			"state_dir", stateDir,
+			"state_dir", baseStateDir,
 		)
 	}
 
 	if needsAuthKey {
-		slog.Debug("generating auth key",
-			"service", svc.Name,
-			"reason", authKeyReason,
-		)
-		// Generate or resolve auth key with OAuth support
-		cfg := config.Config{
-			Tailscale: s.config,
-		}
+		slog.Debug("generating auth key", "service", svc.Name, "reason", authKeyReason)
+		cfg := config.Config{Tailscale: s.config}
 		authKey, err := generateOrResolveAuthKey(cfg, svc)
 		if err != nil {
-			return nil, tserrors.WrapConfig(err, fmt.Sprintf("resolving auth key for service %q", svc.Name))
+			return tserrors.WrapConfig(err, fmt.Sprintf("resolving auth key for service %q", svc.Name))
 		}
 		serviceServer.SetAuthKey(authKey)
-		slog.Debug("auth key set for service",
-			"service", svc.Name,
-		)
+		slog.Debug("auth key set for service", "service", svc.Name)
 	} else {
-		slog.Debug("using existing state, no auth key needed",
-			"service", svc.Name,
-		)
+		slog.Debug("using existing state, no auth key needed", "service", svc.Name)
 	}
-	// For non-ephemeral services with state, we don't set an auth key - tsnet will use the stored state
+	return nil
+}
 
-	// Store the service server for later operations
-	s.serviceServers[svc.Name] = serviceServer
-
-	// Start the service server before listening
+// startServiceServer starts the tsnet server for a service.
+func (s *Server) startServiceServer(serviceServer tsnetpkg.TSNetServer, serviceName string) error {
 	startTime := time.Now()
-	slog.Debug("starting tsnet server",
-		"service", svc.Name,
-	)
+	slog.Debug("starting tsnet server", "service", serviceName)
 	if err := serviceServer.Start(); err != nil {
 		slog.Debug("tsnet server start failed",
-			"service", svc.Name,
+			"service", serviceName,
 			"duration", time.Since(startTime),
 			"error", err,
 		)
-		return nil, tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", svc.Name))
+		return tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", serviceName))
 	}
 	slog.Debug("tsnet server started successfully",
-		"service", svc.Name,
+		"service", serviceName,
 		"duration", time.Since(startTime),
 	)
+	return nil
+}
 
-	// Choose the appropriate listener based on TLS mode and funnel settings
-	var listener net.Listener
-	var err error
-
+// createServiceListener creates the appropriate net.Listener based on TLS mode and funnel settings.
+func (s *Server) createServiceListener(serviceServer tsnetpkg.TSNetServer, svc config.Service, tlsMode string, funnelEnabled bool, listenStart time.Time) (net.Listener, error) {
 	if funnelEnabled {
-		// Funnel requires HTTPS on port 443
-		listenerStart := time.Now()
-		slog.Debug("creating funnel listener",
-			"service", svc.Name,
-			"address", ":443",
-		)
-		listener, err = serviceServer.ListenFunnel("tcp", ":443")
-		if err != nil {
-			slog.Debug("funnel listener creation failed",
-				"service", svc.Name,
-				"duration", time.Since(listenerStart),
-				"error", err,
-			)
-			return nil, err
-		}
-		slog.Debug("funnel listener created successfully",
-			"service", svc.Name,
-			"duration", time.Since(listenerStart),
-			"total_duration", time.Since(listenStart),
-		)
-		// Note: Funnel already handles certificates, no priming needed
-		return listener, nil
+		return s.createFunnelListener(serviceServer, svc.Name, listenStart)
 	}
+
+	listenPort := s.determineListenPort(svc, tlsMode)
 
 	switch tlsMode {
 	case "auto":
-		// Use ListenTLS for automatic TLS certificate provisioning
-		listenerStart := time.Now()
-		slog.Debug("creating TLS listener",
-			"service", svc.Name,
-			"address", ":443",
-		)
-		listener, err = serviceServer.ListenTLS("tcp", ":443")
-		if err != nil {
-			slog.Debug("TLS listener creation failed",
-				"service", svc.Name,
-				"duration", time.Since(listenerStart),
-				"error", err,
-			)
-			return nil, err
-		}
-		slog.Debug("TLS listener created successfully",
-			"service", svc.Name,
-			"duration", time.Since(listenerStart),
-			"total_duration", time.Since(listenStart),
-		)
-
-		// Prime the TLS certificate asynchronously with timeout and logging
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), constants.CertificatePrimingTimeout)
-			defer cancel()
-
-			start := time.Now()
-			if err := s.primeCertificate(ctx, serviceServer, svc.Name); err != nil {
-				slog.Warn("certificate priming failed",
-					"service", svc.Name,
-					"error", err,
-					"duration", time.Since(start))
-			} else {
-				slog.Debug("certificate primed successfully",
-					"service", svc.Name,
-					"duration", time.Since(start))
-			}
-		}()
-
+		return s.createTLSListener(serviceServer, svc.Name, listenPort, listenStart)
 	case "off":
-		// Use plain Listen without TLS (traffic still encrypted via WireGuard)
-		listenerStart := time.Now()
-		slog.Debug("creating plain listener",
-			"service", svc.Name,
-			"address", ":80",
-		)
-		listener, err = serviceServer.Listen("tcp", ":80")
-		if err != nil {
-			slog.Debug("plain listener creation failed",
-				"service", svc.Name,
-				"duration", time.Since(listenerStart),
-				"error", err,
-			)
-			return nil, err
-		}
-		slog.Debug("plain listener created successfully",
-			"service", svc.Name,
-			"duration", time.Since(listenerStart),
-			"total_duration", time.Since(listenStart),
-		)
-
+		return s.createPlainListener(serviceServer, svc.Name, listenPort, listenStart)
 	default:
 		return nil, tserrors.NewValidationError(fmt.Sprintf("invalid TLS mode: %q", tlsMode))
 	}
+}
+
+// createFunnelListener creates a funnel listener.
+func (s *Server) createFunnelListener(serviceServer tsnetpkg.TSNetServer, serviceName string, listenStart time.Time) (net.Listener, error) {
+	listenerStart := time.Now()
+	slog.Debug("creating funnel listener", "service", serviceName, "address", ":443")
+	listener, err := serviceServer.ListenFunnel("tcp", ":443")
+	if err != nil {
+		slog.Debug("funnel listener creation failed",
+			"service", serviceName,
+			"duration", time.Since(listenerStart),
+			"error", err,
+		)
+		return nil, err
+	}
+	slog.Debug("funnel listener created successfully",
+		"service", serviceName,
+		"duration", time.Since(listenerStart),
+		"total_duration", time.Since(listenStart),
+	)
+	return listener, nil
+}
+
+// createTLSListener creates a TLS listener with certificate priming.
+func (s *Server) createTLSListener(serviceServer tsnetpkg.TSNetServer, serviceName, listenPort string, listenStart time.Time) (net.Listener, error) {
+	listenerStart := time.Now()
+	slog.Debug("creating TLS listener", "service", serviceName, "address", listenPort)
+	listener, err := serviceServer.ListenTLS("tcp", listenPort)
+	if err != nil {
+		slog.Debug("TLS listener creation failed",
+			"service", serviceName,
+			"duration", time.Since(listenerStart),
+			"error", err,
+		)
+		return nil, err
+	}
+	slog.Debug("TLS listener created successfully",
+		"service", serviceName,
+		"duration", time.Since(listenerStart),
+		"total_duration", time.Since(listenStart),
+	)
+
+	// Prime the TLS certificate asynchronously
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), constants.CertificatePrimingTimeout)
+		defer cancel()
+		start := time.Now()
+		if err := s.primeCertificate(ctx, serviceServer, serviceName); err != nil {
+			slog.Warn("certificate priming failed", "service", serviceName, "error", err, "duration", time.Since(start))
+		} else {
+			slog.Debug("certificate primed successfully", "service", serviceName, "duration", time.Since(start))
+		}
+	}()
 
 	return listener, nil
+}
+
+// createPlainListener creates a plain (non-TLS) listener.
+func (s *Server) createPlainListener(serviceServer tsnetpkg.TSNetServer, serviceName, listenPort string, listenStart time.Time) (net.Listener, error) {
+	listenerStart := time.Now()
+	slog.Debug("creating plain listener", "service", serviceName, "address", listenPort)
+	listener, err := serviceServer.Listen("tcp", listenPort)
+	if err != nil {
+		slog.Debug("plain listener creation failed",
+			"service", serviceName,
+			"duration", time.Since(listenerStart),
+			"error", err,
+		)
+		return nil, err
+	}
+	slog.Debug("plain listener created successfully",
+		"service", serviceName,
+		"duration", time.Since(listenerStart),
+		"total_duration", time.Since(listenStart),
+	)
+	return listener, nil
+}
+
+// determineListenPort returns the port to listen on based on service config and TLS mode
+func (s *Server) determineListenPort(svc config.Service, tlsMode string) string {
+	if svc.ListenPort != "" {
+		return ":" + svc.ListenPort
+	}
+	// Default ports based on TLS mode
+	if tlsMode == "off" {
+		return ":80"
+	}
+	return ":443"
 }
 
 // GetServiceServer returns the TSNetServer for a specific service

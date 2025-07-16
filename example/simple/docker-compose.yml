@@ -2,7 +2,7 @@ services:
   # Backend API service
   api-backend:
     build:
-      context: backend
+      context: ../backend
       dockerfile: Dockerfile
     environment:
       - SERVICE_NAME=api
@@ -15,7 +15,7 @@ services:
   # Backend Web service  
   web-backend:
     build:
-      context: backend
+      context: ../backend
       dockerfile: Dockerfile
     environment:
       - SERVICE_NAME=web

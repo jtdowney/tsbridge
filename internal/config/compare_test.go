@@ -55,6 +55,34 @@ func TestServiceConfigEqual(t *testing.T) {
 			expected: false,
 		},
 		{
+			name: "different listen ports",
+			a: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				ListenPort:  "443",
+			},
+			b: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				ListenPort:  "8443",
+			},
+			expected: false,
+		},
+		{
+			name: "same listen ports",
+			a: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				ListenPort:  "443",
+			},
+			b: Service{
+				Name:        "test-service",
+				BackendAddr: "http://localhost:8080",
+				ListenPort:  "443",
+			},
+			expected: true,
+		},
+		{
 			name: "different TLS modes",
 			a: Service{
 				Name:        "test-service",
@@ -377,6 +405,7 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 	comparedFields := map[string]bool{
 		"Name":                  true,
 		"BackendAddr":           true,
+		"ListenPort":            true,
 		"WhoisEnabled":          true,
 		"WhoisTimeout":          true,
 		"TLSMode":               true,

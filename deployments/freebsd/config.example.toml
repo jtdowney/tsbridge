@@ -21,6 +21,10 @@ state_dir = "/var/db/tsbridge"
 # Default tags for all services (required when using OAuth)
 default_tags = ["tag:server", "tag:tsbridge"]
 
+# Control server URL (optional - defaults to Tailscale's control servers)
+# Uncomment to use a custom control server like Headscale
+# control_url = "https://headscale.example.com"
+
 # Global defaults for all services (optional)
 [global]
 # Timeouts

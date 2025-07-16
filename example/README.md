@@ -1,115 +1,116 @@
-# tsbridge Example
+# tsbridge Examples
 
-This example demonstrates running tsbridge with multiple backend services using Docker Compose.
+This directory contains various example configurations for tsbridge, organized by complexity and use case.
 
-## Prerequisites
+## Example Configurations
 
-- Docker and Docker Compose installed
-- Tailscale OAuth credentials (get them from [Tailscale Admin Console](https://login.tailscale.com/admin/settings/oauth))
+### 1. Simple Example (`simple/`)
+Basic tsbridge setup with OAuth authentication and simple backend services.
 
-## Quick Start
+- Uses traditional TOML configuration file
+- Demonstrates basic proxy setup with two backend services
+- OAuth authentication with Tailscale
 
-1. Set your OAuth credentials:
-
+**Quick Start:**
 ```bash
+cd simple
 export TS_OAUTH_CLIENT_ID="your-client-id"
 export TS_OAUTH_CLIENT_SECRET="your-client-secret"
-```
-
-2. Start the services:
-
-```bash
 docker-compose up --build
 ```
 
-3. Your services will be available at:
-   - `https://demo-api.<your-tailnet>.ts.net`
-   - `https://demo-web.<your-tailnet>.ts.net`
-   - `https://demo-slow.<your-tailnet>.ts.net`
+### 2. Docker Labels Example (`docker-labels/`)
+Dynamic service discovery using Docker container labels.
 
-4. Check the metrics endpoint:
+- No configuration file needed - everything configured via labels
+- Automatic service discovery when containers start/stop
+- Perfect for dynamic environments
 
+**Quick Start:**
 ```bash
-curl http://localhost:9090/metrics
+cd docker-labels
+export TS_OAUTH_CLIENT_ID="your-client-id"
+export TS_OAUTH_CLIENT_SECRET="your-client-secret"
+docker-compose up --build
 ```
 
-## What's Included
+### 3. Headscale Example (`headscale/`)
+Self-hosted Tailscale control server setup using Headscale with built-in testing client.
 
-- **Two backend services**: Simple HTTP servers that echo requests and show Tailscale headers
-- **tsbridge proxy**: Configured with three services demonstrating different configurations
-- **Metrics**: Prometheus metrics exposed on port 9090
-- **Access logging**: Enabled to show request logs
+- Complete Headscale + tsbridge setup
+- Uses auth keys instead of OAuth  
+- Includes Docker label configuration
+- **Built-in Linux client with Tailscale for testing**
+- Perfect for on-premise deployments
 
-## Testing the Services
-
-Once running, you can test the services from another machine on your Tailnet:
-
+**Quick Start:**
 ```bash
-# Test the API service
-curl https://demo-api.<your-tailnet>.ts.net
+cd headscale
+docker-compose up -d
 
-# Test the Web service
-curl https://demo-web.<your-tailnet>.ts.net
+# Create user and auth key
+docker exec example-headscale-1 headscale users create testuser
+docker exec example-headscale-1 headscale --user 1 preauthkeys create --reusable --expiration 90d
 
-# Test with headers
-curl -v https://demo-api.<your-tailnet>.ts.net
+# Set auth key and restart services
+export TS_AUTHKEY="<auth-key-from-above>"
+docker-compose up -d tsbridge tailscale-client
+
+# Test the setup
+./test-client.sh
 ```
 
-The response will include any Tailscale identity headers that were injected:
-
-```json
-{
-  "service": "api",
-  "timestamp": "2024-01-15T10:30:45Z",
-  "message": "Hello from api backend!",
-  "headers": {
-    "X-Tailscale-Login": ["user@example.com"],
-    "X-Tailscale-Name": ["User Name"],
-    "X-Tailscale-User": ["user@example.com"]
-  }
-}
+**Testing the services:**
+```bash
+# Test from the built-in Tailscale client
+docker exec headscale-tailscale-client-1 curl http://demo-api/
+docker exec headscale-tailscale-client-1 curl http://demo-web/
 ```
 
-## Configuration Details
+## Shared Components
 
-The `tsbridge.toml` file demonstrates:
+### Backend Service (`backend/`)
+A simple Go HTTP server used by all examples that:
+- Echoes request information
+- Shows Tailscale identity headers
+- Demonstrates whois functionality
+- Provides health check endpoints
 
-- OAuth credential configuration via environment variables
-- Global timeout settings
-- Multiple service configurations
-- Per-service timeout overrides
-- Whois header injection (enabled/disabled per service)
-- Metrics and access logging
+## Prerequisites
 
-## Viewing Logs
+All examples require:
+- Docker and Docker Compose
+- Either Tailscale OAuth credentials OR Headscale setup
 
-To see tsbridge logs with debug information:
+## Getting OAuth Credentials
+
+For the simple and docker-labels examples, get OAuth credentials from:
+https://login.tailscale.com/admin/settings/oauth
+
+## Common Commands
 
 ```bash
+# View logs
 docker-compose logs -f tsbridge
-```
 
-To see backend service logs:
+# Check metrics
+curl http://localhost:9090/metrics  # or :9091 for headscale example
 
-```bash
-docker-compose logs -f api-backend web-backend
-```
-
-## Cleanup
-
-To stop and remove all containers:
-
-```bash
+# Clean up
 docker-compose down -v
 ```
 
-## Customization
+## Which Example Should I Use?
 
-You can modify the example to:
+- **Simple**: Best for getting started, static configurations
+- **Docker Labels**: Best for dynamic environments, microservices
+- **Headscale**: Best for self-hosted/on-premise deployments
 
-- Add more backend services
-- Test Unix socket connections
-- Experiment with different timeout configurations
-- Add authentication or other middleware
+## Testing Script
 
-Simply edit `tsbridge.toml` and restart the services.
+The `test.sh` script can be used to validate any of the examples:
+
+```bash
+cd simple  # or docker-labels, or headscale
+../test.sh
+```

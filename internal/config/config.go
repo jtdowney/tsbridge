@@ -42,6 +42,7 @@ type Tailscale struct {
 	StateDir              string         `mapstructure:"state_dir"`                // Directory for Tailscale state
 	StateDirEnv           string         `mapstructure:"state_dir_env"`            // Env var containing state directory
 	DefaultTags           []string       `mapstructure:"default_tags"`             // Default tags for services
+	ControlURL            string         `mapstructure:"control_url"`              // Control server URL (e.g., for Headscale)
 }
 
 // Global contains global default settings
@@ -69,6 +70,7 @@ type Global struct {
 type Service struct {
 	Name         string         `mapstructure:"name"`          // Service name (Tailscale hostname)
 	BackendAddr  string         `mapstructure:"backend_addr"`  // Backend server address
+	ListenPort   string         `mapstructure:"listen_port"`   // Port to listen on (default: 443 for TLS, 80 for non-TLS)
 	WhoisEnabled *bool          `mapstructure:"whois_enabled"` // Enable whois lookups (default: true)
 	WhoisTimeout *time.Duration `mapstructure:"whois_timeout"` // Max time for whois lookup
 	TLSMode      string         `mapstructure:"tls_mode"`      // "auto" (default), "off"
@@ -858,6 +860,9 @@ func (t Tailscale) String() string {
 
 	// Default Tags (not sensitive)
 	b.WriteString(fmt.Sprintf("  DefaultTags: %v\n", t.DefaultTags))
+
+	// Control URL (not sensitive)
+	b.WriteString(fmt.Sprintf("  ControlURL: %s\n", t.ControlURL))
 
 	return b.String()
 }

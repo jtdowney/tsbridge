@@ -35,7 +35,7 @@ services:
   # Backend API service with tsbridge labels
   api-backend:
     build:
-      context: backend
+      context: ../backend
       dockerfile: Dockerfile
     networks:
       - tsbridge-demo
@@ -58,7 +58,7 @@ services:
   # Backend Web service with tsbridge labels
   web-backend:
     build:
-      context: backend
+      context: ../backend
       dockerfile: Dockerfile
     networks:
       - tsbridge-demo

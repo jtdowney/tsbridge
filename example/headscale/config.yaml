@@ -1,0 +1,68 @@
+# Headscale configuration for testing tsbridge
+server_url: http://localhost:8080
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 0.0.0.0:9090
+
+# Private key file (will be generated if missing)
+private_key_path: /var/lib/headscale/private.key
+
+# Noise private key for Tailscale v2 protocol (will be generated if missing)
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+# Database
+database:
+  type: sqlite3
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+
+# DERP (relay) configuration
+derp:
+  server:
+    enabled: false
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+  auto_update_enabled: true
+  update_frequency: 24h
+
+# Disable OIDC for simplicity in testing
+oidc:
+  issuer: ""
+  client_id: ""
+  client_secret: ""
+
+# IP prefixes to allocate to nodes
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+
+# Node expiry
+node_update_check_interval: 10s
+ephemeral_node_inactivity_timeout: 30m
+
+# DNS configuration
+dns:
+  override_local_dns: true
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 8.8.8.8
+  magic_dns: true
+  base_domain: headscale.local
+  search_domains: []
+
+# Logging
+log:
+  level: info
+  format: text
+
+# ACL policy file (optional)
+# acl_policy_path: /etc/headscale/acl.yaml
+
+# Unix socket for CLI access
+unix_socket: /var/lib/headscale/headscale.sock
+unix_socket_permission: "0770"
+
+# gRPC API
+grpc_listen_addr: 0.0.0.0:50443
+grpc_allow_insecure: true

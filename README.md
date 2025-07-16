@@ -106,6 +106,7 @@ tsbridge -config tsbridge.toml -validate
 ```
 
 This will:
+
 - Check TOML syntax
 - Validate all required fields
 - Verify backend addresses
@@ -149,6 +150,47 @@ flush_interval = "-1ms"   # Real-time event delivery
 ```
 
 For detailed streaming configuration and troubleshooting, see [docs/configuration.md#streaming-services-configuration](docs/configuration.md#streaming-services-configuration).
+
+## Using with Headscale
+
+tsbridge can be used with [Headscale](https://headscale.net/), an open-source implementation of the Tailscale control server. This allows you to run your own private Tailnet infrastructure.
+
+### Configuration
+
+To use tsbridge with Headscale, you must use auth keys instead of OAuth credentials and configure each service with `tls_mode = "off"`:
+
+```toml
+[tailscale]
+auth_key_env = "TS_AUTH_KEY"
+state_dir = "/var/lib/tsbridge"
+control_url = "https://headscale.example.com"
+
+[[services]]
+name = "api"
+backend_addr = "127.0.0.1:8080"
+tls_mode = "off"
+
+[[services]]
+name = "web"
+backend_addr = "unix:///var/run/web.sock"
+tls_mode = "off"
+```
+
+Generate an auth key in Headscale:
+
+```bash
+headscale preauthkeys create --user [uid] --expiration 24h
+```
+
+### Important Limitations
+
+When using Headscale, there are currently two important limitations:
+
+1. **Auth Keys Required**: Headscale does not support OAuth authentication, so you must use auth keys instead of OAuth client credentials.
+
+2. **TLS Mode Off Required**: Each service must be configured with `tls_mode = "off"` because Headscale does not yet support automatic TLS certificate provisioning for tsnet applications. This limitation will be resolved if Headscale implements support for automatic TLS certificates. You can track progress on this feature in [Headscale issue #2137](https://github.com/juanfont/headscale/issues/2137).
+
+See the [example/headscale/](example/headscale/) directory for a complete Headscale setup example.
 
 ## Architecture
 
@@ -222,6 +264,10 @@ auth_key_file = "/path/to/authkey"
 # State directory for TSNet data
 state_dir = "/var/lib/tsbridge"
 state_dir_env = "TSBRIDGE_STATE_DIR"
+
+# Control server URL (optional - defaults to Tailscale's control servers)
+# Use this to connect to Headscale or other custom control servers
+control_url = "https://headscale.example.com"
 ```
 
 ### Global Defaults

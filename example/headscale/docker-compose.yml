@@ -1,0 +1,78 @@
+services:
+  # Headscale control server
+  headscale:
+    image: headscale/headscale:latest
+    volumes:
+      - ./config.yaml:/etc/headscale/config.yaml:ro
+      - headscale-data:/var/lib/headscale
+    ports:
+      - "8080:8080" # API/Web UI
+      - "9090:9090" # Metrics
+    command: serve
+    networks:
+      - tsbridge-demo
+
+  # Backend API service
+  api-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      - SERVICE_NAME=api
+      - PORT=8082
+    ports:
+      - "8082:8082"
+    networks:
+      - tsbridge-demo
+    labels:
+      - "tsbridge.enabled=true"
+      - "tsbridge.service.name=demo-api"
+      - "tsbridge.service.port=8082"
+      - "tsbridge.service.tls_mode=off"
+      - "tsbridge.service.whois_enabled=true"
+
+  # Backend Web service
+  web-backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    environment:
+      - SERVICE_NAME=web
+      - PORT=8083
+    ports:
+      - "8083:8083"
+    networks:
+      - tsbridge-demo
+    labels:
+      - "tsbridge.enabled=true"
+      - "tsbridge.service.name=demo-web"
+      - "tsbridge.service.port=8083"
+      - "tsbridge.service.tls_mode=off"
+      - "tsbridge.service.whois_enabled=true"
+
+  # tsbridge proxy with Headscale
+  tsbridge:
+    image: ghcr.io/jtdowney/tsbridge:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - tsbridge-state:/var/lib/tsbridge
+    environment:
+      # When using Headscale, we'll use auth keys instead of OAuth
+      - TS_AUTHKEY=${TS_AUTHKEY}
+    command: ["--provider", "docker", "--verbose"]
+    labels:
+      # Tailscale configuration
+      - "tsbridge.tailscale.control_url=http://headscale:8080"
+      - "tsbridge.tailscale.auth_key_env=TS_AUTHKEY"
+      - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+    depends_on:
+      - headscale
+    networks:
+      - tsbridge-demo
+
+volumes:
+  tsbridge-state:
+  headscale-data:
+
+networks:
+  tsbridge-demo:

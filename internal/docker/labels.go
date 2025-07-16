@@ -210,6 +210,7 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 		StateDir:              parser.getString("tailscale.state_dir"),
 		StateDirEnv:           parser.getString("tailscale.state_dir_env"),
 		DefaultTags:           parser.getStringSlice("tailscale.default_tags", ","),
+		ControlURL:            parser.getString("tailscale.control_url"),
 	}
 
 	// Parse global configuration
@@ -294,6 +295,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.AccessLog = parser.getBool("service.access_log")
 	svc.FunnelEnabled = parser.getBool("service.funnel_enabled")
 	svc.TLSMode = parser.getString("service.tls_mode")
+	svc.ListenPort = parser.getString("service.listen_port")
 	svc.WhoisTimeout = parser.getDuration("service.whois_timeout")
 	svc.ReadHeaderTimeout = parser.getDuration("service.read_header_timeout")
 	svc.WriteTimeout = parser.getDuration("service.write_timeout")

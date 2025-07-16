@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -1320,6 +1321,84 @@ func TestPrimeCertificateTimeout(t *testing.T) {
 	}
 }
 
+// TestListenWithControlURL tests that control URL is set on the TSNet server
+func TestListenWithControlURL(t *testing.T) {
+	// Track whether SetControlURL was called with the expected value
+	controlURLSet := false
+	expectedControlURL := "https://headscale.example.com"
+
+	// Create factory that verifies control URL is set
+	factory := func() tsnet.TSNetServer {
+		return &mockTSNetServerWithControlURL{
+			MockTSNetServer: tsnet.NewMockTSNetServer(),
+			onSetControlURL: func(url string) {
+				if url == expectedControlURL {
+					controlURLSet = true
+				}
+			},
+		}
+	}
+
+	// Create state directory with existing state to avoid auth key generation
+	stateDir := t.TempDir()
+	serviceStateDir := filepath.Join(stateDir, "test-service")
+	require.NoError(t, os.MkdirAll(serviceStateDir, 0755))
+	// Create a dummy state file
+	stateFile := filepath.Join(serviceStateDir, "tailscaled.state")
+	require.NoError(t, os.WriteFile(stateFile, []byte("dummy state"), 0600))
+
+	cfg := config.Tailscale{
+		OAuthClientID:     "test-client-id",
+		OAuthClientSecret: config.RedactedString("test-client-secret"),
+		ControlURL:        expectedControlURL,
+		StateDir:          stateDir,
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+	defer server.Close()
+
+	// Create a service
+	svc := config.Service{
+		Name:        "test-service",
+		BackendAddr: "localhost:8080",
+		Tags:        []string{"tag:test"},
+	}
+
+	// Call Listen
+	_, err = server.Listen(svc, "off", false)
+	require.NoError(t, err)
+
+	// Verify control URL was set
+	assert.True(t, controlURLSet, "SetControlURL was not called with the expected URL")
+}
+
+// mockTSNetServerWithControlURL wraps MockTSNetServer to capture SetControlURL calls
+type mockTSNetServerWithControlURL struct {
+	*tsnet.MockTSNetServer
+	onSetControlURL func(string)
+}
+
+func (m *mockTSNetServerWithControlURL) SetControlURL(url string) {
+	if m.onSetControlURL != nil {
+		m.onSetControlURL(url)
+	}
+}
+
+func (m *mockTSNetServerWithControlURL) Start() error {
+	if m.StartFunc != nil {
+		return m.StartFunc()
+	}
+	return nil
+}
+
+func (m *mockTSNetServerWithControlURL) Listen(network, addr string) (net.Listener, error) {
+	if m.ListenFunc != nil {
+		return m.ListenFunc(network, addr)
+	}
+	return &mockListener{addr: addr}, nil
+}
+
 // TestListenWithPrimeCertificate tests that Listen starts certificate priming for TLS mode
 func TestListenWithPrimeCertificate(t *testing.T) {
 	if testing.Short() {
@@ -1497,6 +1576,85 @@ func TestCloseService(t *testing.T) {
 			if tt.setupFunc != nil && tt.name == "close existing service" {
 				assert.Equal(t, initialCount-1, len(server.serviceServers))
 			}
+		})
+	}
+}
+
+func TestDetermineListenPort(t *testing.T) {
+	tests := []struct {
+		name         string
+		service      config.Service
+		tlsMode      string
+		expectedPort string
+	}{
+		{
+			name: "TLS auto with no custom port uses default 443",
+			service: config.Service{
+				Name: "test",
+			},
+			tlsMode:      "auto",
+			expectedPort: ":443",
+		},
+		{
+			name: "TLS off with no custom port uses default 80",
+			service: config.Service{
+				Name: "test",
+			},
+			tlsMode:      "off",
+			expectedPort: ":80",
+		},
+		{
+			name: "TLS auto with custom port",
+			service: config.Service{
+				Name:       "test",
+				ListenPort: "8443",
+			},
+			tlsMode:      "auto",
+			expectedPort: ":8443",
+		},
+		{
+			name: "TLS off with custom port",
+			service: config.Service{
+				Name:       "test",
+				ListenPort: "8080",
+			},
+			tlsMode:      "off",
+			expectedPort: ":8080",
+		},
+		{
+			name: "Empty TLS mode defaults to auto behavior",
+			service: config.Service{
+				Name: "test",
+			},
+			tlsMode:      "",
+			expectedPort: ":443",
+		},
+		{
+			name: "Custom port overrides regardless of TLS mode",
+			service: config.Service{
+				Name:       "test",
+				ListenPort: "9999",
+			},
+			tlsMode:      "",
+			expectedPort: ":9999",
+		},
+	}
+
+	// Create a server instance to test the method
+	factory := func() tsnet.TSNetServer {
+		return &tsnet.MockTSNetServer{}
+	}
+	cfg := config.Tailscale{
+		OAuthClientID:     "test-client",
+		OAuthClientSecret: config.RedactedString("test-secret"),
+	}
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := server.determineListenPort(tt.service, tt.tlsMode)
+			assert.Equal(t, tt.expectedPort, result)
 		})
 	}
 }

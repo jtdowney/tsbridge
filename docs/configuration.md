@@ -178,6 +178,23 @@ Each service gets its own subdirectory under the configured state directory. The
 4. **TSBRIDGE_STATE_DIR**: tsbridge-specific environment variable
 5. **XDG default**: Platform-specific default location
 
+### Control Server URL
+
+By default, tsbridge connects to Tailscale's control servers. You can configure it to use an alternative control server like Headscale:
+
+```toml
+[tailscale]
+control_url = "https://headscale.example.com"
+```
+
+This is useful for:
+- Self-hosted Headscale deployments
+- Testing environments
+- Air-gapped networks
+- Organizations preferring open-source control planes
+
+When using Headscale or other alternative control servers, you typically use auth keys instead of OAuth credentials for authentication.
+
 ```toml
 [tailscale]
 # State directory - choose one method:
@@ -370,6 +387,34 @@ When enabled, the following headers are added to backend requests:
 - `X-Tailscale-Login`: Login name
 - `X-Tailscale-Name`: Display name
 - `X-Tailscale-Profile-Picture`: Profile picture URL
+
+### TLS Mode and Listen Port
+
+Control TLS behavior and custom listening ports:
+
+```toml
+[[services]]
+tls_mode = "auto"    # TLS mode: "auto" (default) or "off"
+listen_port = "443"  # Custom port (default: 443 for TLS, 80 for non-TLS)
+```
+
+**TLS Modes**:
+- `"auto"` (default): Uses Tailscale's automatic TLS certificate provisioning. Listens on port 443 by default.
+- `"off"`: Disables TLS at the application layer (traffic is still encrypted via WireGuard). Listens on port 80 by default.
+
+**Listen Port**:
+- When specified, overrides the default port for the service
+- Useful for running multiple services or avoiding port conflicts
+- Examples:
+  ```toml
+  # HTTPS on custom port
+  tls_mode = "auto"
+  listen_port = "8443"
+  
+  # HTTP on custom port
+  tls_mode = "off"
+  listen_port = "8080"
+  ```
 
 ### Header Manipulation
 
