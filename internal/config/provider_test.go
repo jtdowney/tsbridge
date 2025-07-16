@@ -878,17 +878,17 @@ tags = ["tag:test"]
 
 			// Test validation
 			t.Run("Validation", func(t *testing.T) {
-				// Use missing_oauth fixture
+				// Use a fixture that has an actual validation error
 				fixtures := getTestFixtures()
-				var missingOAuthFixture TestFixture
+				var errorFixture TestFixture
 				for _, f := range fixtures {
-					if f.Name == "missing_oauth" {
-						missingOAuthFixture = f
+					if f.Name == "missing_backend_addr" {
+						errorFixture = f
 						break
 					}
 				}
 
-				content := missingOAuthFixture.Content
+				content := errorFixture.Content
 				provider, cleanup := tt.createProvider(t, content)
 				defer cleanup()
 

@@ -14,7 +14,6 @@ import (
 
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
-	"github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
@@ -480,15 +479,12 @@ func TestOAuthEphemeralFlag(t *testing.T) {
 }
 
 func TestCredentialResolutionErrorTypes(t *testing.T) {
-	t.Run("no auth key or oauth returns config error", func(t *testing.T) {
+	t.Run("no auth key or oauth is now allowed", func(t *testing.T) {
 		cfg := config.Tailscale{}
 		_, err := NewServer(cfg)
 
-		if err == nil {
-			t.Fatal("expected error when no auth key or oauth provided")
-		}
-		if !errors.IsConfig(err) {
-			t.Errorf("expected config error, got %v", err)
+		if err != nil {
+			t.Fatalf("unexpected error when no auth key or oauth provided: %v", err)
 		}
 	})
 }

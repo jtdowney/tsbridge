@@ -56,26 +56,23 @@ func TestNewServer(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "missing auth configuration",
+			name:    "missing auth configuration is now allowed",
 			cfg:     config.Tailscale{},
-			wantErr: true,
-			errMsg:  "either auth key or OAuth credentials",
+			wantErr: false,
 		},
 		{
-			name: "incomplete OAuth - missing secret",
+			name: "incomplete OAuth - missing secret is still allowed",
 			cfg: config.Tailscale{
 				OAuthClientID: "test-client-id",
 			},
-			wantErr: true,
-			errMsg:  "OAuth client secret is required",
+			wantErr: false,
 		},
 		{
-			name: "incomplete OAuth - missing ID",
+			name: "incomplete OAuth - missing ID is still allowed",
 			cfg: config.Tailscale{
 				OAuthClientSecret: config.RedactedString("test-client-secret"),
 			},
-			wantErr: true,
-			errMsg:  "OAuth client ID is required",
+			wantErr: false,
 		},
 	}
 
@@ -440,6 +437,155 @@ func TestListen_EphemeralServices(t *testing.T) {
 
 			// Verify ephemeral flag is always set correctly
 			assert.Equal(t, tt.svc.Ephemeral, mockServer.Ephemeral)
+		})
+	}
+}
+
+func TestPrepareServiceAuth(t *testing.T) {
+	// Create a mock OAuth server for tests that need OAuth
+	oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v2/oauth/token":
+			w.Header().Set("Content-Type", "application/json")
+			token := map[string]interface{}{
+				"access_token": "mock-access-token",
+				"token_type":   "Bearer",
+				"expires_in":   3600,
+			}
+			_ = json.NewEncoder(w).Encode(token)
+		case "/api/v2/tailnet/-/keys":
+			w.Header().Set("Content-Type", "application/json")
+			key := map[string]interface{}{
+				"id":          "key123",
+				"key":         "tskey-test-generated",
+				"created":     "2023-01-01T00:00:00Z",
+				"expires":     "2023-01-02T00:00:00Z",
+				"description": "generated for test-service",
+			}
+			_ = json.NewEncoder(w).Encode(key)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer oauthServer.Close()
+
+	// Set test OAuth endpoint
+	t.Setenv("TSBRIDGE_OAUTH_ENDPOINT", oauthServer.URL)
+
+	tests := []struct {
+		name            string
+		cfg             config.Tailscale
+		svc             config.Service
+		setupStateDir   bool
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			name: "ephemeral service with OAuth credentials",
+			cfg: config.Tailscale{
+				OAuthClientID:     "test-id",
+				OAuthClientSecret: config.RedactedString("test-secret"),
+			},
+			svc: config.Service{
+				Name:      "test-service",
+				Ephemeral: true,
+				Tags:      []string{"tag:test"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "ephemeral service without credentials",
+			cfg:  config.Tailscale{},
+			svc: config.Service{
+				Name:      "test-service",
+				Ephemeral: true,
+			},
+			wantErr:         true,
+			wantErrContains: "needs authentication",
+		},
+		{
+			name: "non-ephemeral service with existing state",
+			cfg:  config.Tailscale{},
+			svc: config.Service{
+				Name: "test-service",
+			},
+			setupStateDir: true,
+			wantErr:       false,
+		},
+		{
+			name: "non-ephemeral service without existing state and without credentials",
+			cfg:  config.Tailscale{},
+			svc: config.Service{
+				Name: "test-service",
+			},
+			setupStateDir:   false,
+			wantErr:         true,
+			wantErrContains: "needs authentication",
+		},
+		{
+			name: "non-ephemeral service without existing state but with OAuth",
+			cfg: config.Tailscale{
+				OAuthClientID:     "test-id",
+				OAuthClientSecret: config.RedactedString("test-secret"),
+			},
+			svc: config.Service{
+				Name: "test-service",
+				Tags: []string{"tag:test"},
+			},
+			setupStateDir: false,
+			wantErr:       false,
+		},
+		{
+			name: "non-ephemeral service without existing state but with authkey",
+			cfg: config.Tailscale{
+				AuthKey: config.RedactedString("tskey-auth-123"),
+			},
+			svc: config.Service{
+				Name: "test-service",
+			},
+			setupStateDir: false,
+			wantErr:       false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a temporary directory for state
+			tmpDir := t.TempDir()
+
+			// If test requires existing state, create it
+			if tt.setupStateDir {
+				serviceStateDir := filepath.Join(tmpDir, tt.svc.Name)
+				err := os.MkdirAll(serviceStateDir, 0700)
+				require.NoError(t, err)
+
+				// Create a mock state file
+				stateFile := filepath.Join(serviceStateDir, "tailscaled.state")
+				err = os.WriteFile(stateFile, []byte("mock state"), 0600)
+				require.NoError(t, err)
+			}
+
+			// Create mock TSNetServer
+			mockServer := tsnet.NewMockTSNetServer()
+
+			// Create server with mock factory
+			factory := func() tsnet.TSNetServer {
+				return mockServer
+			}
+			server, err := NewServerWithFactory(tt.cfg, factory)
+			require.NoError(t, err)
+
+			// Test prepareServiceAuth
+			err = server.prepareServiceAuth(mockServer, tt.svc, tmpDir)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.wantErrContains != "" {
+					assert.Contains(t, err.Error(), tt.wantErrContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
@@ -968,17 +1114,17 @@ func TestResolveAuthConfiguration(t *testing.T) {
 				wantErr: false,
 			},
 			{
-				name:    "no credentials provided",
+				name:    "no credentials provided is now allowed",
 				cfg:     config.Tailscale{},
-				wantErr: true,
+				wantErr: false,
 			},
 			{
-				name: "incomplete OAuth credentials",
+				name: "incomplete OAuth credentials is now allowed",
 				cfg: config.Tailscale{
 					OAuthClientID: "client-id",
 					// Missing secret
 				},
-				wantErr: true,
+				wantErr: false,
 			},
 		}
 

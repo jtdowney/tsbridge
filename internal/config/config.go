@@ -649,8 +649,20 @@ func (c *Config) validateOAuth() error {
 		return nil
 	}
 
-	// Otherwise, we must have valid OAuth credentials
-	return validateOAuthSources(c.Tailscale)
+	// If neither auth key nor OAuth credentials are provided, that's OK
+	// The actual validation will happen when creating services that need auth
+	hasOAuthID := c.Tailscale.OAuthClientID != ""
+	hasOAuthSecret := c.Tailscale.OAuthClientSecret.Value() != ""
+
+	// But if OAuth is partially configured, that's an error
+	if hasOAuthID && !hasOAuthSecret {
+		return errors.NewValidationError("OAuth client secret is required when client ID is provided")
+	}
+	if !hasOAuthID && hasOAuthSecret {
+		return errors.NewValidationError("OAuth client ID is required when client secret is provided")
+	}
+
+	return nil
 }
 
 // validateTimeout validates a timeout duration field.

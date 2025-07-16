@@ -494,7 +494,8 @@ tags = ["tag:test"]
 	t.Run("validation error propagates", func(t *testing.T) {
 		configContent := `
 [tailscale]
-# No auth configuration at all
+# Partial OAuth configuration (only ID, missing secret)
+oauth_client_id = "test-client-id"
 
 [global]
 read_header_timeout = "30s"
@@ -510,8 +511,8 @@ tags = ["tag:test"]
 
 		_, err := Load(tmpFile)
 		assert.Error(t, err)
-		// The error message now mentions OAuth client ID specifically
-		assert.Contains(t, err.Error(), "OAuth client ID must be provided")
+		// The error message should mention missing OAuth client secret
+		assert.Contains(t, err.Error(), "OAuth client secret is required when client ID is provided")
 	})
 
 	t.Run("error from secret file resolution", func(t *testing.T) {
@@ -783,7 +784,7 @@ func TestValidate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "missing OAuth credentials",
+			name: "missing OAuth credentials is now allowed",
 			config: &Config{
 				Tailscale: Tailscale{},
 				Global: Global{
@@ -799,7 +800,49 @@ func TestValidate(t *testing.T) {
 					},
 				},
 			},
-			wantErr: "OAuth client ID",
+			wantErr: "",
+		},
+		{
+			name: "partial OAuth config - missing secret",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID: "test-id",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+					},
+				},
+			},
+			wantErr: "OAuth client secret is required when client ID is provided",
+		},
+		{
+			name: "partial OAuth config - missing ID",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+					},
+				},
+			},
+			wantErr: "OAuth client ID is required when client secret is provided",
 		},
 		{
 			name: "no services",
