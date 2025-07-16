@@ -1231,6 +1231,7 @@ func TestMainDockerProvider(t *testing.T) {
 
 // mockApp is a test implementation that allows simulating errors
 type mockApp struct {
+	mu          sync.Mutex
 	startErr    error
 	shutdownErr error
 	started     bool
@@ -1239,7 +1240,10 @@ type mockApp struct {
 }
 
 func (m *mockApp) Start(ctx context.Context) error {
+	m.mu.Lock()
 	m.started = true
+	m.mu.Unlock()
+
 	if m.startDelay > 0 {
 		time.Sleep(m.startDelay)
 	}
@@ -1247,24 +1251,45 @@ func (m *mockApp) Start(ctx context.Context) error {
 }
 
 func (m *mockApp) Shutdown(ctx context.Context) error {
+	m.mu.Lock()
 	m.shutdown = true
+	m.mu.Unlock()
+
 	return m.shutdownErr
+}
+
+func (m *mockApp) isStarted() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.started
+}
+
+func (m *mockApp) isShutdown() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.shutdown
 }
 
 // trackingMockApp is a test implementation that tracks method calls
 type trackingMockApp struct {
+	mu         sync.Mutex
 	started    bool
 	shutdown   bool
 	onShutdown func() // Called when Shutdown is invoked
 }
 
 func (m *trackingMockApp) Start(ctx context.Context) error {
+	m.mu.Lock()
 	m.started = true
+	m.mu.Unlock()
 	return nil
 }
 
 func (m *trackingMockApp) Shutdown(ctx context.Context) error {
+	m.mu.Lock()
 	m.shutdown = true
+	m.mu.Unlock()
+
 	if m.onShutdown != nil {
 		m.onShutdown()
 	}
@@ -1307,7 +1332,7 @@ backend_addr = "localhost:8080"
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to start application")
 	assert.Contains(t, err.Error(), "start failed")
-	assert.True(t, mockApplication.started)
+	assert.True(t, mockApplication.isStarted())
 }
 
 // TestApplicationStartupDeadlock tests that signals are handled even during blocking startup
@@ -1365,7 +1390,7 @@ backend_addr = "localhost:8080"
 		if err != nil {
 			t.Logf("Got error: %v", err)
 		}
-		assert.True(t, mockApplication.started)
+		assert.True(t, mockApplication.isStarted())
 	case <-time.After(1 * time.Second):
 		// This is the current behavior - deadlock
 		t.Skip("Skipping - demonstrates deadlock issue that needs fixing")
@@ -1490,8 +1515,8 @@ backend_addr = "localhost:8080"
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "shutdown error")
 		assert.Contains(t, err.Error(), "shutdown failed")
-		assert.True(t, mockApplication.started)
-		assert.True(t, mockApplication.shutdown)
+		assert.True(t, mockApplication.isStarted())
+		assert.True(t, mockApplication.isShutdown())
 	case <-time.After(time.Second):
 		t.Fatal("timeout waiting for shutdown")
 	}
