@@ -569,7 +569,7 @@ func TestPrepareServiceAuth(t *testing.T) {
 			mockServer := tsnet.NewMockTSNetServer()
 
 			// Create server with mock factory
-			factory := func() tsnet.TSNetServer {
+			factory := func(serviceName string) tsnet.TSNetServer {
 				return mockServer
 			}
 			server, err := NewServerWithFactory(tt.cfg, factory)
