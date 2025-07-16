@@ -106,11 +106,3 @@ docker-compose down -v
 - **Docker Labels**: Best for dynamic environments, microservices
 - **Headscale**: Best for self-hosted/on-premise deployments
 
-## Testing Script
-
-The `test.sh` script can be used to validate any of the examples:
-
-```bash
-cd simple  # or docker-labels, or headscale
-../test.sh
-```

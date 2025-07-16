@@ -84,7 +84,7 @@ services:
   # Admin service with Tailscale Funnel enabled
   admin-backend:
     build:
-      context: backend
+      context: ../backend
       dockerfile: Dockerfile
     networks:
       - tsbridge-demo
