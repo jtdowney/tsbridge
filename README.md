@@ -23,7 +23,7 @@ go install github.com/jtdowney/tsbridge/cmd/tsbridge@latest
 
 ## Quick start
 
-1. Get OAuth credentials from https://login.tailscale.com/admin/settings/oauth
+1. Get OAuth credentials from <https://login.tailscale.com/admin/settings/oauth>
 2. Create `tsbridge.toml`:
 
 ```toml

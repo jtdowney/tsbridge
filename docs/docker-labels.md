@@ -13,9 +13,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - tsbridge-state:/var/lib/tsbridge
     environment:
+      # Pass the actual OAuth credentials to the container
       - TS_OAUTH_CLIENT_ID=${TS_OAUTH_CLIENT_ID}
       - TS_OAUTH_CLIENT_SECRET=${TS_OAUTH_CLIENT_SECRET}
     labels:
+      # Tell tsbridge which env vars contain the credentials (not redundant - both are needed)
       - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
       - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
       - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"

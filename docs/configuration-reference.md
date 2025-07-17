@@ -21,6 +21,8 @@ Complete reference for all tsbridge configuration options.
 
 You must provide either OAuth credentials OR an auth key.
 
+> **Environment Variable Precedence**: Built-in environment variables (e.g., `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_CLIENT_SECRET`, `TS_AUTHKEY`) take precedence over custom `_env` configuration keys. If both are present, the built-in variable will be used.
+
 #### OAuth Credentials
 
 ```toml
@@ -66,10 +68,10 @@ tsbridge supports Tailscale's tag ownership model for enhanced security. This al
 
 Configure tag ownership in your Tailscale ACL policy:
 
-```json
+```jsonc
 {
   "tagOwners": {
-    "tag:tsbridge": [],
+    "tag:tsbridge": [],        // Parent tag for OAuth client
     "tag:server": ["tag:tsbridge"],
     "tag:proxy": ["tag:tsbridge"],
     "tag:prod": ["tag:tsbridge"],

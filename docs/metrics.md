@@ -169,7 +169,7 @@ sum(rate(tsbridge_requests_total[5m])) by (service)
 sum(rate(tsbridge_requests_total{status!~"2.."}[5m])) by (service)
 
 # P95 latency
-histogram_quantile(0.95, sum(rate(tsbridge_request_duration_seconds_bucket[5m])) by (service, le))
+histogram_quantile(0.95, sum by (service, le)(rate(tsbridge_request_duration_seconds_bucket[5m])))
 
 # Active services
 tsbridge_services_active
