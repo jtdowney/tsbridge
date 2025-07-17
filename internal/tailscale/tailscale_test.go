@@ -1726,7 +1726,7 @@ func TestCloseService(t *testing.T) {
 	}
 }
 
-func TestDetermineListenPort(t *testing.T) {
+func TestDetermineListenAddr(t *testing.T) {
 	tests := []struct {
 		name         string
 		service      config.Service
@@ -1799,7 +1799,7 @@ func TestDetermineListenPort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := server.determineListenPort(tt.service, tt.tlsMode)
+			result := server.determineListenAddr(tt.service, tt.tlsMode)
 			assert.Equal(t, tt.expectedPort, result)
 		})
 	}

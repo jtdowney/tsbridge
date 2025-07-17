@@ -211,13 +211,13 @@ func (s *Server) createServiceListener(serviceServer tsnetpkg.TSNetServer, svc c
 		return s.createFunnelListener(serviceServer, svc.Name, listenStart)
 	}
 
-	listenPort := s.determineListenPort(svc, tlsMode)
+	listenAddr := s.determineListenAddr(svc, tlsMode)
 
 	switch tlsMode {
 	case "auto":
-		return s.createTLSListener(serviceServer, svc.Name, listenPort, listenStart)
+		return s.createTLSListener(serviceServer, svc.Name, listenAddr, listenStart)
 	case "off":
-		return s.createPlainListener(serviceServer, svc.Name, listenPort, listenStart)
+		return s.createPlainListener(serviceServer, svc.Name, listenAddr, listenStart)
 	default:
 		return nil, tserrors.NewValidationError(fmt.Sprintf("invalid TLS mode: %q", tlsMode))
 	}
@@ -245,10 +245,10 @@ func (s *Server) createFunnelListener(serviceServer tsnetpkg.TSNetServer, servic
 }
 
 // createTLSListener creates a TLS listener with certificate priming.
-func (s *Server) createTLSListener(serviceServer tsnetpkg.TSNetServer, serviceName, listenPort string, listenStart time.Time) (net.Listener, error) {
+func (s *Server) createTLSListener(serviceServer tsnetpkg.TSNetServer, serviceName, listenAddr string, listenStart time.Time) (net.Listener, error) {
 	listenerStart := time.Now()
-	slog.Debug("creating TLS listener", "service", serviceName, "address", listenPort)
-	listener, err := serviceServer.ListenTLS("tcp", listenPort)
+	slog.Debug("creating TLS listener", "service", serviceName, "address", listenAddr)
+	listener, err := serviceServer.ListenTLS("tcp", listenAddr)
 	if err != nil {
 		slog.Debug("TLS listener creation failed",
 			"service", serviceName,
@@ -279,10 +279,10 @@ func (s *Server) createTLSListener(serviceServer tsnetpkg.TSNetServer, serviceNa
 }
 
 // createPlainListener creates a plain (non-TLS) listener.
-func (s *Server) createPlainListener(serviceServer tsnetpkg.TSNetServer, serviceName, listenPort string, listenStart time.Time) (net.Listener, error) {
+func (s *Server) createPlainListener(serviceServer tsnetpkg.TSNetServer, serviceName, listenAddr string, listenStart time.Time) (net.Listener, error) {
 	listenerStart := time.Now()
-	slog.Debug("creating plain listener", "service", serviceName, "address", listenPort)
-	listener, err := serviceServer.Listen("tcp", listenPort)
+	slog.Debug("creating plain listener", "service", serviceName, "address", listenAddr)
+	listener, err := serviceServer.Listen("tcp", listenAddr)
 	if err != nil {
 		slog.Debug("plain listener creation failed",
 			"service", serviceName,
@@ -299,8 +299,8 @@ func (s *Server) createPlainListener(serviceServer tsnetpkg.TSNetServer, service
 	return listener, nil
 }
 
-// determineListenPort returns the address to listen on based on service config and TLS mode
-func (s *Server) determineListenPort(svc config.Service, tlsMode string) string {
+// determineListenAddr returns the address to listen on based on service config and TLS mode
+func (s *Server) determineListenAddr(svc config.Service, tlsMode string) string {
 	// Use ListenAddr if set
 	if svc.ListenAddr != "" {
 		return svc.ListenAddr
