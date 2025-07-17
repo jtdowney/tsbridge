@@ -295,7 +295,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.AccessLog = parser.getBool("service.access_log")
 	svc.FunnelEnabled = parser.getBool("service.funnel_enabled")
 	svc.TLSMode = parser.getString("service.tls_mode")
-	svc.ListenPort = parser.getString("service.listen_port")
+	svc.ListenAddr = parser.getString("service.listen_addr")
 	svc.WhoisTimeout = parser.getDuration("service.whois_timeout")
 	svc.ReadHeaderTimeout = parser.getDuration("service.read_header_timeout")
 	svc.WriteTimeout = parser.getDuration("service.write_timeout")

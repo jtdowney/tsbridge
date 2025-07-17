@@ -16,16 +16,22 @@ metrics_addr = ":9090"
 name = "api-https"
 backend_addr = "127.0.0.1:8080"
 tls_mode = "auto"        # HTTPS with automatic certificates
-listen_port = "8443"     # Custom HTTPS port instead of default 443
+listen_addr = ":8443"    # Custom HTTPS port instead of default 443
 
 [[services]]
 name = "api-http"
 backend_addr = "127.0.0.1:8081"
 tls_mode = "off"         # HTTP only (still encrypted via WireGuard)
-listen_port = "8080"     # Custom HTTP port instead of default 80
+listen_addr = ":8080"    # Custom HTTP port instead of default 80
+
+[[services]]
+name = "api-custom-addr"
+backend_addr = "127.0.0.1:8082"
+tls_mode = "auto"        # HTTPS with automatic certificates
+listen_addr = "127.0.0.1:9443"  # Listen on specific address and port
 
 [[services]]
 name = "metrics"
 backend_addr = "127.0.0.1:9100"
 tls_mode = "auto"        # Uses default port 443
-# No listen_port specified, so uses default
+# No listen_addr specified, so uses default ":443"

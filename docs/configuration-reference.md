@@ -211,8 +211,8 @@ backend_addr = "localhost:8080"
 # TLS mode
 tls_mode = "auto"          # Use Tailscale HTTPS (default) - or "off" for HTTP only
 
-# Custom listen port
-listen_port = "8443"       # Custom port (default: 443 for TLS, 80 for non-TLS)
+# Listening configuration
+listen_addr = "0.0.0.0:8443"  # Listen on specific address and port (default: ":443" for TLS, ":80" for non-TLS)
 ```
 
 ### Tailscale Features

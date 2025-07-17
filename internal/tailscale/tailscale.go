@@ -299,11 +299,13 @@ func (s *Server) createPlainListener(serviceServer tsnetpkg.TSNetServer, service
 	return listener, nil
 }
 
-// determineListenPort returns the port to listen on based on service config and TLS mode
+// determineListenPort returns the address to listen on based on service config and TLS mode
 func (s *Server) determineListenPort(svc config.Service, tlsMode string) string {
-	if svc.ListenPort != "" {
-		return ":" + svc.ListenPort
+	// Use ListenAddr if set
+	if svc.ListenAddr != "" {
+		return svc.ListenAddr
 	}
+
 	// Default ports based on TLS mode
 	if tlsMode == "off" {
 		return ":80"

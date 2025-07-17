@@ -1750,24 +1750,6 @@ func TestDetermineListenPort(t *testing.T) {
 			expectedPort: ":80",
 		},
 		{
-			name: "TLS auto with custom port",
-			service: config.Service{
-				Name:       "test",
-				ListenPort: "8443",
-			},
-			tlsMode:      "auto",
-			expectedPort: ":8443",
-		},
-		{
-			name: "TLS off with custom port",
-			service: config.Service{
-				Name:       "test",
-				ListenPort: "8080",
-			},
-			tlsMode:      "off",
-			expectedPort: ":8080",
-		},
-		{
 			name: "Empty TLS mode defaults to auto behavior",
 			service: config.Service{
 				Name: "test",
@@ -1776,13 +1758,31 @@ func TestDetermineListenPort(t *testing.T) {
 			expectedPort: ":443",
 		},
 		{
-			name: "Custom port overrides regardless of TLS mode",
+			name: "ListenAddr with just port",
 			service: config.Service{
 				Name:       "test",
-				ListenPort: "9999",
+				ListenAddr: ":7070",
 			},
-			tlsMode:      "",
-			expectedPort: ":9999",
+			tlsMode:      "auto",
+			expectedPort: ":7070",
+		},
+		{
+			name: "ListenAddr with full address",
+			service: config.Service{
+				Name:       "test",
+				ListenAddr: "0.0.0.0:8888",
+			},
+			tlsMode:      "off",
+			expectedPort: "0.0.0.0:8888",
+		},
+		{
+			name: "ListenAddr with IPv6 address",
+			service: config.Service{
+				Name:       "test",
+				ListenAddr: "[::1]:9090",
+			},
+			tlsMode:      "auto",
+			expectedPort: "[::1]:9090",
 		},
 	}
 

@@ -74,6 +74,7 @@ labels:
   - "tsbridge.service.name=custom-name"      # Default: container name
   - "tsbridge.service.whois_enabled=true"    # Add identity headers
   - "tsbridge.service.tags=tag:api,tag:prod" # Override default tags
+  - "tsbridge.service.listen_addr=0.0.0.0:9090" # Custom address and port
 ```
 
 ## Backend Address Tips
@@ -90,6 +91,20 @@ labels:
 **Why?** In Docker, each container has its own network namespace. `localhost` inside tsbridge doesn't reach your service container.
 
 ## Advanced Features
+
+### Custom Listen Configuration
+
+```yaml
+labels:
+  # Listen on specific address and port
+  - "tsbridge.service.listen_addr=127.0.0.1:9090"
+
+  # Listen on all interfaces with custom port
+  - "tsbridge.service.listen_addr=0.0.0.0:8080"
+  
+  # Listen on port only (all interfaces)
+  - "tsbridge.service.listen_addr=:8443"
+```
 
 ### Streaming/SSE
 

@@ -70,7 +70,7 @@ type Global struct {
 type Service struct {
 	Name         string         `mapstructure:"name"`          // Service name (Tailscale hostname)
 	BackendAddr  string         `mapstructure:"backend_addr"`  // Backend server address
-	ListenPort   string         `mapstructure:"listen_port"`   // Port to listen on (default: 443 for TLS, 80 for non-TLS)
+	ListenAddr   string         `mapstructure:"listen_addr"`   // Address to listen on (default: ":443" for TLS, ":80" for non-TLS)
 	WhoisEnabled *bool          `mapstructure:"whois_enabled"` // Enable whois lookups (default: true)
 	WhoisTimeout *time.Duration `mapstructure:"whois_timeout"` // Max time for whois lookup
 	TLSMode      string         `mapstructure:"tls_mode"`      // "auto" (default), "off"
@@ -700,6 +700,74 @@ func validateTimeoutPositive(name string, d *time.Duration) error {
 	return nil
 }
 
+// validateAddr validates an address in the format "host:port" or ":port"
+func validateAddr(addr string, fieldName string) error {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return errors.WrapValidation(err, fmt.Sprintf("invalid %s %q", fieldName, addr))
+	}
+
+	// Validate port
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return errors.NewValidationError(fmt.Sprintf("invalid port in %s %q", fieldName, addr))
+	}
+	if port < 1 || port > 65535 {
+		return errors.NewValidationError(fmt.Sprintf("port in %s must be between 1 and 65535, got %d", fieldName, port))
+	}
+
+	// If host is specified, validate it
+	if host != "" {
+		if net.ParseIP(host) == nil {
+			// Not an IP, check if it's a valid hostname
+			// Don't fail on lookup errors, just validate format
+			if !isValidHostname(host) {
+				return errors.NewValidationError(fmt.Sprintf("invalid host in %s %q", fieldName, addr))
+			}
+		}
+	}
+
+	return nil
+}
+
+// isValidHostname performs basic hostname validation
+func isValidHostname(host string) bool {
+	if host == "" {
+		return false
+	}
+	// Basic hostname validation - RFC 1123
+	if len(host) > 253 {
+		return false
+	}
+	// Check each label
+	labels := strings.Split(host, ".")
+	for _, label := range labels {
+		if len(label) == 0 || len(label) > 63 {
+			return false
+		}
+		// Label must start with letter or digit
+		if !isAlphaNum(label[0]) {
+			return false
+		}
+		// Label must end with letter or digit
+		if !isAlphaNum(label[len(label)-1]) {
+			return false
+		}
+		// Check all characters
+		for _, ch := range label {
+			if !isAlphaNum(byte(ch)) && ch != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isAlphaNum checks if a byte is alphanumeric
+func isAlphaNum(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+}
+
 func (c *Config) validateGlobal() error {
 	// Validate server timeouts
 	if err := validateTimeout("read_header_timeout", c.Global.ReadHeaderTimeout, false); err != nil {
@@ -787,8 +855,8 @@ func (c *Config) validateService(svc *Service) error {
 		}
 	} else {
 		// TCP address
-		if _, err := net.ResolveTCPAddr("tcp", svc.BackendAddr); err != nil {
-			return errors.WrapValidation(err, fmt.Sprintf("invalid backend address %q", svc.BackendAddr))
+		if err := validateAddr(svc.BackendAddr, "backend address"); err != nil {
+			return err
 		}
 	}
 
@@ -826,6 +894,13 @@ func (c *Config) validateService(svc *Service) error {
 	// Validate flush interval (allows -1ms)
 	if err := validateTimeout("flush_interval", svc.FlushInterval, true); err != nil {
 		return err
+	}
+
+	// Validate ListenAddr if provided
+	if svc.ListenAddr != "" {
+		if err := validateAddr(svc.ListenAddr, "listen_addr"); err != nil {
+			return err
+		}
 	}
 
 	// Validate tags when using OAuth

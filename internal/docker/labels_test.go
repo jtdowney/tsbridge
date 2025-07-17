@@ -697,7 +697,7 @@ func getDockerParsedServiceFields() map[string]bool {
 		"service.remove_downstream":       true,
 		"service.tags":                    true,
 		"service.max_request_body_size":   true,
-		"service.listen_port":             true,
+		"service.listen_addr":             true,
 	}
 }
 
