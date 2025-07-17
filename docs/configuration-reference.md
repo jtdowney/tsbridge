@@ -95,8 +95,6 @@ Configure tag ownership in your Tailscale ACL policy:
 [tailscale]
 oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
 oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
-
-[global]
 # These tags must be owned by tag:tsbridge in your ACL
 default_tags = ["tag:server", "tag:proxy"]
 
@@ -138,15 +136,15 @@ metrics_read_header_timeout = "5s"     # Header read timeout for metrics (defaul
 ### Response Handling
 
 ```toml
-# Flush interval for response buffering
-flush_interval = "0s"      # Default buffering (default)
-flush_interval = "-1ms"    # Immediate flushing (for streaming)
-flush_interval = "100ms"   # Flush every 100ms
+# Flush interval for response buffering - choose one:
+flush_interval = "0s"        # Default buffering (default)
+# flush_interval = "-1ms"    # Immediate flushing (for streaming)
+# flush_interval = "100ms"   # Flush every 100ms
 
-# Request body size limit
+# Request body size limit - choose one:
 max_request_body_size = "52428800"  # In bytes (default: 50MB)
-max_request_body_size = "10MB"      # Human readable
-max_request_body_size = "-1"        # No limit
+# max_request_body_size = "10MB"    # Human readable format
+# max_request_body_size = "-1"      # No limit
 ```
 
 ### Observability
