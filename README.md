@@ -52,19 +52,19 @@ tsbridge will now be available on your tailnet. Thanks to MagicDNS, you can reac
 
 ## Configuration
 
-tsbridge is configured via `tsbridge.toml`. For a full list of options, see [docs/configuration.md](docs/configuration.md).
+tsbridge is configured via `tsbridge.toml`. See [docs/quickstart.md](docs/quickstart.md) for getting started quickly, or [docs/configuration-reference.md](docs/configuration-reference.md) for all options.
 
 Here are a few common settings:
 
 - `whois_enabled`: Set to `true` to add `Tailscale-User-*` identity headers to upstream requests
 - `write_timeout`: Defaults to `30s`. Set to `"0s"` to support long-running connections like Server-Sent Events (SSE)
-- `metrics_addr`: Expose a Prometheus metrics endpoint (e.g., `":9090"`)
+- `metrics_addr`: Expose a Prometheus metrics endpoint (e.g., `":9090"`) - see [docs/metrics.md](docs/metrics.md) for available metrics
 
 ### Security
 
 > **Security Note**: tsbridge is intended for homelabs and development environments. It hasn't been hardened or battle-tested for production workloads. See [THREAT_MODEL.md](THREAT_MODEL.md) for details.
 
-For enhanced security using tag ownership, see [Tag Ownership and OAuth Security](docs/configuration.md#tag-ownership-and-oauth-security).
+For enhanced security using tag ownership, see [Tag Ownership and OAuth Security](docs/configuration-reference.md#tag-ownership-and-oauth-security).
 
 ## Docker
 
