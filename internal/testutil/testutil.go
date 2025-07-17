@@ -65,7 +65,7 @@ func CreateMockTailscaleServer(t *testing.T, cfg config.Tailscale) *tailscale.Se
 		cfg.StateDir = t.TempDir()
 	}
 
-	factory := func() tsnet.TSNetServer {
+	factory := func(serviceName string) tsnet.TSNetServer {
 		return tsnet.NewMockTSNetServer()
 	}
 

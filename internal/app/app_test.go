@@ -439,7 +439,7 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		}
 
 		// Create tailscale server with mock factory
-		factory := func() tsnet.TSNetServer {
+		factory := func(serviceName string) tsnet.TSNetServer {
 			return tsnet.NewMockTSNetServer()
 		}
 		tsServer, err := tailscale.NewServerWithFactory(cfg.Tailscale, factory)
@@ -496,7 +496,7 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		}
 
 		// Create tailscale server with mock factory
-		factory := func() tsnet.TSNetServer {
+		factory := func(serviceName string) tsnet.TSNetServer {
 			return tsnet.NewMockTSNetServer()
 		}
 		tsServer, err := tailscale.NewServerWithFactory(cfg.Tailscale, factory)
@@ -557,7 +557,7 @@ func TestAppStartWithPartialServiceFailures(t *testing.T) {
 		}
 
 		// Create app with mock dependencies
-		factory := func() tsnet.TSNetServer {
+		factory := func(serviceName string) tsnet.TSNetServer {
 			return tsnet.NewMockTSNetServer()
 		}
 		tsServer, err := tailscale.NewServerWithFactory(cfg.Tailscale, factory)
