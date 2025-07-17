@@ -373,15 +373,11 @@ func TestEnhancedMetrics(t *testing.T) {
 	t.Run("ConnectionPoolMetrics", func(t *testing.T) {
 		collector := NewCollector()
 		require.NotNil(t, collector.ConnectionPoolActive)
-		require.NotNil(t, collector.ConnectionPoolIdle)
-		require.NotNil(t, collector.ConnectionPoolWait)
 
 		// Test updating connection pool metrics
-		collector.UpdateConnectionPoolMetrics("test-service", 5, 3, 2)
+		collector.UpdateConnectionPoolMetrics("test-service", 5)
 
 		assert.Equal(t, float64(5), promtestutil.ToFloat64(collector.ConnectionPoolActive.WithLabelValues("test-service")))
-		assert.Equal(t, float64(3), promtestutil.ToFloat64(collector.ConnectionPoolIdle.WithLabelValues("test-service")))
-		assert.Equal(t, float64(2), promtestutil.ToFloat64(collector.ConnectionPoolWait.WithLabelValues("test-service")))
 	})
 
 	t.Run("MetricsRegistration", func(t *testing.T) {
@@ -464,21 +460,17 @@ func TestUpdateConnectionPoolMetrics(t *testing.T) {
 		name    string
 		service string
 		active  int
-		idle    int
-		wait    int
 	}{
-		{"initial metrics", "service1", 10, 5, 2},
-		{"high load", "service2", 50, 0, 10},
-		{"idle pool", "service3", 0, 20, 0},
+		{"initial metrics", "service1", 10},
+		{"high load", "service2", 50},
+		{"idle pool", "service3", 0},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			collector.UpdateConnectionPoolMetrics(tt.service, tt.active, tt.idle, tt.wait)
+			collector.UpdateConnectionPoolMetrics(tt.service, tt.active)
 
 			assert.Equal(t, float64(tt.active), promtestutil.ToFloat64(collector.ConnectionPoolActive.WithLabelValues(tt.service)))
-			assert.Equal(t, float64(tt.idle), promtestutil.ToFloat64(collector.ConnectionPoolIdle.WithLabelValues(tt.service)))
-			assert.Equal(t, float64(tt.wait), promtestutil.ToFloat64(collector.ConnectionPoolWait.WithLabelValues(tt.service)))
 		})
 	}
 }

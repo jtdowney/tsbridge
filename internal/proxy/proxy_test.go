@@ -1155,13 +1155,9 @@ func TestConnectionPoolMetricsCollection(t *testing.T) {
 		// Check that connection pool metrics are being collected
 		// We just verify the metric exists and can be read
 		activeMetric := testutil.ToFloat64(collector.ConnectionPoolActive.WithLabelValues("test-service"))
-		idleMetric := testutil.ToFloat64(collector.ConnectionPoolIdle.WithLabelValues("test-service"))
-		waitMetric := testutil.ToFloat64(collector.ConnectionPoolWait.WithLabelValues("test-service"))
 
 		// Metrics should exist (active should be 0 since requests completed)
 		assert.GreaterOrEqual(t, activeMetric, 0.0)
-		assert.Equal(t, 0.0, idleMetric) // We don't track idle
-		assert.Equal(t, 0.0, waitMetric) // We don't track wait
 	})
 
 	t.Run("metrics collector runs periodically", func(t *testing.T) {

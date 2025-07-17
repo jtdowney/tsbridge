@@ -29,8 +29,6 @@ type Collector struct {
 	OAuthRefreshTotal    *prometheus.CounterVec
 	BackendHealth        *prometheus.GaugeVec
 	ConnectionPoolActive *prometheus.GaugeVec
-	ConnectionPoolIdle   *prometheus.GaugeVec
-	ConnectionPoolWait   *prometheus.GaugeVec
 
 	// Service lifecycle metrics
 	ServiceOperations    *prometheus.CounterVec
@@ -101,20 +99,6 @@ func NewCollector() *Collector {
 			},
 			[]string{"service"},
 		),
-		ConnectionPoolIdle: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "tsbridge_connection_pool_idle",
-				Help: "Number of idle connections in the pool",
-			},
-			[]string{"service"},
-		),
-		ConnectionPoolWait: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
-				Name: "tsbridge_connection_pool_wait",
-				Help: "Number of requests waiting for a connection",
-			},
-			[]string{"service"},
-		),
 		ServiceOperations: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "tsbridge_service_operations_total",
@@ -164,8 +148,6 @@ func (c *Collector) Register(reg prometheus.Registerer) error {
 		c.OAuthRefreshTotal,
 		c.BackendHealth,
 		c.ConnectionPoolActive,
-		c.ConnectionPoolIdle,
-		c.ConnectionPoolWait,
 		c.ServiceOperations,
 		c.ServiceOpDuration,
 		c.ServicesActive,
@@ -202,10 +184,8 @@ func (c *Collector) SetBackendHealth(service string, healthy bool) {
 }
 
 // UpdateConnectionPoolMetrics updates connection pool metrics for a service
-func (c *Collector) UpdateConnectionPoolMetrics(service string, active, idle, wait int) {
+func (c *Collector) UpdateConnectionPoolMetrics(service string, active int) {
 	c.ConnectionPoolActive.WithLabelValues(service).Set(float64(active))
-	c.ConnectionPoolIdle.WithLabelValues(service).Set(float64(idle))
-	c.ConnectionPoolWait.WithLabelValues(service).Set(float64(wait))
 }
 
 // RecordServiceOperation records a service lifecycle operation

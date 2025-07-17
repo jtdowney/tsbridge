@@ -370,7 +370,7 @@ func (h *httpHandler) collectMetrics() {
 	}
 
 	active := int(h.getActiveRequests())
-	h.metricsCollector.UpdateConnectionPoolMetrics(h.serviceName, active, 0, 0)
+	h.metricsCollector.UpdateConnectionPoolMetrics(h.serviceName, active)
 }
 
 // Close stops metrics collection and cleans up resources
