@@ -58,7 +58,7 @@ Here are a few common settings:
 
 - `whois_enabled`: Set to `true` to add `Tailscale-User-*` identity headers to upstream requests
 - `write_timeout`: Defaults to `30s`. Set to `"0s"` to support long-running connections like Server-Sent Events (SSE)
-- `metrics_addr`: Expose a Prometheus metrics endpoint (e.g., `":9090"`) - see [docs/metrics.md](docs/metrics.md) for available metrics
+- `metrics_addr`: Expose a Prometheus metrics endpoint (e.g., `":9090"`) - see [docs/metrics.md](docs/metrics.md) for available metrics (secure this endpoint in production)
 
 ### Security
 

@@ -69,14 +69,18 @@ Configure tag ownership in your Tailscale ACL policy:
 ```json
 {
   "tagOwners": {
-    "tag:tsbridge": [],               // Parent tag for the OAuth client
-    "tag:server": ["tag:tsbridge"],   // Service tag owned by tag:tsbridge
-    "tag:proxy": ["tag:tsbridge"],    // Additional service tags as needed
+    "tag:tsbridge": [],
+    "tag:server": ["tag:tsbridge"],
+    "tag:proxy": ["tag:tsbridge"],
     "tag:prod": ["tag:tsbridge"],
     "tag:dev": ["tag:tsbridge"]
   }
 }
 ```
+
+In this configuration:
+- `tag:tsbridge` is the parent tag for the OAuth client
+- `tag:server`, `tag:proxy`, `tag:prod`, and `tag:dev` are service tags owned by `tag:tsbridge`
 
 #### Creating the OAuth Client
 

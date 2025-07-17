@@ -4,7 +4,7 @@ Get tsbridge running in 5 minutes.
 
 ## 1. Get OAuth Credentials
 
-1. Go to https://login.tailscale.com/admin/settings/oauth
+1. Go to <https://login.tailscale.com/admin/settings/oauth>
 2. Click **Generate OAuth client...**
 3. Name it something like `tsbridge`
 4. Under **Scopes** → **Auth Keys**, check both **Read** and **Write**

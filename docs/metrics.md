@@ -40,8 +40,10 @@ rate(tsbridge_requests_total{status!~"2.."}[5m])
 - **Use case**: Latency monitoring, SLO tracking
 
 ```promql
-# 95th percentile latency
-histogram_quantile(0.95, rate(tsbridge_request_duration_seconds_bucket[5m]))
+# 95th percentile latency per service
+histogram_quantile(0.95, sum by (service, le) (
+  rate(tsbridge_request_duration_seconds_bucket[5m])
+))
 
 # Average request duration
 rate(tsbridge_request_duration_seconds_sum[5m]) / rate(tsbridge_request_duration_seconds_count[5m])
@@ -80,18 +82,6 @@ rate(tsbridge_errors_total[5m])
 - **Labels**: `service`
 - **Description**: Active requests to backend (in-flight requests)
 - **Use case**: Backend load monitoring
-
-#### tsbridge_connection_pool_idle
-
-- **Type**: Gauge
-- **Labels**: `service`
-- **Description**: Idle connections in pool (always 0, reserved for future use)
-
-#### tsbridge_connection_pool_wait
-
-- **Type**: Gauge
-- **Labels**: `service`
-- **Description**: Requests waiting for connection (always 0, reserved for future use)
 
 ### Whois Metrics
 
