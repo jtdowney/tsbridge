@@ -21,29 +21,38 @@ Complete reference for all tsbridge configuration options.
 
 You must provide either OAuth credentials OR an auth key.
 
-> **Environment Variable Note**: When using `_env` fields, tsbridge will first check your custom environment variable. If it's not set, tsbridge falls back to the built-in Tailscale environment variables (e.g., `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_CLIENT_SECRET`, `TS_AUTHKEY`).
+> **Resolution Order**: tsbridge resolves secret values in the following priority order:
+> 1. **Direct value** (inline in config file)
+> 2. **File** (from `_file` suffix)
+> 3. **Environment variable** (from `_env` suffix)
+> 4. **Default environment variable** (e.g., `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_CLIENT_SECRET`, `TS_AUTHKEY`)
+>
+> If any configured source (file or env var) is specified but cannot be accessed or is empty, tsbridge will return an error instead of falling back to the next priority level.
 
 #### OAuth Credentials
 
 ```toml
 # Client ID - choose one method:
-oauth_client_id = "k12...89"                      # Direct value (not recommended)
-oauth_client_id_env = "TS_OAUTH_CLIENT_ID"        # From environment variable (default)
-oauth_client_id_file = "/etc/tsbridge/oauth-id"   # From file
+oauth_client_id = "k12...89"                      # Direct value (highest priority)
+oauth_client_id_file = "/etc/tsbridge/oauth-id"   # From file (second priority)
+oauth_client_id_env = "TS_OAUTH_CLIENT_ID"        # From environment variable (third priority)
+# Will fallback to TS_OAUTH_CLIENT_ID env var if none of the above are specified
 
 # Client Secret - choose one method:
-oauth_client_secret = "tskey-client-..."                   # Direct value (not recommended)
-oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"         # From environment variable (default)
-oauth_client_secret_file = "/etc/tsbridge/oauth-secret"    # From file
+oauth_client_secret = "tskey-client-..."                   # Direct value (highest priority)
+oauth_client_secret_file = "/etc/tsbridge/oauth-secret"    # From file (second priority)
+oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"         # From environment variable (third priority)
+# Will fallback to TS_OAUTH_CLIENT_SECRET env var if none of the above are specified
 ```
 
 #### Auth Key (Alternative)
 
 ```toml
 # Auth key - choose one method:
-auth_key = "tskey-auth-..."              # Direct value
-auth_key_env = "TS_AUTHKEY"              # From environment variable (default)
-auth_key_file = "/etc/tsbridge/authkey"  # From file
+auth_key = "tskey-auth-..."              # Direct value (highest priority)
+auth_key_file = "/etc/tsbridge/authkey"  # From file (second priority)
+auth_key_env = "TS_AUTHKEY"              # From environment variable (third priority)
+# Will fallback to TS_AUTHKEY env var if none of the above are specified
 ```
 
 ### Other Tailscale Options

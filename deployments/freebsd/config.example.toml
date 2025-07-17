@@ -4,13 +4,18 @@
 # Tailscale authentication configuration (required)
 [tailscale]
 # OAuth authentication (recommended)
-# Store credentials in separate files for security
+# Resolution order: direct value > file > env var > default env var
+# Store credentials in separate files for security (highest priority after direct values)
 oauth_client_id_file = "/usr/local/etc/tsbridge/oauth_client_id"
 oauth_client_secret_file = "/usr/local/etc/tsbridge/oauth_client_secret"
 
-# Alternative: Use environment variables
+# Alternative: Use environment variables (lower priority than files)
 # oauth_client_id_env = "TS_OAUTH_CLIENT_ID"
 # oauth_client_secret_env = "TS_OAUTH_CLIENT_SECRET"
+
+# Alternative: Direct values (highest priority, not recommended for production)
+# oauth_client_id = "k12...89"
+# oauth_client_secret = "tskey-client-..."
 
 # Alternative: Use auth key (not recommended for production)
 # auth_key_file = "/usr/local/etc/tsbridge/auth_key"

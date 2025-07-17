@@ -1019,8 +1019,8 @@ backend_addr = "localhost:8080"
 				require.NoError(t, err)
 				return configPath
 			},
-			wantErr:    false, // No longer an error - missing auth is allowed
-			wantOutput: []string{"configuration is valid"},
+			wantErr: true, // Now an error - missing configured env var should fail
+			errMsg:  "environment variable MISSING_ENV_VAR is not set or empty",
 		},
 	}
 

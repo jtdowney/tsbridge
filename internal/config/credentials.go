@@ -44,22 +44,18 @@ func validateFilePath(path string) error {
 }
 
 // ResolveSecret resolves a secret value from either an environment variable or file.
-// It supports values in the format:
-// - "env:VAR_NAME" - reads from environment variable VAR_NAME
-// - "file:/path/to/file" - reads from the specified file
-// - Any other value is returned as-is
+// Priority order:
+// 1. Direct value (if not empty)
+// 2. File content (if filePath specified)
+// 3. Environment variable (if envVar specified)
+// Returns empty string if no sources are configured or have values.
 func ResolveSecret(value, envVar, filePath string) (string, error) {
 	// Priority 1: Direct value
 	if value != "" {
 		return value, nil
 	}
 
-	// Priority 2: Environment variable
-	if envVar != "" {
-		return os.Getenv(envVar), nil
-	}
-
-	// Priority 3: File
+	// Priority 2: File
 	if filePath != "" {
 		// Validate the file path for security
 		if err := validateFilePath(filePath); err != nil {
@@ -73,6 +69,15 @@ func ResolveSecret(value, envVar, filePath string) (string, error) {
 		return strings.TrimSpace(string(data)), nil
 	}
 
+	// Priority 3: Environment variable
+	if envVar != "" {
+		value := os.Getenv(envVar)
+		if value == "" {
+			return "", fmt.Errorf("environment variable %s is not set or empty", envVar)
+		}
+		return value, nil
+	}
+
 	// No sources configured
 	return "", nil
 }
@@ -80,14 +85,22 @@ func ResolveSecret(value, envVar, filePath string) (string, error) {
 // ResolveSecretWithFallback resolves a secret value with an additional fallback environment variable.
 // Priority order:
 // 1. Direct value (if not empty)
-// 2. Environment variable (if envVar specified)
-// 3. File content (if filePath specified)
+// 2. File content (if filePath specified)
+// 3. Environment variable (if envVar specified)
 // 4. Fallback environment variable (if fallbackEnv specified)
 // Returns empty string if no sources are configured or have values.
+// Returns error if a configured source (file or env var) exists but cannot be accessed.
 func ResolveSecretWithFallback(value, envVar, filePath, fallbackEnv string) (string, error) {
 	// Try the primary sources first
 	result, err := ResolveSecret(value, envVar, filePath)
 	if err != nil {
+		// If we have a fallback, try it before returning the error
+		if fallbackEnv != "" {
+			if fallbackValue := os.Getenv(fallbackEnv); fallbackValue != "" {
+				return fallbackValue, nil
+			}
+		}
+		// No fallback or fallback is empty, return the original error
 		return "", err
 	}
 	if result != "" {
@@ -111,15 +124,7 @@ func ValidateSecret(value, envVar, filePath string) error {
 		return nil
 	}
 
-	// Priority 2: Environment variable
-	if envVar != "" {
-		if os.Getenv(envVar) == "" {
-			return fmt.Errorf("environment variable %s is not set", envVar)
-		}
-		return nil
-	}
-
-	// Priority 3: File
+	// Priority 2: File
 	if filePath != "" {
 		// Validate the file path for security
 		if err := validateFilePath(filePath); err != nil {
@@ -146,6 +151,14 @@ func ValidateSecret(value, envVar, filePath string) error {
 			return fmt.Errorf("file %s is empty", filePath)
 		}
 
+		return nil
+	}
+
+	// Priority 3: Environment variable
+	if envVar != "" {
+		if os.Getenv(envVar) == "" {
+			return fmt.Errorf("environment variable %s is not set", envVar)
+		}
 		return nil
 	}
 

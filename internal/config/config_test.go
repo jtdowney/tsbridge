@@ -614,7 +614,7 @@ func TestResolveSecrets(t *testing.T) {
 		}
 	})
 
-	t.Run("clears direct values when env/file sources are set", func(t *testing.T) {
+	t.Run("direct value takes precedence over env/file sources", func(t *testing.T) {
 		t.Setenv("TEST_OAUTH_ID", "env-id")
 		cfg := &Config{
 			Tailscale: Tailscale{
@@ -626,8 +626,8 @@ func TestResolveSecrets(t *testing.T) {
 		err := resolveSecrets(cfg)
 		require.NoError(t, err, "resolveSecrets() failed")
 
-		if cfg.Tailscale.OAuthClientID != "env-id" {
-			t.Errorf("OAuthClientID = %v, want %v", cfg.Tailscale.OAuthClientID, "env-id")
+		if cfg.Tailscale.OAuthClientID != "direct-id" {
+			t.Errorf("OAuthClientID = %v, want %v", cfg.Tailscale.OAuthClientID, "direct-id")
 		}
 	})
 }

@@ -341,10 +341,9 @@ func redactedStringDecodeHook() mapstructure.DecodeHookFunc {
 // resolveSecrets resolves all secret values from their configured sources
 func resolveSecrets(cfg *Config) error {
 	// Resolve OAuth Client ID (regular string)
-	if cfg.Tailscale.OAuthClientIDEnv != "" || cfg.Tailscale.OAuthClientIDFile != "" {
-		cfg.Tailscale.OAuthClientID = ""
+	if cfg.Tailscale.OAuthClientIDEnv != "" || cfg.Tailscale.OAuthClientIDFile != "" || cfg.Tailscale.OAuthClientID != "" {
 		resolved, err := ResolveSecretWithFallback(
-			"",
+			cfg.Tailscale.OAuthClientID,
 			cfg.Tailscale.OAuthClientIDEnv,
 			cfg.Tailscale.OAuthClientIDFile,
 			"TS_OAUTH_CLIENT_ID",
@@ -355,17 +354,17 @@ func resolveSecrets(cfg *Config) error {
 		cfg.Tailscale.OAuthClientID = resolved
 		cfg.Tailscale.OAuthClientIDEnv = ""
 		cfg.Tailscale.OAuthClientIDFile = ""
-	} else if cfg.Tailscale.OAuthClientID == "" {
+	} else {
+		// No explicit configuration, check default env var
 		if val := os.Getenv("TS_OAUTH_CLIENT_ID"); val != "" {
 			cfg.Tailscale.OAuthClientID = val
 		}
 	}
 
 	// Resolve OAuth Client Secret (RedactedString)
-	if cfg.Tailscale.OAuthClientSecretEnv != "" || cfg.Tailscale.OAuthClientSecretFile != "" {
-		cfg.Tailscale.OAuthClientSecret = ""
+	if cfg.Tailscale.OAuthClientSecretEnv != "" || cfg.Tailscale.OAuthClientSecretFile != "" || cfg.Tailscale.OAuthClientSecret.Value() != "" {
 		resolved, err := ResolveSecretWithFallback(
-			"",
+			cfg.Tailscale.OAuthClientSecret.Value(),
 			cfg.Tailscale.OAuthClientSecretEnv,
 			cfg.Tailscale.OAuthClientSecretFile,
 			"TS_OAUTH_CLIENT_SECRET",
@@ -376,17 +375,17 @@ func resolveSecrets(cfg *Config) error {
 		cfg.Tailscale.OAuthClientSecret = RedactedString(resolved)
 		cfg.Tailscale.OAuthClientSecretEnv = ""
 		cfg.Tailscale.OAuthClientSecretFile = ""
-	} else if cfg.Tailscale.OAuthClientSecret.Value() == "" {
+	} else {
+		// No explicit configuration, check default env var
 		if val := os.Getenv("TS_OAUTH_CLIENT_SECRET"); val != "" {
 			cfg.Tailscale.OAuthClientSecret = RedactedString(val)
 		}
 	}
 
 	// Resolve Auth Key (RedactedString)
-	if cfg.Tailscale.AuthKeyEnv != "" || cfg.Tailscale.AuthKeyFile != "" {
-		cfg.Tailscale.AuthKey = ""
+	if cfg.Tailscale.AuthKeyEnv != "" || cfg.Tailscale.AuthKeyFile != "" || cfg.Tailscale.AuthKey.Value() != "" {
 		resolved, err := ResolveSecretWithFallback(
-			"",
+			cfg.Tailscale.AuthKey.Value(),
 			cfg.Tailscale.AuthKeyEnv,
 			cfg.Tailscale.AuthKeyFile,
 			"TS_AUTHKEY",
@@ -397,7 +396,8 @@ func resolveSecrets(cfg *Config) error {
 		cfg.Tailscale.AuthKey = RedactedString(resolved)
 		cfg.Tailscale.AuthKeyEnv = ""
 		cfg.Tailscale.AuthKeyFile = ""
-	} else if cfg.Tailscale.AuthKey.Value() == "" {
+	} else {
+		// No explicit configuration, check default env var
 		if val := os.Getenv("TS_AUTHKEY"); val != "" {
 			cfg.Tailscale.AuthKey = RedactedString(val)
 		}
