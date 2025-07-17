@@ -189,11 +189,11 @@ tags = ["tag:api", "tag:prod"]         # Service tags (overrides default_tags)
 ```toml
 # TCP addresses
 backend_addr = "localhost:8080"
-backend_addr = "10.0.0.5:3000"
-backend_addr = "backend.internal:80"
+# backend_addr = "10.0.0.5:3000"
+# backend_addr = "backend.internal:80"
 
 # Unix sockets
-backend_addr = "unix:///var/run/app.sock"
+# backend_addr = "unix:///var/run/app.sock"
 ```
 
 ### Network Options
