@@ -235,10 +235,12 @@ downstream_headers = {
   "X-Frame-Options" = "DENY"
 }
 
-# Remove headers from requests (comma-separated in Docker labels)
+# Remove headers from requests
+# (array in TOML, comma-separated string when set via Docker labels)
 remove_upstream = ["Cookie", "Authorization"]
 
 # Remove headers from responses
+# (array in TOML, comma-separated string when set via Docker labels)
 remove_downstream = ["Server", "X-Powered-By"]
 ```
 
