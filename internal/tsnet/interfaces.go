@@ -68,8 +68,9 @@ type RealTSNetServer struct {
 // NewRealTSNetServer creates a new RealTSNetServer instance.
 func NewRealTSNetServer(serviceName string) *RealTSNetServer {
 	server := &RealTSNetServer{}
-	server.Logf = slogAdapter(serviceName)         // Backend/debugging logs
-	server.UserLogf = userSlogAdapter(serviceName) // User-facing logs (AuthURL, etc.)
+	adapter := tsnetLogAdapter(serviceName)
+	server.Logf = adapter     // Backend/debugging logs
+	server.UserLogf = adapter // User-facing logs (AuthURL, etc.)
 	return server
 }
 
