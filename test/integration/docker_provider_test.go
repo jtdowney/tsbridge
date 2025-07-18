@@ -436,7 +436,7 @@ func TestDockerProviderValidate(t *testing.T) {
 			// Note: Docker provider allows empty config
 			if err != nil {
 				// If it fails, should be because of missing tsbridge container
-				assert.Contains(t, output, "no tsbridge container found")
+				assert.Contains(t, output, "unable to find tsbridge container")
 			} else {
 				assert.Contains(t, output, "configuration is valid")
 			}

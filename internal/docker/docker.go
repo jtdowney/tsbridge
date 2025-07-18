@@ -106,6 +106,7 @@ func NewProvider(opts Options) (*Provider, error) {
 	}
 
 	// Validate Docker socket access before creating client
+	slog.Debug("validating Docker socket access", "endpoint", opts.DockerEndpoint)
 	if err := validateDockerAccess(opts.DockerEndpoint); err != nil {
 		return nil, err
 	}
@@ -123,9 +124,17 @@ func NewProvider(opts Options) (*Provider, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DockerPingTimeout)
 	defer cancel()
 
-	if _, err := dockerClient.Ping(ctx); err != nil {
+	pingInfo, err := dockerClient.Ping(ctx)
+	if err != nil {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeResource, "connecting to Docker")
 	}
+	slog.Debug("Docker connection verified",
+		"api_version", pingInfo.APIVersion,
+		"os", pingInfo.OSType)
+
+	slog.Info("Docker provider initialized successfully",
+		"endpoint", opts.DockerEndpoint,
+		"label_prefix", opts.LabelPrefix)
 
 	return &Provider{
 		client:      dockerClient,
@@ -158,13 +167,19 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 	if err != nil {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeResource, "finding service containers")
 	}
+	slog.Debug("found service containers", "count", len(serviceContainers))
 
 	// Parse service configurations
 	for _, container := range serviceContainers {
+		containerName := ""
+		if len(container.Names) > 0 {
+			containerName = container.Names[0]
+		}
+
 		svc, err := p.parseServiceConfig(container)
 		if err != nil {
 			slog.Warn("failed to parse service configuration",
-				"container", container.Names[0],
+				"container", containerName,
 				"error", err)
 			continue
 		}
@@ -177,6 +192,10 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 		return nil, err
 	}
 
+	slog.Info("Docker configuration loaded successfully",
+		"services", len(cfg.Services),
+		"label_prefix", p.labelPrefix)
+
 	p.lastConfig = cfg
 	return cfg, nil
 }
@@ -185,6 +204,10 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 func (p *Provider) Watch(ctx context.Context) (<-chan *config.Config, error) {
 	configCh := make(chan *config.Config)
 	eventOptions := p.createEventOptions()
+
+	slog.Info("starting Docker event watcher",
+		"label_prefix", p.labelPrefix,
+		"socket_path", p.socketPath)
 
 	go func() {
 		defer close(configCh)
@@ -235,6 +258,7 @@ func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config
 
 			// Event stream closed, wait before reconnecting with backoff
 			slog.Debug("Docker event stream closed, reconnecting...", "backoff", backoff)
+
 			select {
 			case <-ctx.Done():
 				return
@@ -269,6 +293,7 @@ func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *conf
 		case event := <-events:
 			// Mark stream as established after receiving first event
 			streamEstablished = true
+
 			if p.handleContainerEvent(ctx, configCh, event) {
 				return true, streamEstablished // Context cancelled
 			}
@@ -443,10 +468,16 @@ func (p *Provider) findSelfContainer(ctx context.Context) (*container.Summary, e
 	// First try to find by hostname (which is the container ID in Docker)
 	hostname, err := p.getHostname()
 	if err == nil {
+		slog.Debug("checking for self container by hostname", "hostname", hostname)
 		container, err := p.getContainerByID(ctx, hostname)
 		if err == nil {
+			slog.Debug("found self container by hostname", "container", container.ID)
 			return container, nil
 		}
+
+		slog.Debug("failed to find self container by hostname", "error", err)
+	} else {
+		slog.Debug("failed to get hostname", "error", err)
 	}
 
 	// Fallback: find container with tsbridge labels
@@ -462,7 +493,7 @@ func (p *Provider) findSelfContainer(ctx context.Context) (*container.Summary, e
 	}
 
 	if len(containers) == 0 {
-		return nil, errors.NewValidationError("no tsbridge container found with global configuration labels")
+		return nil, errors.NewValidationError("unable to find tsbridge container")
 	}
 
 	// Return the first one (there should only be one)
@@ -472,10 +503,11 @@ func (p *Provider) findSelfContainer(ctx context.Context) (*container.Summary, e
 // findServiceContainers finds all containers with tsbridge.enabled=true or tsbridge.enable=true
 func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summary, error) {
 	// Query for containers with enabled=true
+	enabledLabel := fmt.Sprintf("%s.enabled=true", p.labelPrefix)
 	enabledOpts := container.ListOptions{
 		Filters: filters.NewArgs(
 			filters.Arg("status", "running"),
-			filters.Arg("label", fmt.Sprintf("%s.enabled=true", p.labelPrefix)),
+			filters.Arg("label", enabledLabel),
 		),
 	}
 
@@ -485,10 +517,11 @@ func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summa
 	}
 
 	// Query for containers with enable=true
+	enableLabel := fmt.Sprintf("%s.enable=true", p.labelPrefix)
 	enableOpts := container.ListOptions{
 		Filters: filters.NewArgs(
 			filters.Arg("status", "running"),
-			filters.Arg("label", fmt.Sprintf("%s.enable=true", p.labelPrefix)),
+			filters.Arg("label", enableLabel),
 		),
 	}
 
