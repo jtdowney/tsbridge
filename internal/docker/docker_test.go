@@ -1167,7 +1167,7 @@ func TestProvider_Load(t *testing.T) {
 
 		assert.Error(t, err)
 		// Now properly returns error about missing tsbridge container
-		assert.Contains(t, err.Error(), "no tsbridge container found")
+		assert.Contains(t, err.Error(), "unable to find tsbridge container")
 	})
 
 	t.Run("docker api error", func(t *testing.T) {

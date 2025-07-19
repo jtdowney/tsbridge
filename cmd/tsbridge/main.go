@@ -10,11 +10,12 @@ import (
 	"sync"
 	"syscall"
 
+	"log/slog"
+
 	"github.com/jtdowney/tsbridge/internal/app"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/docker"
-	"log/slog"
 )
 
 var version = "dev"
@@ -198,7 +199,7 @@ func run(args *cliArgs, sigCh <-chan os.Signal) error {
 		return err
 	}
 
-	slog.Debug("starting tsbridge", "version", version, "provider", args.provider)
+	slog.Info("starting tsbridge", "version", version, "provider", args.provider)
 
 	// Create configuration provider
 	configProvider, err := createProvider(args)

@@ -325,7 +325,11 @@ func (p *Provider) getContainerAddress(container container.Summary) string {
 	}
 
 	// Fallback to container ID
-	return container.ID[:12]
+	containerID := container.ID
+	if len(containerID) > 12 {
+		containerID = containerID[:12]
+	}
+	return containerID
 }
 
 // parseDuration parses a duration string and returns a *time.Duration
