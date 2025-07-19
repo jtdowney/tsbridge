@@ -550,10 +550,9 @@ func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summa
 
 // getContainerByID gets a container by ID
 func (p *Provider) getContainerByID(ctx context.Context, id string) (*container.Summary, error) {
+	// List all containers since Docker's ID filter might not work with partial IDs
 	opts := container.ListOptions{
-		Filters: filters.NewArgs(
-			filters.Arg("id", id),
-		),
+		All: true, // Include stopped containers too
 	}
 
 	containers, err := p.client.ContainerList(ctx, opts)
@@ -561,11 +560,29 @@ func (p *Provider) getContainerByID(ctx context.Context, id string) (*container.
 		return nil, err
 	}
 
-	if len(containers) == 0 {
-		return nil, errors.NewValidationError("container not found")
+	slog.Debug("searching for container by ID",
+		"target_id", id,
+		"total_containers", len(containers))
+
+	// Find container by matching ID prefix
+	for _, c := range containers {
+		// Log first 12 chars of each container ID for debugging
+		shortID := c.ID
+		if len(shortID) > 12 {
+			shortID = shortID[:12]
+		}
+		slog.Debug("checking container",
+			"container_id", shortID,
+			"container_names", c.Names,
+			"matches", strings.HasPrefix(c.ID, id))
+
+		// Check if the container ID starts with our hostname/ID
+		if strings.HasPrefix(c.ID, id) {
+			return &c, nil
+		}
 	}
 
-	return &containers[0], nil
+	return nil, errors.NewValidationError("container not found")
 }
 
 // getHostname gets the container hostname
