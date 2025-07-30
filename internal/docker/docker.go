@@ -582,6 +582,16 @@ func (p *Provider) getContainerByID(ctx context.Context, id string) (*container.
 		}
 	}
 
+	for _, c := range containers {
+		for _, name := range c.Names {
+			// Docker container names are prefixed with '/'
+			if strings.TrimPrefix(name, "/") == id {
+				slog.Debug("found container by name", "container", c.ID, "name", name)
+				return &c, nil
+			}
+		}
+	}
+
 	return nil, errors.NewValidationError("container not found")
 }
 

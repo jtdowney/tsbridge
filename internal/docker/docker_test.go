@@ -2395,3 +2395,135 @@ func (m *MockSuccessfulDockerClient) Ping(ctx context.Context) (types.Ping, erro
 func (m *MockSuccessfulDockerClient) Close() error {
 	return nil
 }
+
+// TestGetContainerByID tests the getContainerByID function
+func TestGetContainerByID(t *testing.T) {
+	tests := []struct {
+		name          string
+		targetID      string
+		containers    []container.Summary
+		expectFound   bool
+		expectedID    string
+		expectedError string
+	}{
+		{
+			name:     "finds container by full ID",
+			targetID: "abc123def456789",
+			containers: []container.Summary{
+				{
+					ID:    "abc123def456789",
+					Names: []string{"/my-container"},
+				},
+			},
+			expectFound: true,
+			expectedID:  "abc123def456789",
+		},
+		{
+			name:     "finds container by ID prefix",
+			targetID: "abc123",
+			containers: []container.Summary{
+				{
+					ID:    "abc123def456789",
+					Names: []string{"/my-container"},
+				},
+			},
+			expectFound: true,
+			expectedID:  "abc123def456789",
+		},
+		{
+			name:     "finds container by name without slash",
+			targetID: "my-container",
+			containers: []container.Summary{
+				{
+					ID:    "def456abc789",
+					Names: []string{"/my-container"},
+				},
+			},
+			expectFound: true,
+			expectedID:  "def456abc789",
+		},
+		{
+			name:     "finds container by name with multiple names",
+			targetID: "my-alias",
+			containers: []container.Summary{
+				{
+					ID:    "xyz789",
+					Names: []string{"/my-container", "/my-alias"},
+				},
+			},
+			expectFound: true,
+			expectedID:  "xyz789",
+		},
+		{
+			name:     "prefers ID match over name match",
+			targetID: "abc123",
+			containers: []container.Summary{
+				{
+					ID:    "abc123def456",
+					Names: []string{"/other"},
+				},
+				{
+					ID:    "xyz789",
+					Names: []string{"/abc123"},
+				},
+			},
+			expectFound: true,
+			expectedID:  "abc123def456", // Should match by ID prefix first
+		},
+		{
+			name:     "container not found",
+			targetID: "nonexistent",
+			containers: []container.Summary{
+				{
+					ID:    "abc123",
+					Names: []string{"/my-container"},
+				},
+			},
+			expectFound:   false,
+			expectedError: "container not found",
+		},
+		{
+			name:          "empty container list",
+			targetID:      "any",
+			containers:    []container.Summary{},
+			expectFound:   false,
+			expectedError: "container not found",
+		},
+		{
+			name:     "hostname as container name",
+			targetID: "tsbridge-host",
+			containers: []container.Summary{
+				{
+					ID:    "abc123def456",
+					Names: []string{"/tsbridge-host"},
+				},
+			},
+			expectFound: true,
+			expectedID:  "abc123def456",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := newMockDockerClient()
+			mockClient.containers = tt.containers
+
+			provider := &Provider{
+				client:      mockClient,
+				labelPrefix: "tsbridge",
+			}
+
+			ctx := context.Background()
+			result, err := provider.getContainerByID(ctx, tt.targetID)
+
+			if tt.expectFound {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				assert.Equal(t, tt.expectedID, result.ID)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.expectedError)
+			}
+		})
+	}
+}
