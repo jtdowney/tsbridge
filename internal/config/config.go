@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"reflect"
 	"strconv"
@@ -730,6 +731,69 @@ func validateAddr(addr string, fieldName string) error {
 	return nil
 }
 
+// ValidateBackendAddress validates a backend address which can be:
+// - A TCP address in host:port format (e.g., "localhost:8080")
+// - A unix socket path (e.g., "unix:///var/run/app.sock")
+// - An HTTP/HTTPS URL (e.g., "http://example.com:8080" or "https://example.com")
+func ValidateBackendAddress(addr string) error {
+	if addr == "" {
+		return errors.NewValidationError("backend address cannot be empty")
+	}
+
+	// Check for unix socket addresses
+	if strings.HasPrefix(addr, "unix:") {
+		// Must start with unix://
+		if !strings.HasPrefix(addr, "unix://") {
+			return errors.NewValidationError("unix socket path must start with unix://")
+		}
+
+		// Extract path after unix://
+		socketPath := strings.TrimPrefix(addr, "unix://")
+
+		// Unix socket should not have port
+		if strings.Contains(socketPath, ":") {
+			return errors.NewValidationError("unix socket cannot have port")
+		}
+
+		// Check for path traversal
+		if strings.Contains(socketPath, "..") {
+			return errors.NewValidationError("invalid unix socket path")
+		}
+
+		// Must be absolute path
+		if !strings.HasPrefix(socketPath, "/") {
+			return errors.NewValidationError("unix socket path must be absolute")
+		}
+
+		return nil
+	}
+
+	// Check for HTTP/HTTPS URLs
+	if strings.HasPrefix(addr, "http://") || strings.HasPrefix(addr, "https://") {
+		u, err := url.Parse(addr)
+		if err != nil {
+			return errors.NewValidationError("invalid backend URL")
+		}
+		if u.Host == "" {
+			return errors.NewValidationError("backend URL must have a host")
+		}
+		// If port is specified, validate it
+		if u.Port() != "" {
+			port, err := strconv.Atoi(u.Port())
+			if err != nil {
+				return errors.NewValidationError("invalid port in backend URL")
+			}
+			if port < 1 || port > 65535 {
+				return errors.NewValidationError("port must be between 1 and 65535")
+			}
+		}
+		return nil
+	}
+
+	// For network addresses, validate host:port format
+	return validateAddr(addr, "backend address")
+}
+
 // isValidHostname performs basic hostname validation
 func isValidHostname(host string) bool {
 	if host == "" {
@@ -843,21 +907,9 @@ func (c *Config) validateGlobal() error {
 }
 
 func (c *Config) validateService(svc *Service) error {
-	if svc.BackendAddr == "" {
-		return errors.NewValidationError("backend address is required")
-	}
-
-	// Validate backend address format
-	if strings.HasPrefix(svc.BackendAddr, "unix://") {
-		// Unix socket - just check it has a path
-		if len(svc.BackendAddr) <= 7 { // len("unix://") == 7
-			return errors.NewValidationError("invalid unix socket address: missing path")
-		}
-	} else {
-		// TCP address
-		if err := validateAddr(svc.BackendAddr, "backend address"); err != nil {
-			return err
-		}
+	// Validate backend address format using shared validation
+	if err := ValidateBackendAddress(svc.BackendAddr); err != nil {
+		return err
 	}
 
 	// Validate whois timeout if whois is enabled
