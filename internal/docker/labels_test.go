@@ -464,63 +464,6 @@ func TestValidateHeaderValue(t *testing.T) {
 	}
 }
 
-// TestValidateBackendAddress tests backend address validation
-func TestValidateBackendAddress(t *testing.T) {
-	tests := []struct {
-		name    string
-		addr    string
-		isValid bool
-		errMsg  string
-	}{
-		// Valid network addresses
-		{"valid host:port", "localhost:8080", true, ""},
-		{"valid IP:port", "127.0.0.1:3000", true, ""},
-		{"valid IPv6:port", "[::1]:8080", true, ""},
-		{"valid domain:port", "api.example.com:443", true, ""},
-		{"valid high port", "0.0.0.0:65535", true, ""},
-		{"valid low port", "localhost:1", true, ""},
-
-		// Valid unix socket addresses
-		{"valid unix socket", "unix:///var/run/app.sock", true, ""},
-		{"valid unix socket with complex path", "unix:///tmp/sockets/app.sock", true, ""},
-
-		// Valid addresses - port only (binds to all interfaces)
-		{"port only", ":8080", true, ""},
-		{"port only high", ":65535", true, ""},
-
-		// Invalid addresses - format issues
-		{"missing port", "localhost", false, "invalid backend address format"},
-		{"empty address", "", false, "backend address cannot be empty"},
-		{"just colon", ":", false, "invalid port"},
-		{"invalid unix prefix", "unix:/var/run/app.sock", false, "unix socket path must start with unix://"},
-		{"unix with port", "unix://socket:8080", false, "unix socket cannot have port"},
-
-		// Invalid addresses - port range
-		{"port zero", "localhost:0", false, "port must be between 1 and 65535"},
-		{"port too high", "localhost:65536", false, "port must be between 1 and 65535"},
-		{"negative port", "localhost:-1", false, "port must be between 1 and 65535"},
-		{"non-numeric port", "localhost:abc", false, "invalid port"},
-
-		// Invalid addresses - path traversal in unix sockets
-		{"unix path traversal", "unix://../../../etc/passwd", false, "invalid unix socket path"},
-		{"unix relative path", "unix://./socket", false, "unix socket path must be absolute"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := validateBackendAddress(tt.addr)
-			if tt.isValid {
-				assert.NoError(t, err, "Expected address %q to be valid", tt.addr)
-			} else {
-				assert.Error(t, err, "Expected address %q to be invalid", tt.addr)
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg)
-				}
-			}
-		})
-	}
-}
-
 // TestParseServiceConfigBackendValidation tests that backend address validation is applied
 func TestParseServiceConfigBackendValidation(t *testing.T) {
 	provider := &Provider{
@@ -550,7 +493,7 @@ func TestParseServiceConfigBackendValidation(t *testing.T) {
 				"tsbridge.service.backend_addr": "localhost:70000",
 			},
 			shouldError: true,
-			errorMsg:    "port must be between 1 and 65535",
+			errorMsg:    "port in backend address must be between 1 and 65535",
 		},
 		{
 			name: "unix socket path traversal rejected",
