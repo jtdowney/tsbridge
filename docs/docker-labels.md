@@ -21,6 +21,7 @@ services:
       - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
       - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
       - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+      - "tsbridge.tailscale.default_tags=tag:server"  # Must match or be owned by your OAuth client's tag
 
   myapp:
     image: myapp:latest
@@ -34,6 +35,8 @@ volumes:
 ```
 
 Your app is now at `https://myapp.<tailnet>.ts.net`
+
+> **Note**: The `default_tags` must match or be owned by your OAuth client's tag. Individual services can override this with their own `tags` label. See [Tag Ownership and OAuth Security](configuration-reference.md#tag-ownership-and-oauth-security) for setup details.
 
 ## How It Works
 
