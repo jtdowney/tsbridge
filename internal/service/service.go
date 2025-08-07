@@ -539,7 +539,7 @@ func (r *Registry) RemoveService(name string) error {
 // Validates:
 //   - Non-empty service name and backend address
 //   - Absolute unix socket paths (unix://)
-//   - TLS mode is off, auto, or on
+//   - TLS mode is one of "off" or "auto"
 //   - Non-negative timeouts
 //
 // Returns error if invalid.
@@ -575,10 +575,10 @@ func (r *Registry) validateServiceConfig(cfg config.Service) error {
 
 	// Validate TLS mode
 	switch cfg.TLSMode {
-	case "off", "auto", "on":
+	case constants.TLSModeOff, constants.TLSModeAuto:
 		// Valid modes
 	default:
-		return fmt.Errorf("invalid TLS mode: %s (must be 'off', 'auto', or 'on')", cfg.TLSMode)
+		return fmt.Errorf("invalid TLS mode: %s (must be '%s' or '%s')", cfg.TLSMode, constants.TLSModeOff, constants.TLSModeAuto)
 	}
 
 	// Validate timeout values

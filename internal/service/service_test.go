@@ -2448,11 +2448,11 @@ func TestRegistry_AddService_ValidationFailure(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name: "empty TLS mode",
+			name: "invalid TLS mode",
 			svcCfg: config.Service{
 				Name:        "test-service",
 				BackendAddr: "http://localhost:8080",
-				TLSMode:     "", // Empty TLS mode should be invalid
+				TLSMode:     "on",
 			},
 			wantErr: "invalid TLS mode",
 		},

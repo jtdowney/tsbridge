@@ -938,10 +938,10 @@ func (c *Config) validateService(svc *Service) error {
 	// Validate TLS mode (only if set)
 	if svc.TLSMode != "" {
 		switch svc.TLSMode {
-		case "auto", "off":
+		case constants.TLSModeAuto, constants.TLSModeOff:
 			// Valid values
 		default:
-			return errors.NewValidationError(fmt.Sprintf("invalid tls_mode %q: must be 'auto' or 'off'", svc.TLSMode))
+			return errors.NewValidationError(fmt.Sprintf("invalid tls_mode %q: must be '%s' or '%s'", svc.TLSMode, constants.TLSModeAuto, constants.TLSModeOff))
 		}
 	}
 

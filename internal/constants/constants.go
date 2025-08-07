@@ -70,6 +70,14 @@ const (
 	DefaultTLSMode = "auto"
 )
 
+// TLS mode values for services.
+const (
+	// TLSModeAuto enables HTTPS with automatic certificates from Tailscale.
+	TLSModeAuto = "auto"
+	// TLSModeOff disables HTTPS listener and serves plain HTTP (encrypted over WireGuard).
+	TLSModeOff = "off"
+)
+
 // Default size limits used in configuration.
 const (
 	// DefaultMaxRequestBodySize is the default maximum request body size (50 MB).

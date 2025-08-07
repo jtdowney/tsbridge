@@ -22,6 +22,7 @@ Complete reference for all tsbridge configuration options.
 You must provide either OAuth credentials OR an auth key.
 
 > **Resolution Order**: tsbridge resolves secret values in the following priority order:
+>
 > 1. **Direct value** (inline in config file)
 > 2. **File** (from `_file` suffix)
 > 3. **Environment variable** (from `_env` suffix)
@@ -86,7 +87,7 @@ Configure tag ownership in your Tailscale ACL policy:
 ```jsonc
 {
   "tagOwners": {
-    "tag:tsbridge": [],        // Parent tag for OAuth client
+    "tag:tsbridge": [], // Parent tag for OAuth client
     "tag:server": ["tag:tsbridge"],
     "tag:proxy": ["tag:tsbridge"],
     "tag:prod": ["tag:tsbridge"],
@@ -96,6 +97,7 @@ Configure tag ownership in your Tailscale ACL policy:
 ```
 
 In this configuration:
+
 - `tag:tsbridge` is the parent tag for the OAuth client
 - `tag:server`, `tag:proxy`, `tag:prod`, and `tag:dev` are service tags owned by `tag:tsbridge`
 
@@ -233,7 +235,10 @@ insecure_skip_verify = true    # Skip TLS certificate verification
 
 ```toml
 # TLS mode
-tls_mode = "auto"          # Use Tailscale HTTPS (default) - or "off" for HTTP only
+# Accepted values: "auto" (default), "off"
+# - "auto": Use Tailscale HTTPS with automatic certificates
+# - "off":  Serve HTTP only (transport still encrypted over WireGuard)
+tls_mode = "auto"
 
 # Listening configuration
 listen_addr = "0.0.0.0:8443"  # Listen on specific address and port (default: ":443" for TLS, ":80" for non-TLS)
@@ -299,6 +304,7 @@ max_request_body_size = "100MB"   # Larger uploads allowed
 ## Environment Variables
 
 Default environment variables checked if no config specified:
+
 - `TS_OAUTH_CLIENT_ID` - OAuth client ID
 - `TS_OAUTH_CLIENT_SECRET` - OAuth client secret
 - `TS_AUTHKEY` - Auth key
@@ -310,17 +316,20 @@ Default environment variables checked if no config specified:
 tsbridge resolves secrets using different modes based on what you specify:
 
 **Direct mode** (when you set a value directly):
+
 ```toml
 oauth_client_id = "k12...89"  # This value is used
 ```
 
 **Environment variable mode** (when you use `_env`):
+
 ```toml
 oauth_client_id_env = "MY_CUSTOM_VAR"  # Reads from MY_CUSTOM_VAR
 # Falls back to TS_OAUTH_CLIENT_ID if MY_CUSTOM_VAR is not set
 ```
 
 **File mode** (when you use `_file`):
+
 ```toml
 oauth_client_id_file = "/path/to/file"  # Reads from file
 # Falls back to TS_OAUTH_CLIENT_ID if file doesn't exist
@@ -329,6 +338,7 @@ oauth_client_id_file = "/path/to/file"  # Reads from file
 **Important**: If you specify `_env` or `_file`, any direct value is ignored. You cannot mix modes.
 
 **Override**: Environment variables prefixed with `TSBRIDGE_` can override any configuration:
+
 - `TSBRIDGE_TAILSCALE_OAUTH_CLIENT_ID` overrides `tailscale.oauth_client_id`
 - `TSBRIDGE_GLOBAL_METRICS_ADDR` overrides `global.metrics_addr`
 
@@ -341,6 +351,7 @@ tsbridge -config tsbridge.toml -validate
 ```
 
 Validates:
+
 - Required fields present
 - No duplicate service names
 - Valid duration formats
