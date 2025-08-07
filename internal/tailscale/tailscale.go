@@ -214,9 +214,9 @@ func (s *Server) createServiceListener(serviceServer tsnetpkg.TSNetServer, svc c
 	listenAddr := s.determineListenAddr(svc, tlsMode)
 
 	switch tlsMode {
-	case "auto":
+	case constants.TLSModeAuto:
 		return s.createTLSListener(serviceServer, svc.Name, listenAddr, listenStart)
-	case "off":
+	case constants.TLSModeOff:
 		return s.createPlainListener(serviceServer, svc.Name, listenAddr, listenStart)
 	default:
 		return nil, tserrors.NewValidationError(fmt.Sprintf("invalid TLS mode: %q", tlsMode))
