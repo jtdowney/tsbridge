@@ -263,9 +263,8 @@ func TestUnixSocketDialRespectsContextCancellation(t *testing.T) {
 	require.NoError(t, err)
 
 	// Use an already-expired context to ensure DialContext sees cancellation immediately
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-1*time.Second))
 	defer cancel()
-	time.Sleep(1 * time.Millisecond) // ensure deadline is exceeded
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx)
 	rr := httptest.NewRecorder()
