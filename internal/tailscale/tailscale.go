@@ -371,17 +371,17 @@ func (s *Server) CloseService(serviceName string) error {
 // The actual validation and resolution is done by the config package.
 func ValidateTailscaleSecrets(cfg config.Tailscale) error {
 	// Config package has already resolved all secrets, so we just check if they exist
-	if cfg.AuthKey != "" {
+	if cfg.AuthKey.Value() != "" {
 		return nil // Auth key is available, no need for OAuth
 	}
 
 	// Check if OAuth credentials are available
-	if cfg.OAuthClientID != "" && cfg.OAuthClientSecret != "" {
+	if cfg.OAuthClientID != "" && cfg.OAuthClientSecret.Value() != "" {
 		return nil
 	}
 
 	// If neither auth key nor complete OAuth credentials are available, return error
-	if cfg.OAuthClientID == "" && cfg.OAuthClientSecret == "" {
+	if cfg.OAuthClientID == "" && cfg.OAuthClientSecret.Value() == "" {
 		return tserrors.NewConfigError("either auth key or OAuth credentials (client ID and secret) must be provided")
 	}
 
