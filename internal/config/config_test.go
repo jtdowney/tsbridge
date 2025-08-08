@@ -632,6 +632,47 @@ func TestResolveSecrets(t *testing.T) {
 	})
 }
 
+func TestServiceTLSModeValidationInConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		tlsMode     string
+		wantErr     bool
+		errContains string
+	}{
+		{name: "auto ok", tlsMode: "auto", wantErr: false},
+		{name: "off ok", tlsMode: "off", wantErr: false},
+		{name: "on invalid", tlsMode: "on", wantErr: true, errContains: "invalid tls_mode"},
+		{name: "random invalid", tlsMode: "random", wantErr: true, errContains: "invalid tls_mode"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configContent := `
+[tailscale]
+auth_key = "test-key"
+
+[[services]]
+name = "api"
+backend_addr = "localhost:8080"
+tls_mode = "` + tt.tlsMode + `"
+`
+
+			tmpFile := filepath.Join(t.TempDir(), "config.toml")
+			require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+			_, err := Load(tmpFile)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errContains != "" {
+					assert.Contains(t, err.Error(), tt.errContains)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestValidateOAuthSources(t *testing.T) {
 	tests := []struct {
 		name      string
