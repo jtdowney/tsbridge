@@ -3,7 +3,6 @@ package docker
 import (
 	"fmt"
 	"log/slog"
-	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,59 +35,6 @@ func isValidHeaderName(name string) bool {
 func isValidHeaderValue(value string) bool {
 	// Check for control characters including CR, LF, NULL, etc.
 	return !controlCharRegex.MatchString(value)
-}
-
-// validateBackendAddress validates a backend address for security and format
-func validateBackendAddress(addr string) error {
-	if addr == "" {
-		return errors.NewValidationError("backend address cannot be empty")
-	}
-
-	// Check for unix socket addresses
-	if strings.HasPrefix(addr, "unix:") {
-		// Must start with unix://
-		if !strings.HasPrefix(addr, "unix://") {
-			return errors.NewValidationError("unix socket path must start with unix://")
-		}
-
-		// Extract path after unix://
-		socketPath := strings.TrimPrefix(addr, "unix://")
-
-		// Unix socket should not have port
-		if strings.Contains(socketPath, ":") {
-			return errors.NewValidationError("unix socket cannot have port")
-		}
-
-		// Check for path traversal
-		if strings.Contains(socketPath, "..") {
-			return errors.NewValidationError("invalid unix socket path")
-		}
-
-		// Must be absolute path
-		if !strings.HasPrefix(socketPath, "/") {
-			return errors.NewValidationError("unix socket path must be absolute")
-		}
-
-		return nil
-	}
-
-	// For network addresses, validate host:port format
-	_, portStr, err := net.SplitHostPort(addr)
-	if err != nil {
-		return errors.NewValidationError("invalid backend address format")
-	}
-
-	// Validate port
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return errors.NewValidationError("invalid port")
-	}
-
-	if port < 1 || port > 65535 {
-		return errors.NewValidationError("port must be between 1 and 65535")
-	}
-
-	return nil
 }
 
 // labelParser helps parse Docker labels with a given prefix
@@ -283,7 +229,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	}
 
 	// Validate backend address
-	if err := validateBackendAddress(backendAddr); err != nil {
+	if err := config.ValidateBackendAddress(backendAddr); err != nil {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeValidation, "invalid backend address")
 	}
 
