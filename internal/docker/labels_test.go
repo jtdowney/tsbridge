@@ -752,9 +752,9 @@ func TestDockerOAuthPreauthorizedParsing(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		labelValue    string
-		expected      *bool
+		name       string
+		labelValue string
+		expected   *bool
 	}{
 		{"true", "true", func() *bool { b := true; return &b }()},
 		{"false", "false", func() *bool { b := false; return &b }()},
@@ -793,9 +793,9 @@ func TestDockerServiceOAuthPreauthorizedParsing(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		labelValue    string
-		expected      *bool
+		name       string
+		labelValue string
+		expected   *bool
 	}{
 		{"true", "true", func() *bool { b := true; return &b }()},
 		{"false", "false", func() *bool { b := false; return &b }()},
@@ -811,7 +811,7 @@ func TestDockerServiceOAuthPreauthorizedParsing(t *testing.T) {
 				labels["tsbridge.service.oauth_preauthorized"] = tt.labelValue
 			}
 
-			container := &container.Summary{
+			container := container.Summary{
 				Names:  []string{"/test-service"},
 				Labels: labels,
 			}
