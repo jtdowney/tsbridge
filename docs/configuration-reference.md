@@ -70,6 +70,8 @@ control_url = "https://headscale.example.com"
 
 # Preauthorize OAuth-generated auth keys (optional - defaults to true)
 # Set to false to require manual approval of devices in the admin console
+# Can be overridden per-service: set [[services]].oauth_preauthorized = false
+# Breaking change: Default is now true; set to false if you require manual approval.
 oauth_preauthorized = false
 ```
 
