@@ -805,7 +805,8 @@ func TestDockerServiceOAuthPreauthorizedParsing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			labels := map[string]string{
-				"tsbridge.enabled": "true",
+				"tsbridge.enabled":      "true",
+				"tsbridge.service.port": "8080",
 			}
 			if tt.labelValue != "" {
 				labels["tsbridge.service.oauth_preauthorized"] = tt.labelValue

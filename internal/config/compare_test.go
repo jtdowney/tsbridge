@@ -423,6 +423,7 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 		"RemoveUpstream":        true,
 		"RemoveDownstream":      true,
 		"MaxRequestBodySize":    true,
+		"OAuthPreauthorized":    true,
 	}
 
 	// Check that all struct fields are in our comparison
