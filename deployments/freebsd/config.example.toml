@@ -32,6 +32,7 @@ default_tags = ["tag:server", "tag:tsbridge"]
 
 # Preauthorize OAuth-generated auth keys (optional - defaults to true)
 # Set to false to require manual approval of devices in the admin console
+# Can be overridden per-service via [[services]].oauth_preauthorized
 # oauth_preauthorized = false
 
 # Global defaults for all services (optional)

@@ -12,6 +12,7 @@ default_tags = ["tag:tsbridge", "tag:proxy"]
 # control_url = "https://headscale.example.com"
 # Preauthorize OAuth-generated auth keys (optional - defaults to true)
 # Set to false to require manual approval of devices in the admin console
+# Can be overridden per-service via [[services]].oauth_preauthorized
 # oauth_preauthorized = false
 
 [global]
