@@ -58,7 +58,7 @@ labels:
   
   # Optional: defaults
   - "tsbridge.tailscale.default_tags=tag:server,tag:proxy"
-  - "tsbridge.tailscale.oauth_preauthorized=false"  # Require manual device approval
+  - "tsbridge.tailscale.oauth_preauthorized=false"  # Require manual device approval (default: true)
   - "tsbridge.global.metrics_addr=:9090"
   - "tsbridge.global.write_timeout=30s"
 ```
@@ -78,7 +78,7 @@ labels:
   - "tsbridge.service.name=custom-name"      # Default: container name
   - "tsbridge.service.whois_enabled=true"    # Add identity headers
   - "tsbridge.service.tags=tag:api,tag:prod" # Override default tags
-  - "tsbridge.service.oauth_preauthorized=false"  # Override global preauth setting
+  - "tsbridge.service.oauth_preauthorized=false"  # Override global preauth setting (global default: true)
   - "tsbridge.service.listen_addr=0.0.0.0:9090" # Custom address and port
 ```
 
