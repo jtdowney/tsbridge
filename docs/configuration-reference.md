@@ -67,6 +67,10 @@ default_tags = ["tag:server", "tag:proxy"]
 
 # Control server URL (for Headscale or custom servers)
 control_url = "https://headscale.example.com"
+
+# Preauthorize OAuth-generated auth keys (optional - defaults to true)
+# Set to false to require manual approval of devices in the admin console
+oauth_preauthorized = false
 ```
 
 ### Tag Ownership and OAuth Security

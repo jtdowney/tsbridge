@@ -43,6 +43,7 @@ type Tailscale struct {
 	StateDirEnv           string         `mapstructure:"state_dir_env"`            // Env var containing state directory
 	DefaultTags           []string       `mapstructure:"default_tags"`             // Default tags for services
 	ControlURL            string         `mapstructure:"control_url"`              // Control server URL (e.g., for Headscale)
+	OAuthPreauthorized    *bool          `mapstructure:"oauth_preauthorized"`      // Preauthorize OAuth-generated auth keys (default: true)
 }
 
 // Global contains global default settings
@@ -84,6 +85,7 @@ type Service struct {
 	MaxRequestBodySize    *int64         `mapstructure:"max_request_body_size"`   // Override global max request body size
 	FunnelEnabled         *bool          `mapstructure:"funnel_enabled"`          // Expose service via Tailscale Funnel
 	Ephemeral             bool           `mapstructure:"ephemeral"`               // Create ephemeral nodes
+	OAuthPreauthorized    *bool          `mapstructure:"oauth_preauthorized"`     // Override global OAuth preauthorized setting
 	FlushInterval         *time.Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
 	// Header manipulation
 	UpstreamHeaders   map[string]string `mapstructure:"upstream_headers"`   // Headers to add to upstream requests
@@ -501,6 +503,12 @@ func (c *Config) SetDefaults() {
 	if c.Global.MetricsReadHeaderTimeout == nil {
 		defaultTimeout := constants.DefaultMetricsReadHeaderTimeout
 		c.Global.MetricsReadHeaderTimeout = &defaultTimeout
+	}
+
+	// Set Tailscale defaults
+	if c.Tailscale.OAuthPreauthorized == nil {
+		defaultPreauth := true
+		c.Tailscale.OAuthPreauthorized = &defaultPreauth
 	}
 
 	// Set service defaults

@@ -43,6 +43,7 @@ TS_OAUTH_CLIENT_SECRET=your-client-secret
 # OAuth credentials come from environment
 state_dir = "/var/lib/tsbridge"  # Or omit - systemd sets STATE_DIRECTORY
 default_tags = ["tag:server"]
+# oauth_preauthorized = false  # Require manual device approval (default: true)
 
 [global]
 metrics_addr = ":9090"

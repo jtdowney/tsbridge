@@ -2069,6 +2069,57 @@ func TestAccessLoggingConfiguration(t *testing.T) {
 	})
 }
 
+func TestOAuthPreauthorizedConfiguration(t *testing.T) {
+	// Test SetDefaults sets oauth_preauthorized to true
+	t.Run("default oauth preauthorized enabled", func(t *testing.T) {
+		cfg := &Config{}
+		cfg.SetDefaults()
+
+		assert.NotNil(t, cfg.Tailscale.OAuthPreauthorized)
+		assert.True(t, *cfg.Tailscale.OAuthPreauthorized)
+	})
+
+	// Test explicit false is preserved
+	t.Run("explicit false preserved", func(t *testing.T) {
+		preauthorizedFalse := false
+		cfg := &Config{
+			Tailscale: Tailscale{
+				OAuthPreauthorized: &preauthorizedFalse,
+			},
+		}
+		cfg.SetDefaults()
+
+		assert.NotNil(t, cfg.Tailscale.OAuthPreauthorized)
+		assert.False(t, *cfg.Tailscale.OAuthPreauthorized)
+	})
+
+	// Test service-level override
+	t.Run("service override takes precedence", func(t *testing.T) {
+		globalTrue := true
+		servicefalse := false
+		cfg := &Config{
+			Tailscale: Tailscale{
+				OAuthPreauthorized: &globalTrue, // Global setting is true
+			},
+			Services: []Service{
+				{
+					Name:               "test-service",
+					OAuthPreauthorized: &servicefalse, // Service overrides to false
+				},
+			},
+		}
+		cfg.SetDefaults()
+
+		// Global should remain true
+		assert.NotNil(t, cfg.Tailscale.OAuthPreauthorized)
+		assert.True(t, *cfg.Tailscale.OAuthPreauthorized)
+
+		// Service should be false (override)
+		assert.NotNil(t, cfg.Services[0].OAuthPreauthorized)
+		assert.False(t, *cfg.Services[0].OAuthPreauthorized)
+	})
+}
+
 func TestFunnelEnabledConfiguration(t *testing.T) {
 	// Test funnel enabled config can be loaded
 	t.Run("service with funnel enabled", func(t *testing.T) {

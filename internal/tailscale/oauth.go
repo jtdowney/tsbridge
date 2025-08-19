@@ -37,10 +37,10 @@ type authKeyRequest struct {
 type authKeyCapabilities struct {
 	Devices struct {
 		Create struct {
-			Reusable         bool     `json:"reusable"`
-			Ephemeral        bool     `json:"ephemeral"`
-			Tags             []string `json:"tags"`
-			PreauthorizeOnly bool     `json:"preauthorized"`
+			Reusable      bool     `json:"reusable"`
+			Ephemeral     bool     `json:"ephemeral"`
+			Tags          []string `json:"tags"`
+			Preauthorized bool     `json:"preauthorized"`
 		} `json:"create"`
 	} `json:"devices"`
 }
@@ -52,12 +52,13 @@ type authKeyResponse struct {
 }
 
 // generateAuthKeyWithOAuth generates a Tailscale auth key using OAuth2 client credentials with retry logic
-func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool) (string, error) {
+func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool, preauthorized bool) (string, error) {
 	start := time.Now()
 	slog.Debug("starting OAuth authentication for auth key generation",
 		"api_base", apiBaseURL,
 		"tags", tags,
 		"ephemeral", ephemeral,
+		"preauthorized", preauthorized,
 	)
 
 	// Configure exponential backoff with attempt limit
@@ -83,7 +84,7 @@ func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tag
 		)
 
 		var err error
-		authKey, err = generateAuthKeyWithOAuthDirect(oauthConfig, apiBaseURL, tags, ephemeral)
+		authKey, err = generateAuthKeyWithOAuthDirect(oauthConfig, apiBaseURL, tags, ephemeral, preauthorized)
 
 		if err != nil {
 			slog.Debug("OAuth auth key generation attempt failed",
@@ -156,7 +157,7 @@ func isRetryableError(err error) bool {
 }
 
 // generateAuthKeyWithOAuthDirect generates a Tailscale auth key using OAuth2 client credentials (no retry)
-func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool) (string, error) {
+func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool, preauthorized bool) (string, error) {
 	ctx := context.Background()
 	start := time.Now()
 
@@ -189,7 +190,7 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 	req.Capabilities.Devices.Create.Reusable = false
 	req.Capabilities.Devices.Create.Ephemeral = ephemeral
 	req.Capabilities.Devices.Create.Tags = tags
-	req.Capabilities.Devices.Create.PreauthorizeOnly = false
+	req.Capabilities.Devices.Create.Preauthorized = preauthorized
 
 	// Marshal request
 	body, err := json.Marshal(req)
@@ -201,6 +202,7 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 		"url", apiBaseURL+"/api/v2/tailnet/-/keys",
 		"request_size", len(body),
 		"ephemeral", ephemeral,
+		"preauthorized", preauthorized,
 		"tags", tags,
 		"expiry_seconds", constants.AuthKeyExpirySeconds,
 	)
@@ -301,7 +303,17 @@ func generateOrResolveAuthKey(cfg config.Config, svc config.Service) (string, er
 				TokenURL: tokenURL,
 			},
 		}
-		authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiBase, svc.Tags, svc.Ephemeral)
+		// Get preauthorized setting - service override takes precedence over global setting
+		preauthorized := true
+		if svc.OAuthPreauthorized != nil {
+			// Service-specific override
+			preauthorized = *svc.OAuthPreauthorized
+		} else if cfg.Tailscale.OAuthPreauthorized != nil {
+			// Global setting
+			preauthorized = *cfg.Tailscale.OAuthPreauthorized
+		}
+
+		authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiBase, svc.Tags, svc.Ephemeral, preauthorized)
 		if err != nil {
 			// Error from generateAuthKeyWithOAuth is already typed
 			return "", err

@@ -93,7 +93,7 @@ func TestGenerateAuthKeyWithOAuth(t *testing.T) {
 	}
 
 	// Generate auth key using OAuth
-	authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+	authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 	if err != nil {
 		t.Fatalf("failed to generate auth key: %v", err)
 	}
@@ -169,12 +169,12 @@ func TestOAuthTokenRefresh(t *testing.T) {
 	}
 
 	// Generate auth key twice to simulate token usage
-	key1, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+	key1, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	key2, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+	key2, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestOAuthErrorHandling(t *testing.T) {
 			}
 
 			// Try to generate auth key
-			_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+			_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 
 			if tt.expectError && err == nil {
 				t.Error("expected error but got none")
@@ -270,7 +270,7 @@ func TestOAuthErrorTypes(t *testing.T) {
 			},
 		}
 
-		_, err := generateAuthKeyWithOAuth(oauthConfig, "http://example.com", []string{"tag:test"}, false)
+		_, err := generateAuthKeyWithOAuth(oauthConfig, "http://example.com", []string{"tag:test"}, false, true)
 		if err == nil {
 			t.Error("expected error for non-200 response without error body")
 		}
@@ -297,7 +297,7 @@ func TestOAuthErrorTypes(t *testing.T) {
 			},
 		}
 
-		_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+		_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 		if err == nil {
 			t.Error("expected error for non-200 response without error body")
 		}
@@ -324,7 +324,7 @@ func TestOAuthErrorTypes(t *testing.T) {
 			},
 		}
 
-		_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+		_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 		if err == nil {
 			t.Error("expected error for invalid JSON response")
 		}
@@ -454,7 +454,7 @@ func TestOAuthEphemeralFlag(t *testing.T) {
 			}
 
 			// Generate auth key with ephemeral flag
-			_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, tt.ephemeral)
+			_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, tt.ephemeral, true)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -473,6 +473,96 @@ func TestOAuthEphemeralFlag(t *testing.T) {
 			// Verify reusable is always false for security
 			if req.Capabilities.Devices.Create.Reusable != false {
 				t.Errorf("expected reusable=false, got %v", req.Capabilities.Devices.Create.Reusable)
+			}
+		})
+	}
+}
+
+func TestOAuthPreauthorizedFlag(t *testing.T) {
+	tests := []struct {
+		name          string
+		preauthorized bool
+	}{
+		{"preauthorized=true", true},
+		{"preauthorized=false", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var requestBody []byte
+
+			// Mock OAuth2 token endpoint
+			tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/oauth/token" {
+					t.Errorf("expected /oauth/token, got %s", r.URL.Path)
+				}
+
+				// Verify OAuth2 client credentials grant
+				if err := r.ParseForm(); err != nil {
+					t.Fatal(err)
+				}
+				if grant := r.Form.Get("grant_type"); grant != "client_credentials" {
+					t.Errorf("expected grant_type=client_credentials, got %s", grant)
+				}
+
+				// Return mock token
+				w.Header().Set("Content-Type", "application/json")
+				token := map[string]interface{}{
+					"access_token": "mock-access-token",
+					"token_type":   "Bearer",
+					"expires_in":   3600,
+				}
+				_ = json.NewEncoder(w).Encode(token)
+			}))
+			defer tokenServer.Close()
+
+			// Mock Tailscale API endpoint for creating auth keys
+			apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/api/v2/tailnet/-/keys" {
+					t.Errorf("expected /api/v2/tailnet/-/keys, got %s", r.URL.Path)
+				}
+
+				// Verify authorization header
+				if auth := r.Header.Get("Authorization"); auth != "Bearer mock-access-token" {
+					t.Errorf("expected Bearer mock-access-token, got %s", auth)
+				}
+
+				// Capture request body for validation
+				body, _ := io.ReadAll(r.Body)
+				requestBody = body
+
+				// Return mock auth key
+				response := map[string]interface{}{
+					"key":     "tskey-auth-mock123",
+					"created": time.Now().Format(time.RFC3339),
+				}
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+			defer apiServer.Close()
+
+			oauthConfig := &oauth2.Config{
+				ClientID:     "test-client-id",
+				ClientSecret: "test-client-secret",
+				Endpoint: oauth2.Endpoint{
+					TokenURL: tokenServer.URL + "/oauth/token",
+				},
+			}
+
+			// Generate auth key with preauthorized flag
+			_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, tt.preauthorized)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Parse the request body to check preauthorized flag
+			var req authKeyRequest
+			if err := json.Unmarshal(requestBody, &req); err != nil {
+				t.Fatalf("failed to unmarshal request body: %v", err)
+			}
+
+			// Verify preauthorized flag was set correctly
+			if req.Capabilities.Devices.Create.Preauthorized != tt.preauthorized {
+				t.Errorf("expected preauthorized=%v, got %v", tt.preauthorized, req.Capabilities.Devices.Create.Preauthorized)
 			}
 		})
 	}
@@ -519,7 +609,7 @@ func TestAuthKeyNonReusable(t *testing.T) {
 	}
 
 	// Generate auth key
-	_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+	_, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -691,7 +781,7 @@ func TestOAuthRetryBehavior(t *testing.T) {
 
 			// Attempt to generate auth key with retry
 			start := time.Now()
-			authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false)
+			authKey, err := generateAuthKeyWithOAuth(oauthConfig, apiServer.URL, []string{"tag:test"}, false, true)
 			duration := time.Since(start)
 
 			// Verify results

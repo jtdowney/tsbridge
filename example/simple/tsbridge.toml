@@ -10,6 +10,9 @@ default_tags = ["tag:tsbridge", "tag:proxy"]
 # Control server URL (optional - defaults to Tailscale's control servers)
 # Uncomment to use a custom control server like Headscale
 # control_url = "https://headscale.example.com"
+# Preauthorize OAuth-generated auth keys (optional - defaults to true)
+# Set to false to require manual approval of devices in the admin console
+# oauth_preauthorized = false
 
 [global]
 
@@ -80,3 +83,10 @@ backend_addr = "api-backend:8080"
 whois_enabled = true
 max_request_body_size = "-1"      # Disable body size limit (-1 means no limit)
 write_timeout = "600s"            # Very long timeout for unlimited uploads
+
+# Example of a service that requires manual device approval
+[[services]]
+name = "demo-secure"
+backend_addr = "api-backend:8080"
+whois_enabled = true
+oauth_preauthorized = false       # Override global setting - require manual approval

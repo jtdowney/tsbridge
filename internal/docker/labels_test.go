@@ -697,6 +697,7 @@ func getDockerParsedServiceFields() map[string]bool {
 		"service.remove_downstream":       true,
 		"service.tags":                    true,
 		"service.max_request_body_size":   true,
+		"service.oauth_preauthorized":     true,
 		"service.listen_addr":             true,
 	}
 }
@@ -718,6 +719,7 @@ func getDockerParsedTailscaleFields() map[string]bool {
 		"tailscale.state_dir_env":            true,
 		"tailscale.default_tags":             true,
 		"tailscale.control_url":              true,
+		"tailscale.oauth_preauthorized":      true,
 	}
 }
 
@@ -742,4 +744,88 @@ func TestDockerControlURLParsing(t *testing.T) {
 
 	assert.Equal(t, "https://headscale.example.com", cfg.Tailscale.ControlURL)
 	assert.Equal(t, "test-client-id", cfg.Tailscale.OAuthClientID)
+}
+
+func TestDockerOAuthPreauthorizedParsing(t *testing.T) {
+	provider := &Provider{
+		labelPrefix: "tsbridge",
+	}
+
+	tests := []struct {
+		name          string
+		labelValue    string
+		expected      *bool
+	}{
+		{"true", "true", func() *bool { b := true; return &b }()},
+		{"false", "false", func() *bool { b := false; return &b }()},
+		{"empty", "", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			labels := map[string]string{}
+			if tt.labelValue != "" {
+				labels["tsbridge.tailscale.oauth_preauthorized"] = tt.labelValue
+			}
+
+			container := &container.Summary{
+				Names:  []string{"/tsbridge"},
+				Labels: labels,
+			}
+
+			cfg := &config.Config{}
+			err := provider.parseGlobalConfig(container, cfg)
+			require.NoError(t, err)
+
+			if tt.expected == nil {
+				assert.Nil(t, cfg.Tailscale.OAuthPreauthorized)
+			} else {
+				require.NotNil(t, cfg.Tailscale.OAuthPreauthorized)
+				assert.Equal(t, *tt.expected, *cfg.Tailscale.OAuthPreauthorized)
+			}
+		})
+	}
+}
+
+func TestDockerServiceOAuthPreauthorizedParsing(t *testing.T) {
+	provider := &Provider{
+		labelPrefix: "tsbridge",
+	}
+
+	tests := []struct {
+		name          string
+		labelValue    string
+		expected      *bool
+	}{
+		{"true", "true", func() *bool { b := true; return &b }()},
+		{"false", "false", func() *bool { b := false; return &b }()},
+		{"empty", "", nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			labels := map[string]string{
+				"tsbridge.enabled": "true",
+			}
+			if tt.labelValue != "" {
+				labels["tsbridge.service.oauth_preauthorized"] = tt.labelValue
+			}
+
+			container := &container.Summary{
+				Names:  []string{"/test-service"},
+				Labels: labels,
+			}
+
+			svc, err := provider.parseServiceConfig(container)
+			require.NoError(t, err)
+			require.NotNil(t, svc)
+
+			if tt.expected == nil {
+				assert.Nil(t, svc.OAuthPreauthorized)
+			} else {
+				require.NotNil(t, svc.OAuthPreauthorized)
+				assert.Equal(t, *tt.expected, *svc.OAuthPreauthorized)
+			}
+		})
+	}
 }

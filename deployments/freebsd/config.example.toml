@@ -30,6 +30,10 @@ default_tags = ["tag:server", "tag:tsbridge"]
 # Uncomment to use a custom control server like Headscale
 # control_url = "https://headscale.example.com"
 
+# Preauthorize OAuth-generated auth keys (optional - defaults to true)
+# Set to false to require manual approval of devices in the admin console
+# oauth_preauthorized = false
+
 # Global defaults for all services (optional)
 [global]
 # Timeouts

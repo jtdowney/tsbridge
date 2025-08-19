@@ -211,6 +211,7 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 		StateDirEnv:           parser.getString("tailscale.state_dir_env"),
 		DefaultTags:           parser.getStringSlice("tailscale.default_tags", ","),
 		ControlURL:            parser.getString("tailscale.control_url"),
+		OAuthPreauthorized:    parser.getBool("tailscale.oauth_preauthorized"),
 	}
 
 	// Parse global configuration
@@ -307,6 +308,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.RemoveUpstream = parser.getStringSlice("service.remove_upstream", ",")
 	svc.RemoveDownstream = parser.getStringSlice("service.remove_downstream", ",")
 	svc.MaxRequestBodySize = parser.getByteSize("service.max_request_body_size")
+	svc.OAuthPreauthorized = parser.getBool("service.oauth_preauthorized")
 
 	// Handle ephemeral (non-pointer bool)
 	if ephemeral := parser.getBool("service.ephemeral"); ephemeral != nil {
