@@ -2096,7 +2096,7 @@ func TestOAuthPreauthorizedConfiguration(t *testing.T) {
 	// Test service-level override
 	t.Run("service override takes precedence", func(t *testing.T) {
 		globalTrue := true
-		servicefalse := false
+		serviceFalse := false
 		cfg := &Config{
 			Tailscale: Tailscale{
 				OAuthPreauthorized: &globalTrue, // Global setting is true
@@ -2104,7 +2104,7 @@ func TestOAuthPreauthorizedConfiguration(t *testing.T) {
 			Services: []Service{
 				{
 					Name:               "test-service",
-					OAuthPreauthorized: &servicefalse, // Service overrides to false
+					OAuthPreauthorized: &serviceFalse, // Service overrides to false
 				},
 			},
 		}
