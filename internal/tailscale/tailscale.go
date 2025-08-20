@@ -378,9 +378,9 @@ func (s *Server) CloseService(serviceName string) error {
 		return nil
 	}
 
-	// Close the tsnet server
-	if err := server.Close(); err != nil {
-		return tserrors.WrapResource(err, fmt.Sprintf("closing tsnet server for service %q", serviceName))
+	// Close the tsnet server with timeout to avoid hangs
+	if err := s.closeServerWithTimeout(server, serviceName, 3*time.Second); err != nil {
+		return err
 	}
 
 	// Remove from the map
