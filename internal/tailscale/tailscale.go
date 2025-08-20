@@ -323,21 +323,19 @@ func (s *Server) GetServiceServer(serviceName string) tsnetpkg.TSNetServer {
 // Close shuts down the server and all service servers
 func (s *Server) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	servers := s.serviceServers
+	s.serviceServers = make(map[string]tsnetpkg.TSNetServer)
+	s.mu.Unlock()
 
 	var closeErrors []error
 
 	// Close all service servers with timeout
-	for serviceName, server := range s.serviceServers {
+	for serviceName, server := range servers {
 		slog.Debug("closing tsnet server", "service", serviceName)
-		err := s.closeServerWithTimeout(server, serviceName, 3*time.Second)
-		if err != nil {
+		if err := s.closeServerWithTimeout(server, serviceName, 3*time.Second); err != nil {
 			closeErrors = append(closeErrors, err)
 		}
 	}
-
-	// Clear the map after closing
-	s.serviceServers = make(map[string]tsnetpkg.TSNetServer)
 
 	// Combine errors if any occurred
 	if len(closeErrors) > 0 {
@@ -370,21 +368,21 @@ func (s *Server) closeServerWithTimeout(server tsnetpkg.TSNetServer, serviceName
 // CloseService closes and removes the tsnet server for a specific service
 func (s *Server) CloseService(serviceName string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	server, exists := s.serviceServers[serviceName]
 	if !exists {
+		s.mu.Unlock()
 		// Service not found, nothing to do
 		return nil
 	}
+
+	// Remove from the map immediately to prevent returning it to new callers
+	delete(s.serviceServers, serviceName)
+	s.mu.Unlock()
 
 	// Close the tsnet server with timeout to avoid hangs
 	if err := s.closeServerWithTimeout(server, serviceName, 3*time.Second); err != nil {
 		return err
 	}
-
-	// Remove from the map
-	delete(s.serviceServers, serviceName)
 
 	return nil
 }
