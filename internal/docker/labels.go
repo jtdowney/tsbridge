@@ -241,6 +241,11 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.AccessLog = parser.getBool("service.access_log")
 	svc.FunnelEnabled = parser.getBool("service.funnel_enabled")
 	svc.InsecureSkipVerify = parser.getBool("service.insecure_skip_verify")
+	if svc.InsecureSkipVerify != nil && *svc.InsecureSkipVerify {
+		if !strings.HasPrefix(strings.ToLower(backendAddr), "https://") {
+			return nil, errors.NewProviderError("docker", errors.ErrTypeValidation, "insecure_skip_verify is only supported for HTTPS backends")
+		}
+	}
 	svc.TLSMode = parser.getString("service.tls_mode")
 	svc.ListenAddr = parser.getString("service.listen_addr")
 	svc.WhoisTimeout = parser.getDuration("service.whois_timeout")

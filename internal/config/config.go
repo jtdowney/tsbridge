@@ -913,6 +913,13 @@ func (c *Config) validateService(svc *Service) error {
 		return err
 	}
 
+	// If set, insecure_skip_verify only applies to HTTPS backends
+	if svc.InsecureSkipVerify != nil && *svc.InsecureSkipVerify {
+		if !strings.HasPrefix(strings.ToLower(svc.BackendAddr), "https://") {
+			return errors.NewValidationError("insecure_skip_verify is only supported for HTTPS backends")
+		}
+	}
+
 	// Validate whois timeout if whois is enabled
 	if svc.WhoisEnabled == nil || *svc.WhoisEnabled {
 		if err := validateTimeout("whois_timeout", svc.WhoisTimeout, false); err != nil {

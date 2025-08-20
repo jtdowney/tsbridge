@@ -1578,6 +1578,102 @@ func TestValidate(t *testing.T) {
 			},
 			wantErr: "",
 		},
+		{
+			name: "insecure_skip_verify with HTTPS backend is valid",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:               "api",
+						BackendAddr:        "https://example.com:8080",
+						InsecureSkipVerify: &trueVal,
+						Tags:               []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
+			name: "insecure_skip_verify with HTTP backend is invalid",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:               "api",
+						BackendAddr:        "http://example.com:8080",
+						InsecureSkipVerify: &trueVal,
+						Tags:               []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "insecure_skip_verify is only supported for HTTPS backends",
+		},
+		{
+			name: "insecure_skip_verify with TCP backend is invalid",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:               "api",
+						BackendAddr:        "127.0.0.1:8080",
+						InsecureSkipVerify: &trueVal,
+						Tags:               []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "insecure_skip_verify is only supported for HTTPS backends",
+		},
+		{
+			name: "insecure_skip_verify false with HTTP backend is valid",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:               "api",
+						BackendAddr:        "http://example.com:8080",
+						InsecureSkipVerify: &falseVal,
+						Tags:               []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "",
+		},
 	}
 
 	for _, tt := range tests {

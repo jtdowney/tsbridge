@@ -505,6 +505,48 @@ func TestParseServiceConfigBackendValidation(t *testing.T) {
 			shouldError: true,
 			errorMsg:    "invalid unix socket path",
 		},
+		{
+			name: "insecure_skip_verify with HTTPS backend is valid",
+			labels: map[string]string{
+				"tsbridge.enabled":                      "true",
+				"tsbridge.service.name":                 "test-service",
+				"tsbridge.service.backend_addr":         "https://example.com:8443",
+				"tsbridge.service.insecure_skip_verify": "true",
+			},
+			shouldError: false,
+		},
+		{
+			name: "insecure_skip_verify with HTTP backend is rejected",
+			labels: map[string]string{
+				"tsbridge.enabled":                      "true",
+				"tsbridge.service.name":                 "test-service",
+				"tsbridge.service.backend_addr":         "http://example.com:8080",
+				"tsbridge.service.insecure_skip_verify": "true",
+			},
+			shouldError: true,
+			errorMsg:    "insecure_skip_verify is only supported for HTTPS backends",
+		},
+		{
+			name: "insecure_skip_verify with TCP backend is rejected",
+			labels: map[string]string{
+				"tsbridge.enabled":                      "true",
+				"tsbridge.service.name":                 "test-service",
+				"tsbridge.service.backend_addr":         "localhost:8080",
+				"tsbridge.service.insecure_skip_verify": "true",
+			},
+			shouldError: true,
+			errorMsg:    "insecure_skip_verify is only supported for HTTPS backends",
+		},
+		{
+			name: "insecure_skip_verify false with HTTP backend is valid",
+			labels: map[string]string{
+				"tsbridge.enabled":                      "true",
+				"tsbridge.service.name":                 "test-service",
+				"tsbridge.service.backend_addr":         "http://example.com:8080",
+				"tsbridge.service.insecure_skip_verify": "false",
+			},
+			shouldError: false,
+		},
 	}
 
 	for _, tt := range tests {
