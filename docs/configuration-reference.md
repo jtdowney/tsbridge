@@ -325,14 +325,16 @@ oauth_client_id = "k12...89"  # This value is used
 
 ```toml
 oauth_client_id_env = "MY_CUSTOM_VAR"  # Reads from MY_CUSTOM_VAR
-# Falls back to TS_OAUTH_CLIENT_ID if MY_CUSTOM_VAR is not set
+# Must be set; if unset or empty, tsbridge returns an error.
+# Fallback to TS_OAUTH_CLIENT_ID is used only when no oauth_client_id/_env/_file is configured at all.
 ```
 
 **File mode** (when you use `_file`):
 
 ```toml
 oauth_client_id_file = "/path/to/file"  # Reads from file
-# Falls back to TS_OAUTH_CLIENT_ID if file doesn't exist
+# Must be readable; if missing or unreadable, tsbridge returns an error.
+# Fallback to TS_OAUTH_CLIENT_ID is used only when no oauth_client_id/_env/_file is configured at all.
 ```
 
 **Important**: If you specify `_env` or `_file`, any direct value is ignored. You cannot mix modes.
