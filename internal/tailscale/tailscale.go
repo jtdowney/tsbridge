@@ -347,20 +347,24 @@ func (s *Server) Close() error {
 
 // closeServerWithTimeout closes a tsnet server with a timeout to prevent hanging
 func (s *Server) closeServerWithTimeout(server tsnetpkg.TSNetServer, serviceName string, timeout time.Duration) error {
+	start := time.Now()
 	done := make(chan error, 1)
 	go func() {
 		done <- server.Close()
 	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 
 	select {
 	case err := <-done:
 		if err != nil {
 			return tserrors.WrapResource(err, fmt.Sprintf("closing service %q", serviceName))
 		}
-		slog.Debug("tsnet server closed successfully", "service", serviceName)
+		slog.Debug("tsnet server closed successfully", "service", serviceName, "duration", time.Since(start))
 		return nil
-	case <-time.After(timeout):
-		slog.Warn("tsnet server close timed out, forcing shutdown", "service", serviceName, "timeout", timeout)
+	case <-timer.C:
+		slog.Warn("tsnet server close timed out, forcing shutdown", "service", serviceName, "timeout", timeout, "duration", time.Since(start))
 		return tserrors.WrapResource(fmt.Errorf("close timeout after %v", timeout), fmt.Sprintf("closing service %q", serviceName))
 	}
 }
