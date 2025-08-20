@@ -332,7 +332,7 @@ func (s *Server) Close() error {
 	// Close all service servers with timeout
 	for serviceName, server := range servers {
 		slog.Debug("closing tsnet server", "service", serviceName)
-		if err := s.closeServerWithTimeout(server, serviceName, 3*time.Second); err != nil {
+		if err := s.closeServerWithTimeout(server, serviceName, constants.TSNetServerCloseTimeout); err != nil {
 			closeErrors = append(closeErrors, err)
 		}
 	}
@@ -380,7 +380,7 @@ func (s *Server) CloseService(serviceName string) error {
 	s.mu.Unlock()
 
 	// Close the tsnet server with timeout to avoid hangs
-	if err := s.closeServerWithTimeout(server, serviceName, 3*time.Second); err != nil {
+	if err := s.closeServerWithTimeout(server, serviceName, constants.TSNetServerCloseTimeout); err != nil {
 		return err
 	}
 
