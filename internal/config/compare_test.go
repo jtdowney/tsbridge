@@ -418,6 +418,7 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 		"FunnelEnabled":         true,
 		"Ephemeral":             true,
 		"FlushInterval":         true,
+		"InsecureSkipVerify":    true,
 		"UpstreamHeaders":       true,
 		"DownstreamHeaders":     true,
 		"RemoveUpstream":        true,

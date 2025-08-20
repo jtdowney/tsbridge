@@ -593,6 +593,64 @@ func TestConfigParityBetweenTOMLAndDocker(t *testing.T) {
 	})
 }
 
+func TestDockerInsecureSkipVerifyParsing(t *testing.T) {
+	provider := &Provider{
+		labelPrefix: "tsbridge",
+	}
+
+	t.Run("insecure_skip_verify true", func(t *testing.T) {
+		container := container.Summary{
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				"tsbridge.enabled":                      "true",
+				"tsbridge.service.name":                 "test-service",
+				"tsbridge.service.backend_addr":         "https://self-signed.example.com",
+				"tsbridge.service.insecure_skip_verify": "true",
+			},
+		}
+
+		svc, err := provider.parseServiceConfig(container)
+		require.NoError(t, err)
+
+		assert.NotNil(t, svc.InsecureSkipVerify)
+		assert.True(t, *svc.InsecureSkipVerify)
+	})
+
+	t.Run("insecure_skip_verify false", func(t *testing.T) {
+		container := container.Summary{
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				"tsbridge.enabled":                      "true",
+				"tsbridge.service.name":                 "test-service",
+				"tsbridge.service.backend_addr":         "https://example.com",
+				"tsbridge.service.insecure_skip_verify": "false",
+			},
+		}
+
+		svc, err := provider.parseServiceConfig(container)
+		require.NoError(t, err)
+
+		assert.NotNil(t, svc.InsecureSkipVerify)
+		assert.False(t, *svc.InsecureSkipVerify)
+	})
+
+	t.Run("insecure_skip_verify not specified", func(t *testing.T) {
+		container := container.Summary{
+			Names: []string{"/test-container"},
+			Labels: map[string]string{
+				"tsbridge.enabled":              "true",
+				"tsbridge.service.name":         "test-service",
+				"tsbridge.service.backend_addr": "https://example.com",
+			},
+		}
+
+		svc, err := provider.parseServiceConfig(container)
+		require.NoError(t, err)
+
+		assert.Nil(t, svc.InsecureSkipVerify)
+	})
+}
+
 // getDockerParsedGlobalFields returns all global.* fields that are parsed in Docker
 // This list must be kept in sync with parseGlobalConfig() in labels.go
 func getDockerParsedGlobalFields() map[string]bool {
@@ -632,6 +690,7 @@ func getDockerParsedServiceFields() map[string]bool {
 		"service.response_header_timeout": true,
 		"service.access_log":              true,
 		"service.funnel_enabled":          true,
+		"service.insecure_skip_verify":    true,
 		"service.ephemeral":               true,
 		"service.flush_interval":          true,
 		"service.upstream_headers":        true,

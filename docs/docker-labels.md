@@ -75,6 +75,7 @@ labels:
   - "tsbridge.service.whois_enabled=true"    # Add identity headers
   - "tsbridge.service.tags=tag:api,tag:prod" # Override default tags
   - "tsbridge.service.listen_addr=0.0.0.0:9090" # Custom address and port
+  - "tsbridge.service.insecure_skip_verify=true" # Skip TLS cert verification (HTTPS backends only)
 ```
 
 ## Backend Address Tips
@@ -132,6 +133,22 @@ labels:
   # Remove from responses
   - "tsbridge.service.remove_downstream=Server,X-Powered-By"
 ```
+
+### HTTPS Backends
+
+For connecting to HTTPS backend services:
+
+```yaml
+labels:
+  # For services with valid certificates
+  - "tsbridge.service.backend_addr=https://api.example.com:443"
+  
+  # For services with self-signed certificates (use with caution)
+  - "tsbridge.service.backend_addr=https://internal.lan:8443"  
+  - "tsbridge.service.insecure_skip_verify=true"
+```
+
+> **⚠️ Security Warning**: `insecure_skip_verify=true` disables TLS certificate validation. Only use this for trusted internal services with self-signed certificates, as it makes connections vulnerable to attacks.
 
 ## Complete Example
 

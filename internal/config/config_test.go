@@ -1007,6 +1007,32 @@ func TestValidate(t *testing.T) {
 			wantErr: "",
 		},
 		{
+			name: "https backend with insecure_skip_verify",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+				},
+				Services: []Service{
+					{
+						Name:               "api",
+						BackendAddr:        "https://self-signed.example.com:443",
+						WhoisEnabled:       &trueVal,
+						WhoisTimeout:       testhelpers.DurationPtr(1 * time.Second),
+						InsecureSkipVerify: &trueVal,
+						Tags:               []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "",
+		},
+		{
 			name: "valid unix socket",
 			config: &Config{
 				Tailscale: Tailscale{

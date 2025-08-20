@@ -201,9 +201,27 @@ backend_addr = "localhost:8080"
 # backend_addr = "10.0.0.5:3000"
 # backend_addr = "backend.internal:80"
 
+# HTTPS backends
+# backend_addr = "https://api.example.com:443"
+# backend_addr = "https://self-signed.internal"
+# insecure_skip_verify = true    # Skip TLS certificate verification (default: false)
+
 # Unix sockets
 # backend_addr = "unix:///var/run/app.sock"
 ```
+
+### TLS Configuration
+
+For HTTPS backends, you can control TLS certificate verification:
+
+```toml
+[[services]]
+name = "self-signed-api"
+backend_addr = "https://internal-service.lan:8443"
+insecure_skip_verify = true    # Skip TLS certificate verification
+```
+
+> **⚠️ Security Warning**: Setting `insecure_skip_verify = true` disables TLS certificate validation, making connections vulnerable to man-in-the-middle attacks. Only use this for trusted internal services with self-signed certificates. A warning will be logged when this option is enabled.
 
 ### Network Options
 

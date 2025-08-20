@@ -240,6 +240,7 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	svc.WhoisEnabled = parser.getBool("service.whois_enabled")
 	svc.AccessLog = parser.getBool("service.access_log")
 	svc.FunnelEnabled = parser.getBool("service.funnel_enabled")
+	svc.InsecureSkipVerify = parser.getBool("service.insecure_skip_verify")
 	svc.TLSMode = parser.getString("service.tls_mode")
 	svc.ListenAddr = parser.getString("service.listen_addr")
 	svc.WhoisTimeout = parser.getDuration("service.whois_timeout")

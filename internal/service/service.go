@@ -282,19 +282,27 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 
 	// Create proxy handler with unified configuration
 	handler, err := proxy.NewHandler(&proxy.HandlerConfig{
-		BackendAddr:       s.Config.BackendAddr,
-		TransportConfig:   transportConfig,
-		TrustedProxies:    trustedProxies,
-		MetricsCollector:  s.metricsCollector,
-		ServiceName:       s.Config.Name,
-		UpstreamHeaders:   s.Config.UpstreamHeaders,
-		DownstreamHeaders: s.Config.DownstreamHeaders,
-		RemoveUpstream:    s.Config.RemoveUpstream,
-		RemoveDownstream:  s.Config.RemoveDownstream,
-		FlushInterval:     s.Config.FlushInterval,
+		BackendAddr:        s.Config.BackendAddr,
+		TransportConfig:    transportConfig,
+		TrustedProxies:     trustedProxies,
+		MetricsCollector:   s.metricsCollector,
+		ServiceName:        s.Config.Name,
+		UpstreamHeaders:    s.Config.UpstreamHeaders,
+		DownstreamHeaders:  s.Config.DownstreamHeaders,
+		RemoveUpstream:     s.Config.RemoveUpstream,
+		RemoveDownstream:   s.Config.RemoveDownstream,
+		FlushInterval:      s.Config.FlushInterval,
+		InsecureSkipVerify: s.Config.InsecureSkipVerify != nil && *s.Config.InsecureSkipVerify,
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// Log security warning if TLS verification is disabled
+	if s.Config.InsecureSkipVerify != nil && *s.Config.InsecureSkipVerify {
+		slog.Warn("TLS certificate verification disabled for service connection to backend",
+			"service", s.Config.Name,
+			"backend", s.Config.BackendAddr)
 	}
 
 	// Wrap with middleware - convert to http.Handler for middleware chaining

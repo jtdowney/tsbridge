@@ -3,6 +3,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	goerrors "errors"
 	"io"
 	"net"
@@ -43,7 +44,8 @@ type HandlerConfig struct {
 	RemoveDownstream  []string
 	// FlushInterval specifies the duration between flushes to the client.
 	// If nil, defaults to 0 (standard buffering). Negative values cause immediate flushing.
-	FlushInterval *time.Duration
+	FlushInterval      *time.Duration
+	InsecureSkipVerify bool
 }
 
 // Handler is the interface for all proxy handlers
@@ -114,7 +116,7 @@ func NewHandler(cfg *HandlerConfig) (Handler, error) {
 	h.proxy.Director = createProxyDirector(h, originalDirector)
 
 	// Configure transport
-	h.transport = createProxyTransport(cfg.BackendAddr, cfg.TransportConfig)
+	h.transport = createProxyTransport(cfg.BackendAddr, cfg.TransportConfig, cfg.InsecureSkipVerify)
 	h.proxy.Transport = h.transport
 
 	// Configure ModifyResponse to handle downstream headers
@@ -268,7 +270,7 @@ func createProxyDirector(h *httpHandler, originalDirector func(*http.Request)) f
 }
 
 // createProxyTransport creates the transport for the reverse proxy
-func createProxyTransport(backendAddr string, config *TransportConfig) *http.Transport {
+func createProxyTransport(backendAddr string, config *TransportConfig, insecureSkipVerify bool) *http.Transport {
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -292,6 +294,13 @@ func createProxyTransport(backendAddr string, config *TransportConfig) *http.Tra
 		IdleConnTimeout:       config.IdleConnTimeout,
 		TLSHandshakeTimeout:   config.TLSHandshakeTimeout,
 		ExpectContinueTimeout: config.ExpectContinueTimeout,
+	}
+
+	// Configure TLS settings for HTTPS backends
+	if strings.HasPrefix(backendAddr, "https://") {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: insecureSkipVerify, // #nosec G402 - configurable per service
+		}
 	}
 
 	if config.ResponseHeaderTimeout > 0 {

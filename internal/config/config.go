@@ -86,6 +86,7 @@ type Service struct {
 	FunnelEnabled         *bool          `mapstructure:"funnel_enabled"`          // Expose service via Tailscale Funnel
 	Ephemeral             bool           `mapstructure:"ephemeral"`               // Create ephemeral nodes
 	FlushInterval         *time.Duration `mapstructure:"flush_interval"`          // Time between flushes (-1ms for immediate)
+	InsecureSkipVerify    *bool          `mapstructure:"insecure_skip_verify"`    // Skip TLS certificate verification for HTTPS backends
 	// Header manipulation
 	UpstreamHeaders   map[string]string `mapstructure:"upstream_headers"`   // Headers to add to upstream requests
 	DownstreamHeaders map[string]string `mapstructure:"downstream_headers"` // Headers to add to downstream responses

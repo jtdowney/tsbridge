@@ -1396,6 +1396,74 @@ func TestFlushIntervalConfiguration(t *testing.T) {
 	})
 }
 
+func TestTLSConfiguration(t *testing.T) {
+	t.Run("HTTPS backend with TLS verification enabled", func(t *testing.T) {
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:        "https://example.com:443",
+			TransportConfig:    defaultTestTransportConfig(),
+			InsecureSkipVerify: false,
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		httpHandler := handler.(*httpHandler)
+		transport := httpHandler.transport
+
+		// Verify TLS config is set for HTTPS backend
+		require.NotNil(t, transport.TLSClientConfig)
+		assert.False(t, transport.TLSClientConfig.InsecureSkipVerify)
+	})
+
+	t.Run("HTTPS backend with TLS verification disabled", func(t *testing.T) {
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:        "https://self-signed.example.com:443",
+			TransportConfig:    defaultTestTransportConfig(),
+			InsecureSkipVerify: true,
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		httpHandler := handler.(*httpHandler)
+		transport := httpHandler.transport
+
+		// Verify TLS config is set for HTTPS backend with InsecureSkipVerify enabled
+		require.NotNil(t, transport.TLSClientConfig)
+		assert.True(t, transport.TLSClientConfig.InsecureSkipVerify)
+	})
+
+	t.Run("HTTP backend should not have TLS config", func(t *testing.T) {
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:        "http://example.com:80",
+			TransportConfig:    defaultTestTransportConfig(),
+			InsecureSkipVerify: true, // This should be ignored for HTTP backends
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		httpHandler := handler.(*httpHandler)
+		transport := httpHandler.transport
+
+		// Verify no TLS config is set for HTTP backend
+		assert.Nil(t, transport.TLSClientConfig)
+	})
+
+	t.Run("Unix socket backend should not have TLS config", func(t *testing.T) {
+		handler, err := NewHandler(&HandlerConfig{
+			BackendAddr:        "unix:///tmp/socket.sock",
+			TransportConfig:    defaultTestTransportConfig(),
+			InsecureSkipVerify: true, // This should be ignored for Unix socket backends
+		})
+		require.NoError(t, err)
+		defer handler.Close()
+
+		httpHandler := handler.(*httpHandler)
+		transport := httpHandler.transport
+
+		// Verify no TLS config is set for Unix socket backend
+		assert.Nil(t, transport.TLSClientConfig)
+	})
+}
+
 // BenchmarkActiveRequestsAccess benchmarks the performance of activeRequests counter operations
 func BenchmarkActiveRequestsAccess(b *testing.B) {
 	// Create a simple backend
