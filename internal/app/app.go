@@ -217,19 +217,24 @@ func (a *App) performShutdown(ctx context.Context) error {
 	// Shutdown services
 	if err := a.registry.Shutdown(ctx); err != nil {
 		// The error from Shutdown is already typed
+		slog.Error("failed to shutdown services", "error", err)
 		errs = append(errs, err)
 	}
 
 	// Shutdown metrics server if running
 	if a.metricsServer != nil {
 		if err := a.metricsServer.Shutdown(ctx); err != nil {
-			errs = append(errs, tserrors.WrapInternal(err, "failed to shutdown metrics server"))
+			wrappedErr := tserrors.WrapInternal(err, "failed to shutdown metrics server")
+			slog.Error("failed to shutdown metrics server", "error", err)
+			errs = append(errs, wrappedErr)
 		}
 	}
 
 	// Close tailscale server
 	if err := a.tsServer.Close(); err != nil {
-		errs = append(errs, tserrors.WrapResource(err, "failed to close tailscale server"))
+		wrappedErr := tserrors.WrapResource(err, "failed to close tailscale server")
+		slog.Error("failed to close tailscale server", "error", err)
+		errs = append(errs, wrappedErr)
 	}
 
 	if len(errs) == 0 {

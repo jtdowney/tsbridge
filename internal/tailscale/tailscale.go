@@ -327,10 +327,12 @@ func (s *Server) Close() error {
 
 	var closeErrors []error
 
-	// Close all service servers
+	// Close all service servers with timeout
 	for serviceName, server := range s.serviceServers {
-		if err := server.Close(); err != nil {
-			closeErrors = append(closeErrors, tserrors.WrapResource(err, fmt.Sprintf("closing service %q", serviceName)))
+		slog.Debug("closing tsnet server", "service", serviceName)
+		err := s.closeServerWithTimeout(server, serviceName, 3*time.Second)
+		if err != nil {
+			closeErrors = append(closeErrors, err)
 		}
 	}
 
@@ -343,6 +345,26 @@ func (s *Server) Close() error {
 	}
 
 	return nil
+}
+
+// closeServerWithTimeout closes a tsnet server with a timeout to prevent hanging
+func (s *Server) closeServerWithTimeout(server tsnetpkg.TSNetServer, serviceName string, timeout time.Duration) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- server.Close()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return tserrors.WrapResource(err, fmt.Sprintf("closing service %q", serviceName))
+		}
+		slog.Debug("tsnet server closed successfully", "service", serviceName)
+		return nil
+	case <-time.After(timeout):
+		slog.Warn("tsnet server close timed out, forcing shutdown", "service", serviceName, "timeout", timeout)
+		return tserrors.WrapResource(fmt.Errorf("close timeout after %v", timeout), fmt.Sprintf("closing service %q", serviceName))
+	}
 }
 
 // CloseService closes and removes the tsnet server for a specific service
