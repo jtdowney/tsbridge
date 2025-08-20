@@ -161,8 +161,8 @@ const (
 	// TsnetServerStartTimeout is the timeout for starting a tsnet server.
 	TsnetServerStartTimeout = 5 * time.Second
 
-	// TSNetServerCloseTimeout is the timeout for closing a tsnet server gracefully.
-	TSNetServerCloseTimeout = 3 * time.Second
+	// TsnetServerCloseTimeout is the timeout for closing a tsnet server gracefully.
+	TsnetServerCloseTimeout = 3 * time.Second
 )
 
 // Retry configuration constants.
