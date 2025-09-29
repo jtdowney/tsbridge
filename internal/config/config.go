@@ -804,11 +804,15 @@ func ValidateBackendAddress(addr string) error {
 }
 
 // isValidHostname performs basic hostname validation
+// Allows alphanumeric characters, hyphens, and underscores in the middle of labels.
+// Labels must start and end with alphanumeric characters.
+// This is more permissive than strict RFC 1123 to support Docker container names
+// and internal service names that may contain underscores.
 func isValidHostname(host string) bool {
 	if host == "" {
 		return false
 	}
-	// Basic hostname validation - RFC 1123
+	// Basic hostname validation - RFC 1123 with extensions for internal names
 	if len(host) > 253 {
 		return false
 	}
@@ -826,9 +830,9 @@ func isValidHostname(host string) bool {
 		if !isAlphaNum(label[len(label)-1]) {
 			return false
 		}
-		// Check all characters
+		// Middle characters can be alphanumeric, hyphen, or underscore
 		for _, ch := range label {
-			if !isAlphaNum(byte(ch)) && ch != '-' {
+			if !isAlphaNum(byte(ch)) && ch != '-' && ch != '_' {
 				return false
 			}
 		}

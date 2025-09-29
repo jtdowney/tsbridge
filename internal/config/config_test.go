@@ -3404,6 +3404,26 @@ func TestValidateBackendAddress(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name:    "valid hostname with underscore in middle (Docker container)",
+			addr:    "immich_server:2283",
+			wantErr: false,
+		},
+		{
+			name:    "valid hostname with multiple underscores",
+			addr:    "my_app_server:8080",
+			wantErr: false,
+		},
+		{
+			name:    "valid hostname with hyphen in middle",
+			addr:    "my-app-server:8080",
+			wantErr: false,
+		},
+		{
+			name:    "valid hostname with underscore and hyphen",
+			addr:    "my_app-server:8080",
+			wantErr: false,
+		},
+		{
 			name:    "valid high port",
 			addr:    "0.0.0.0:65535",
 			wantErr: false,
