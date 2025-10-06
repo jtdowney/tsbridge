@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/cenkalti/backoff/v4 v4.3.0
-	github.com/docker/docker v28.4.0+incompatible
+	github.com/docker/docker v28.5.0+incompatible
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/google/go-cmp v0.7.0
 	github.com/google/uuid v1.6.0
