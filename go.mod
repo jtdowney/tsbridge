@@ -18,7 +18,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.32.0
-	tailscale.com v1.88.3
+	tailscale.com v1.88.4
 )
 
 require (
