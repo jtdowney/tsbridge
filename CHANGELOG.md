@@ -5,6 +5,14 @@ All notable changes to tsbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.2] - 2025-11-13
+
+### Dependencies
+
+- Bump github.com/docker/docker from 28.4.0 to 28.5.2 (#126, #128, #139)
+- Bump golang.org/x/oauth2 from 0.31.0 to 0.33.0 (#127, #138)
+- Bump tailscale.com from 1.88.3 to 1.90.6 (#129, #132, #137)
+
 ## [0.12.1] - 2025-09-29
 
 ### Fixed
@@ -472,6 +480,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of tsbridge - a lightweight proxy manager built on Tailscale's tsnet library
 
+[0.12.2]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.2
 [0.12.1]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.1
 [0.12.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.0
 [0.11.1]: https://github.com/jtdowney/tsbridge/releases/tag/v0.11.1
