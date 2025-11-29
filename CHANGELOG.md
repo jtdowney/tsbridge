@@ -5,6 +5,17 @@ All notable changes to tsbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.3] - 2025-11-29
+
+### Fixed
+
+- Remove deprecated `// +build` directives from integration tests
+
+### Dependencies
+
+- Bump tailscale.com from 1.90.6 to 1.90.9 (#142)
+- Bump golang.org/x/crypto from 0.41.0 to 0.45.0 (#141)
+
 ## [0.12.2] - 2025-11-13
 
 ### Dependencies
@@ -480,6 +491,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of tsbridge - a lightweight proxy manager built on Tailscale's tsnet library
 
+[0.12.3]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.3
 [0.12.2]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.2
 [0.12.1]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.1
 [0.12.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.0
