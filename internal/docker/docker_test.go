@@ -49,9 +49,8 @@ func TestResolveDockerEndpoint(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.envDockerHost != "" {
-				t.Setenv("DOCKER_HOST", tt.envDockerHost)
-			}
+			// Ensure DOCKER_HOST is controlled for each test case (empty means "not used")
+			t.Setenv("DOCKER_HOST", tt.envDockerHost)
 
 			result := resolveDockerEndpoint(tt.optsEndpoint)
 			assert.Equal(t, tt.expectedEndpoint, result)
