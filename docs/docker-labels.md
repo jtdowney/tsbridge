@@ -45,6 +45,40 @@ Your app is now at `https://myapp.<tailnet>.ts.net`
 3. When the container stops, the proxy is removed
 4. Changes happen instantly
 
+## Docker Socket Configuration
+
+By default, tsbridge connects to the Docker daemon at `unix:///var/run/docker.sock`. You can configure an alternative endpoint using:
+
+1. **`-docker-socket` flag** (highest priority)
+2. **`DOCKER_HOST` environment variable** (standard Docker convention)
+3. **Default socket** (`unix:///var/run/docker.sock`)
+
+This is useful for:
+- Remote Docker daemons (`tcp://docker-host:2375`)
+- Docker Desktop on macOS (`unix://$HOME/.docker/run/docker.sock`)
+- Rootless Docker (`unix:///run/user/1000/docker.sock`)
+- Custom socket paths
+
+**Example with DOCKER_HOST:**
+
+```yaml
+services:
+  tsbridge:
+    image: ghcr.io/jtdowney/tsbridge:latest
+    command: ["--provider", "docker"]
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - TS_OAUTH_CLIENT_ID=${TS_OAUTH_CLIENT_ID}
+      - TS_OAUTH_CLIENT_SECRET=${TS_OAUTH_CLIENT_SECRET}
+    # ...
+```
+
+**Example with explicit flag:**
+
+```bash
+tsbridge -provider docker -docker-socket tcp://docker-host:2375
+```
+
 ## Label Reference
 
 ### On tsbridge Container

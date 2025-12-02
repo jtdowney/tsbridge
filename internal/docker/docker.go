@@ -60,10 +60,12 @@ var osStat = os.Stat
 
 // validateDockerAccess checks if the Docker socket is accessible
 func validateDockerAccess(socketPath string) error {
-	// Skip validation for non-unix sockets (TCP, HTTP)
+	// Skip validation for non-unix sockets (TCP, HTTP, SSH, Windows named pipes)
 	if strings.HasPrefix(socketPath, "tcp://") ||
 		strings.HasPrefix(socketPath, "http://") ||
-		strings.HasPrefix(socketPath, "https://") {
+		strings.HasPrefix(socketPath, "https://") ||
+		strings.HasPrefix(socketPath, "ssh://") ||
+		strings.HasPrefix(socketPath, "npipe://") {
 		return nil
 	}
 
@@ -96,11 +98,21 @@ func validateDockerAccess(socketPath string) error {
 	return nil
 }
 
+// resolveDockerEndpoint determines the Docker endpoint to use.
+// Precedence: explicit option > DOCKER_HOST env var > default socket.
+func resolveDockerEndpoint(endpoint string) string {
+	if endpoint != "" {
+		return endpoint
+	}
+	if envEndpoint := os.Getenv("DOCKER_HOST"); envEndpoint != "" {
+		return envEndpoint
+	}
+	return DefaultDockerEndpoint
+}
+
 // NewProvider creates a new Docker configuration provider
 func NewProvider(opts Options) (*Provider, error) {
-	if opts.DockerEndpoint == "" {
-		opts.DockerEndpoint = DefaultDockerEndpoint
-	}
+	opts.DockerEndpoint = resolveDockerEndpoint(opts.DockerEndpoint)
 	if opts.LabelPrefix == "" {
 		opts.LabelPrefix = DefaultLabelPrefix
 	}

@@ -310,6 +310,7 @@ Default environment variables checked if no config specified:
 - `TS_AUTHKEY` - Auth key
 - `STATE_DIRECTORY` - State directory (systemd)
 - `TSBRIDGE_STATE_DIR` - State directory
+- `DOCKER_HOST` - Docker daemon endpoint (used when `-provider docker` and no `-docker-socket` flag specified)
 
 ## Secret Resolution
 
