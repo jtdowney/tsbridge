@@ -2591,6 +2591,7 @@ func TestPollLoopTriggersReload(t *testing.T) {
 
 	// Start poll ticker
 	p.pollTicker = time.NewTicker(p.pollInterval)
+	defer p.pollTicker.Stop()
 
 	// Run pollLoop in background
 	go p.pollLoop(ctx, configCh)
