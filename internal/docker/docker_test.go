@@ -2539,20 +2539,21 @@ func (m *MockPollDockerClient) ContainerList(ctx context.Context, options contai
 		{
 			ID:    "tsbridge-container-id",
 			Names: []string{"/tsbridge"},
+			State: "running",
 			Labels: map[string]string{
-				"tsbridge.enabled":                    "true",
-				"tsbridge.oauth_client_id":            "test-client-id",
-				"tsbridge.oauth_client_secret":        "test-secret",
-				"tsbridge.oauth_client_secret_source": "value",
+				"tsbridge.tailscale.oauth_client_id":     "test-client-id",
+				"tsbridge.tailscale.oauth_client_secret": "test-secret",
+				"tsbridge.tailscale.default_tags":        "tag:test",
 			},
 		},
 		{
 			ID:    "service-container-id",
 			Names: []string{"/my-service"},
+			State: "running",
 			Labels: map[string]string{
-				"tsbridge.enabled":         "true",
-				"tsbridge.service.name":    "myservice",
-				"tsbridge.service.backend": "http://localhost:8080",
+				"tsbridge.enabled":              "true",
+				"tsbridge.service.name":         "myservice",
+				"tsbridge.service.backend_addr": "my-service:8080",
 			},
 			NetworkSettings: &container.NetworkSettingsSummary{},
 		},
