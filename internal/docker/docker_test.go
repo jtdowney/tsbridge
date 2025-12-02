@@ -2527,3 +2527,168 @@ func TestGetContainerByID(t *testing.T) {
 		})
 	}
 }
+
+// MockPollDockerClient provides valid containers for poll loop testing
+type MockPollDockerClient struct {
+	callCount int32
+}
+
+func (m *MockPollDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+	atomic.AddInt32(&m.callCount, 1)
+	return []container.Summary{
+		{
+			ID:    "tsbridge-container-id",
+			Names: []string{"/tsbridge"},
+			Labels: map[string]string{
+				"tsbridge.enabled":                    "true",
+				"tsbridge.oauth_client_id":            "test-client-id",
+				"tsbridge.oauth_client_secret":        "test-secret",
+				"tsbridge.oauth_client_secret_source": "value",
+			},
+		},
+		{
+			ID:    "service-container-id",
+			Names: []string{"/my-service"},
+			Labels: map[string]string{
+				"tsbridge.enabled":         "true",
+				"tsbridge.service.name":    "myservice",
+				"tsbridge.service.backend": "http://localhost:8080",
+			},
+			NetworkSettings: &container.NetworkSettingsSummary{},
+		},
+	}, nil
+}
+
+func (m *MockPollDockerClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+	eventCh := make(chan events.Message)
+	errCh := make(chan error)
+	return eventCh, errCh
+}
+
+func (m *MockPollDockerClient) Ping(ctx context.Context) (types.Ping, error) {
+	return types.Ping{}, nil
+}
+
+func (m *MockPollDockerClient) Close() error {
+	return nil
+}
+
+func TestPollLoopTriggersReload(t *testing.T) {
+	// Test that pollLoop triggers immediateReload at the specified interval
+	mockClient := &MockPollDockerClient{}
+	p := &Provider{
+		client:       mockClient,
+		labelPrefix:  "tsbridge",
+		pollInterval: 50 * time.Millisecond,
+	}
+
+	// Run for 500ms - should get multiple polls
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	configCh := make(chan *config.Config, 10)
+
+	// Start poll ticker
+	p.pollTicker = time.NewTicker(p.pollInterval)
+
+	// Run pollLoop in background
+	go p.pollLoop(ctx, configCh)
+
+	// Wait for context to expire plus a small buffer
+	<-ctx.Done()
+	time.Sleep(50 * time.Millisecond)
+
+	// First poll sends config (no lastConfig), subsequent polls skip unchanged config
+	// So we should receive at least 1 config update
+	assert.GreaterOrEqual(t, len(configCh), 1, "Expected at least 1 config update")
+	// Verify ContainerList was called multiple times (poll loop is working)
+	assert.GreaterOrEqual(t, atomic.LoadInt32(&mockClient.callCount), int32(2), "Expected at least 2 ContainerList calls")
+}
+
+func TestPollLoopExitsOnContextCancellation(t *testing.T) {
+	p := &Provider{
+		pollInterval: time.Hour, // Long interval so it won't trigger
+	}
+	p.pollTicker = time.NewTicker(p.pollInterval)
+	defer p.pollTicker.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	configCh := make(chan *config.Config, 1)
+
+	// Cancel context immediately
+	cancel()
+
+	start := time.Now()
+	p.pollLoop(ctx, configCh)
+	elapsed := time.Since(start)
+
+	// Should exit almost immediately
+	assert.Less(t, elapsed.Milliseconds(), int64(100), "Should exit immediately when context is cancelled")
+}
+
+func TestWatchDoesNotStartPollTickerWhenDisabled(t *testing.T) {
+	mockClient := &MockFailingDockerClient{
+		EventsFunc: func(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+			eventCh := make(chan events.Message)
+			errCh := make(chan error)
+			return eventCh, errCh
+		},
+	}
+
+	p := &Provider{
+		client:       mockClient,
+		labelPrefix:  "tsbridge",
+		pollInterval: 0, // Disabled
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, err := p.Watch(ctx)
+	require.NoError(t, err)
+
+	// Poll ticker should not be started
+	assert.Nil(t, p.pollTicker, "Poll ticker should not be started when interval is 0")
+}
+
+func TestWatchStartsPollTickerWhenEnabled(t *testing.T) {
+	mockClient := &MockFailingDockerClient{
+		EventsFunc: func(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+			eventCh := make(chan events.Message)
+			errCh := make(chan error)
+			return eventCh, errCh
+		},
+	}
+
+	p := &Provider{
+		client:       mockClient,
+		labelPrefix:  "tsbridge",
+		pollInterval: time.Minute,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	_, err := p.Watch(ctx)
+	require.NoError(t, err)
+
+	// Poll ticker should be started
+	assert.NotNil(t, p.pollTicker, "Poll ticker should be started when interval > 0")
+
+	// Clean up
+	p.Close()
+}
+
+func TestCloseStopsPollTicker(t *testing.T) {
+	p := &Provider{
+		pollInterval: time.Minute,
+	}
+	p.pollTicker = time.NewTicker(p.pollInterval)
+
+	err := p.Close()
+	require.NoError(t, err)
+
+	// Verify ticker was stopped by checking it doesn't panic on double stop
+	// (calling Stop on an already stopped ticker is safe)
+	p.pollTicker.Stop()
+}

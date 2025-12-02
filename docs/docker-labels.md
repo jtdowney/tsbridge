@@ -40,10 +40,27 @@ Your app is now at `https://myapp.<tailnet>.ts.net`
 
 ## How It Works
 
-1. tsbridge watches Docker events (no polling!)
+1. tsbridge watches Docker events for real-time changes
 2. When a container with `tsbridge.enabled=true` starts, it creates a proxy
 3. When the container stops, the proxy is removed
-4. Changes happen instantly
+4. A periodic poll (default: 1 minute) acts as a safety net for any missed events
+
+## CLI Flags
+
+When using the Docker provider, these flags are available:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--provider` | `file` | Set to `docker` for Docker label discovery |
+| `--docker-socket` | `unix:///var/run/docker.sock` | Docker socket endpoint |
+| `--docker-label-prefix` | `tsbridge` | Prefix for container labels |
+| `--docker-poll-interval` | `1m` | Periodic config poll interval (0 to disable) |
+
+**Example:**
+
+```bash
+tsbridge --provider docker --docker-poll-interval 30s
+```
 
 ## Label Reference
 

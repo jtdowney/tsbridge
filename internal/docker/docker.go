@@ -41,10 +41,12 @@ type Provider struct {
 	client        DockerClient
 	labelPrefix   string
 	socketPath    string
+	pollInterval  time.Duration
 	mu            sync.RWMutex
 	lastConfig    *config.Config
 	debounceTimer *time.Timer
 	debounceMu    sync.Mutex
+	pollTicker    *time.Ticker
 }
 
 // Options contains configuration options for the Docker provider
@@ -53,6 +55,8 @@ type Options struct {
 	DockerEndpoint string
 	// LabelPrefix is the prefix for tsbridge labels (default: tsbridge)
 	LabelPrefix string
+	// PollInterval is the interval for periodic config polling (0 to disable)
+	PollInterval time.Duration
 }
 
 // osStat is a variable to allow mocking in tests
@@ -134,12 +138,14 @@ func NewProvider(opts Options) (*Provider, error) {
 
 	slog.Info("Docker provider initialized successfully",
 		"endpoint", opts.DockerEndpoint,
-		"label_prefix", opts.LabelPrefix)
+		"label_prefix", opts.LabelPrefix,
+		"poll_interval", opts.PollInterval)
 
 	return &Provider{
-		client:      dockerClient,
-		labelPrefix: opts.LabelPrefix,
-		socketPath:  opts.DockerEndpoint,
+		client:       dockerClient,
+		labelPrefix:  opts.LabelPrefix,
+		socketPath:   opts.DockerEndpoint,
+		pollInterval: opts.PollInterval,
 	}, nil
 }
 
@@ -207,7 +213,14 @@ func (p *Provider) Watch(ctx context.Context) (<-chan *config.Config, error) {
 
 	slog.Info("starting Docker event watcher",
 		"label_prefix", p.labelPrefix,
-		"socket_path", p.socketPath)
+		"socket_path", p.socketPath,
+		"poll_interval", p.pollInterval)
+
+	// Start poll ticker if enabled
+	if p.pollInterval > 0 {
+		p.pollTicker = time.NewTicker(p.pollInterval)
+		go p.pollLoop(ctx, configCh)
+	}
 
 	go func() {
 		defer close(configCh)
@@ -215,6 +228,20 @@ func (p *Provider) Watch(ctx context.Context) (<-chan *config.Config, error) {
 	}()
 
 	return configCh, nil
+}
+
+// pollLoop periodically triggers config reload as a safety net for missed events
+func (p *Provider) pollLoop(ctx context.Context, configCh chan<- *config.Config) {
+	defer p.pollTicker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-p.pollTicker.C:
+			slog.Debug("periodic poll triggered")
+			p.immediateReload(ctx, configCh)
+		}
+	}
 }
 
 // createEventOptions creates the event filter options for Docker events
@@ -400,7 +427,46 @@ func (p *Provider) Name() string {
 	return "docker"
 }
 
-// debouncedReload debounces configuration reloads to prevent thundering herd issues
+// immediateReload loads and sends config immediately without debouncing
+func (p *Provider) immediateReload(ctx context.Context, configCh chan<- *config.Config) {
+	// Check if context is still valid
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
+
+	// Save old config for comparison
+	oldConfig := p.getLastConfig()
+
+	// Load new config
+	newConfig, err := p.Load(ctx)
+	if err != nil {
+		slog.Error("failed to reload configuration", "error", err)
+		return
+	}
+
+	// Skip if config unchanged
+	if oldConfig != nil && p.configEqual(oldConfig, newConfig) {
+		slog.Debug("config unchanged, skipping reload")
+		return
+	}
+
+	// Try to send config, but don't block if channel is closed or context cancelled
+	select {
+	case configCh <- newConfig:
+		p.mu.Lock()
+		p.lastConfig = newConfig
+		p.mu.Unlock()
+	case <-ctx.Done():
+		return
+	default:
+		// Channel might be closed, just log and return
+		slog.Debug("could not send config - channel closed or full")
+	}
+}
+
+// debouncedReload schedules a reload after the debounce delay, canceling any pending reload
 func (p *Provider) debouncedReload(ctx context.Context, configCh chan<- *config.Config) {
 	p.debounceMu.Lock()
 	defer p.debounceMu.Unlock()
@@ -410,39 +476,19 @@ func (p *Provider) debouncedReload(ctx context.Context, configCh chan<- *config.
 		p.debounceTimer.Stop()
 	}
 
-	// Set new timer
+	// Set new timer that calls immediateReload
 	p.debounceTimer = time.AfterFunc(constants.DockerEventDebounceDelay, func() {
-		// Check if context is still valid
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// Load and send new config
-		newConfig, err := p.Load(ctx)
-		if err != nil {
-			slog.Error("failed to reload configuration after debounce", "error", err)
-			return
-		}
-
-		// Try to send config, but don't block if channel is closed or context cancelled
-		select {
-		case configCh <- newConfig:
-			p.mu.Lock()
-			p.lastConfig = newConfig
-			p.mu.Unlock()
-		case <-ctx.Done():
-			return
-		default:
-			// Channel might be closed, just log and return
-			slog.Debug("could not send debounced config - channel closed or full")
-		}
+		p.immediateReload(ctx, configCh)
 	})
 }
 
 // Close closes the Docker client connection
 func (p *Provider) Close() error {
+	// Stop poll ticker if running
+	if p.pollTicker != nil {
+		p.pollTicker.Stop()
+	}
+
 	// Stop debounce timer
 	p.debounceMu.Lock()
 	if p.debounceTimer != nil {

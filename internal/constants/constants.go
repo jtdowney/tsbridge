@@ -118,6 +118,10 @@ const (
 
 	// DockerEventDebounceDelay is the delay for debouncing Docker events.
 	DockerEventDebounceDelay = 500 * time.Millisecond
+
+	// DockerPollInterval is the default interval for periodic config polling.
+	// This acts as a safety net to catch any missed Docker events.
+	DockerPollInterval = 1 * time.Minute
 )
 
 // Byte size constants for data size calculations.
