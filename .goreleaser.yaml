@@ -30,68 +30,28 @@ archives:
       - LICENSE
       - README.md
 
-dockers:
-  - image_templates:
-      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-amd64"
-      - "ghcr.io/jtdowney/tsbridge:latest-amd64"
-      - "ghcr.io/jtdowney/tsbridge:v{{ .Major }}.{{ .Minor }}-amd64"
+dockers_v2:
+  - id: tsbridge
+    images:
+      - ghcr.io/jtdowney/tsbridge
+    tags:
+      - "{{ .Tag }}"
+      - "v{{ .Major }}.{{ .Minor }}"
+      - latest
       # TODO: Uncomment for 1.0.0 release
-      # - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-amd64"
-    dockerfile: Dockerfile
-    goos: linux
-    goarch: amd64
-    use: buildx
-    skip_push: "{{ if .IsSnapshot }}true{{ else }}false{{ end }}"
-    build_flag_templates:
-      - "--platform=linux/amd64"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.description=Tailscale-based reverse proxy manager"
-      - "--label=org.opencontainers.image.url=https://github.com/jtdowney/tsbridge"
-      - "--label=org.opencontainers.image.source=https://github.com/jtdowney/tsbridge"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.licenses=MIT"
-  - image_templates:
-      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-arm64"
-      - "ghcr.io/jtdowney/tsbridge:latest-arm64"
-      - "ghcr.io/jtdowney/tsbridge:v{{ .Major }}.{{ .Minor }}-arm64"
-      # TODO: Uncomment for 1.0.0 release
-      # - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-arm64"
-    dockerfile: Dockerfile
-    goos: linux
-    goarch: arm64
-    use: buildx
-    skip_push: "{{ if .IsSnapshot }}true{{ else }}false{{ end }}"
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.description=Tailscale-based reverse proxy manager"
-      - "--label=org.opencontainers.image.url=https://github.com/jtdowney/tsbridge"
-      - "--label=org.opencontainers.image.source=https://github.com/jtdowney/tsbridge"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.licenses=MIT"
-
-docker_manifests:
-  - name_template: "ghcr.io/jtdowney/tsbridge:{{ .Tag }}"
-    image_templates:
-      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-amd64"
-      - "ghcr.io/jtdowney/tsbridge:{{ .Tag }}-arm64"
-  - name_template: "ghcr.io/jtdowney/tsbridge:v{{ .Major }}.{{ .Minor }}"
-    image_templates:
-      - "ghcr.io/jtdowney/tsbridge:v{{ .Major }}.{{ .Minor }}-amd64"
-      - "ghcr.io/jtdowney/tsbridge:v{{ .Major }}.{{ .Minor }}-arm64"
-  # TODO: Uncomment for 1.0.0 release
-  # - name_template: "ghcr.io/jtdowney/tsbridge:{{ .Major }}"
-  #   image_templates:
-  #     - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-amd64"
-  #     - "ghcr.io/jtdowney/tsbridge:{{ .Major }}-arm64"
-  - name_template: "ghcr.io/jtdowney/tsbridge:latest"
-    image_templates:
-      - "ghcr.io/jtdowney/tsbridge:latest-amd64"
-      - "ghcr.io/jtdowney/tsbridge:latest-arm64"
+      # - "{{ .Major }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: Tailscale-based reverse proxy manager
+      org.opencontainers.image.url: https://github.com/jtdowney/tsbridge
+      org.opencontainers.image.source: https://github.com/jtdowney/tsbridge
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.licenses: MIT
 
 checksum:
   name_template: 'checksums.txt'
