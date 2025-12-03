@@ -20,6 +20,44 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestResolveDockerEndpoint(t *testing.T) {
+	tests := []struct {
+		name             string
+		optsEndpoint     string
+		envDockerHost    string
+		expectedEndpoint string
+	}{
+		{
+			name:             "CLI flag takes precedence over env var",
+			optsEndpoint:     "tcp://explicit:2375",
+			envDockerHost:    "tcp://from-env:2375",
+			expectedEndpoint: "tcp://explicit:2375",
+		},
+		{
+			name:             "env var used when no CLI flag",
+			optsEndpoint:     "",
+			envDockerHost:    "tcp://proxy:2375",
+			expectedEndpoint: "tcp://proxy:2375",
+		},
+		{
+			name:             "default used when no env var or CLI flag",
+			optsEndpoint:     "",
+			envDockerHost:    "",
+			expectedEndpoint: DefaultDockerEndpoint,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Ensure DOCKER_HOST is controlled for each test case (empty means "not used")
+			t.Setenv("DOCKER_HOST", tt.envDockerHost)
+
+			result := resolveDockerEndpoint(tt.optsEndpoint)
+			assert.Equal(t, tt.expectedEndpoint, result)
+		})
+	}
+}
+
 func TestParseLabelValue(t *testing.T) {
 	labels := map[string]string{
 		"tsbridge.service.name":         "api",
@@ -643,6 +681,24 @@ func TestValidateDockerAccess(t *testing.T) {
 			socketPath: "http://localhost:2375",
 			statFunc: func(path string) (os.FileInfo, error) {
 				t.Error("stat should not be called for HTTP sockets")
+				return nil, nil
+			},
+			wantErr: false,
+		},
+		{
+			name:       "ssh socket should be accepted",
+			socketPath: "ssh://user@docker-host",
+			statFunc: func(path string) (os.FileInfo, error) {
+				t.Error("stat should not be called for SSH sockets")
+				return nil, nil
+			},
+			wantErr: false,
+		},
+		{
+			name:       "npipe socket should be accepted",
+			socketPath: "npipe:////./pipe/docker_engine",
+			statFunc: func(path string) (os.FileInfo, error) {
+				t.Error("stat should not be called for Windows named pipes")
 				return nil, nil
 			},
 			wantErr: false,

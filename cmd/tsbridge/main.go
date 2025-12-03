@@ -62,7 +62,7 @@ func parseCLIArgs(args []string) (*cliArgs, error) {
 	result := &cliArgs{}
 	fs.StringVar(&result.configPath, "config", "", "Path to TOML configuration file (required for file provider)")
 	fs.StringVar(&result.provider, "provider", "file", "Configuration provider (file or docker)")
-	fs.StringVar(&result.dockerEndpoint, "docker-socket", "", "Docker socket endpoint (default: unix:///var/run/docker.sock)")
+	fs.StringVar(&result.dockerEndpoint, "docker-socket", "", "Docker socket endpoint (falls back to DOCKER_HOST env var, then unix:///var/run/docker.sock)")
 	fs.StringVar(&result.labelPrefix, "docker-label-prefix", "tsbridge", "Docker label prefix for configuration")
 	fs.DurationVar(&result.dockerPollInterval, "docker-poll-interval", constants.DockerPollInterval, "Docker config poll interval (0 to disable)")
 	fs.BoolVar(&result.verbose, "verbose", false, "Enable debug logging")
