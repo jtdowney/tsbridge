@@ -103,3 +103,64 @@ jobs:
             ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-amd64 \
             ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-arm64
           docker manifest push ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}
+
+  build-dev:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --snapshot --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push dev Docker images
+        run: |
+          SHA_SHORT=$(git rev-parse --short HEAD)
+
+          # Tag and push AMD64 image
+          docker tag ghcr.io/jtdowney/tsbridge:latest-amd64 ghcr.io/jtdowney/tsbridge:dev-amd64
+          docker tag ghcr.io/jtdowney/tsbridge:latest-amd64 ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-amd64
+          docker push ghcr.io/jtdowney/tsbridge:dev-amd64
+          docker push ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-amd64
+
+          # Tag and push ARM64 image
+          docker tag ghcr.io/jtdowney/tsbridge:latest-arm64 ghcr.io/jtdowney/tsbridge:dev-arm64
+          docker tag ghcr.io/jtdowney/tsbridge:latest-arm64 ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-arm64
+          docker push ghcr.io/jtdowney/tsbridge:dev-arm64
+          docker push ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-arm64
+
+          # Create and push multi-arch manifests
+          docker manifest create ghcr.io/jtdowney/tsbridge:dev \
+            ghcr.io/jtdowney/tsbridge:dev-amd64 \
+            ghcr.io/jtdowney/tsbridge:dev-arm64
+          docker manifest push ghcr.io/jtdowney/tsbridge:dev
+
+          docker manifest create ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT} \
+            ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-amd64 \
+            ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}-arm64
+          docker manifest push ghcr.io/jtdowney/tsbridge:sha-${SHA_SHORT}
