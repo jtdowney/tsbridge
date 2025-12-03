@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"log/slog"
 
@@ -36,20 +37,22 @@ var registerProviders = func() {
 		return docker.NewProvider(docker.Options{
 			DockerEndpoint: opts.DockerEndpoint,
 			LabelPrefix:    opts.LabelPrefix,
+			PollInterval:   opts.PollInterval,
 		})
 	}))
 }
 
 // cliArgs holds parsed command-line arguments
 type cliArgs struct {
-	configPath     string
-	provider       string
-	dockerEndpoint string
-	labelPrefix    string
-	verbose        bool
-	help           bool
-	version        bool
-	validate       bool
+	configPath         string
+	provider           string
+	dockerEndpoint     string
+	labelPrefix        string
+	dockerPollInterval time.Duration
+	verbose            bool
+	help               bool
+	version            bool
+	validate           bool
 }
 
 // parseCLIArgs parses command-line arguments and returns the parsed values
@@ -61,6 +64,7 @@ func parseCLIArgs(args []string) (*cliArgs, error) {
 	fs.StringVar(&result.provider, "provider", "file", "Configuration provider (file or docker)")
 	fs.StringVar(&result.dockerEndpoint, "docker-socket", "", "Docker socket endpoint (default: unix:///var/run/docker.sock)")
 	fs.StringVar(&result.labelPrefix, "docker-label-prefix", "tsbridge", "Docker label prefix for configuration")
+	fs.DurationVar(&result.dockerPollInterval, "docker-poll-interval", constants.DockerPollInterval, "Docker config poll interval (0 to disable)")
 	fs.BoolVar(&result.verbose, "verbose", false, "Enable debug logging")
 	fs.BoolVar(&result.help, "help", false, "Show usage information")
 	fs.BoolVar(&result.help, "h", false, "Show usage information")
@@ -121,6 +125,7 @@ func createProvider(args *cliArgs) (config.Provider, error) {
 	dockerOpts := config.DockerProviderOptions{
 		DockerEndpoint: args.dockerEndpoint,
 		LabelPrefix:    args.labelPrefix,
+		PollInterval:   args.dockerPollInterval,
 	}
 
 	provider, err := config.NewProvider(args.provider, args.configPath, dockerOpts)

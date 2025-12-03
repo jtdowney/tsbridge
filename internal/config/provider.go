@@ -3,6 +3,7 @@ package config
 
 import (
 	"context"
+	"time"
 
 	"github.com/jtdowney/tsbridge/internal/errors"
 )
@@ -75,6 +76,7 @@ func NewProvider(providerType string, configPath string, dockerOpts DockerProvid
 type DockerProviderOptions struct {
 	DockerEndpoint string
 	LabelPrefix    string
+	PollInterval   time.Duration
 }
 
 // RegisterDockerProvider registers the Docker provider factory (deprecated - use registry)
