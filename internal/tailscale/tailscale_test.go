@@ -1804,3 +1804,173 @@ func TestDetermineListenAddr(t *testing.T) {
 		})
 	}
 }
+
+func TestListen_CleansUpServerOnStartFailure(t *testing.T) {
+	tempDir := t.TempDir()
+
+	closeCalled := false
+
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		return errors.New("simulated start failure")
+	}
+	mockServer.CloseFunc = func() error {
+		closeCalled = true
+		return nil
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey:  "test-key",
+		StateDir: tempDir,
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	svc := config.Service{
+		Name:        "test-service",
+		BackendAddr: "localhost:8080",
+	}
+
+	_, err = server.Listen(svc, "off", false)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "starting tsnet server")
+
+	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after start failure")
+
+	assert.True(t, closeCalled, "Close() should be called when Start() fails")
+}
+
+func TestListen_CleansUpServerOnListenerFailure(t *testing.T) {
+	tempDir := t.TempDir()
+
+	closeCalled := false
+	startCalled := false
+
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		startCalled = true
+		return nil
+	}
+	mockServer.ListenFunc = func(network, addr string) (net.Listener, error) {
+		return nil, errors.New("simulated listener failure")
+	}
+	mockServer.CloseFunc = func() error {
+		closeCalled = true
+		return nil
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey:  "test-key",
+		StateDir: tempDir,
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	svc := config.Service{
+		Name:        "test-service",
+		BackendAddr: "localhost:8080",
+	}
+
+	_, err = server.Listen(svc, "off", false)
+
+	require.Error(t, err)
+
+	assert.True(t, startCalled, "Start() should be called before listener creation")
+
+	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after listener failure")
+
+	assert.True(t, closeCalled, "Close() should be called when listener creation fails")
+}
+
+func TestListen_CleansUpServerOnTLSListenerFailure(t *testing.T) {
+	tempDir := t.TempDir()
+
+	closeCalled := false
+
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		return nil
+	}
+	mockServer.ListenTLSFunc = func(network, addr string) (net.Listener, error) {
+		return nil, errors.New("simulated TLS listener failure")
+	}
+	mockServer.CloseFunc = func() error {
+		closeCalled = true
+		return nil
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey:  "test-key",
+		StateDir: tempDir,
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	svc := config.Service{
+		Name:        "test-service",
+		BackendAddr: "localhost:8080",
+	}
+
+	_, err = server.Listen(svc, "auto", false)
+
+	require.Error(t, err)
+	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after TLS listener failure")
+	assert.True(t, closeCalled, "Close() should be called when TLS listener creation fails")
+}
+
+func TestListen_CleansUpServerOnFunnelListenerFailure(t *testing.T) {
+	tempDir := t.TempDir()
+
+	closeCalled := false
+
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		return nil
+	}
+	mockServer.ListenFunnelFunc = func(network, addr string) (net.Listener, error) {
+		return nil, errors.New("simulated funnel listener failure")
+	}
+	mockServer.CloseFunc = func() error {
+		closeCalled = true
+		return nil
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey:  "test-key",
+		StateDir: tempDir,
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	svc := config.Service{
+		Name:        "test-service",
+		BackendAddr: "localhost:8080",
+	}
+
+	_, err = server.Listen(svc, "auto", true)
+
+	require.Error(t, err)
+	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after funnel listener failure")
+	assert.True(t, closeCalled, "Close() should be called when funnel listener creation fails")
+}

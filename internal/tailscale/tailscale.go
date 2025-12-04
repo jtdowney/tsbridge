@@ -104,6 +104,10 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 
 	// Start the service server before listening
 	if err := s.startServiceServer(serviceServer, svc.Name); err != nil {
+		delete(s.serviceServers, svc.Name)
+		if closeErr := serviceServer.Close(); closeErr != nil {
+			slog.Debug("failed to close server after start failure", "service", svc.Name, "error", closeErr)
+		}
 		return nil, err
 	}
 
@@ -111,6 +115,10 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 	listener, err := s.createServiceListener(serviceServer, svc, tlsMode, funnelEnabled, listenStart)
 	if err != nil {
 		slog.Debug("listener creation failed", "service", svc.Name, "error", err)
+		delete(s.serviceServers, svc.Name)
+		if closeErr := serviceServer.Close(); closeErr != nil {
+			slog.Debug("failed to close server after listener failure", "service", svc.Name, "error", closeErr)
+		}
 		return nil, err
 	}
 	slog.Debug("listener created successfully", "service", svc.Name, "total_duration", time.Since(listenStart))
