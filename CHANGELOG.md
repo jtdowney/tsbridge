@@ -5,6 +5,29 @@ All notable changes to tsbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.0] - 2025-12-04
+
+### Added
+
+- Support DOCKER_HOST environment variable for Docker socket configuration (#147)
+  - Allows overriding the default Docker socket path
+  - Useful for connecting to remote Docker daemons or custom socket locations
+- Periodic poll interval for Docker provider (#145)
+  - Docker provider can now periodically poll for container changes
+  - Complements event-based monitoring for improved reliability
+
+### Fixed
+
+- Clean up tsnet server when handler creation fails
+  - Prevents resource leaks when service startup fails during handler setup
+- Clean up tsnet server on listener creation failure
+  - Ensures proper cleanup when listener creation fails
+
+### Development
+
+- Updated pre-commit hook versions
+- CI: Build and push dev Docker images on push to main
+
 ## [0.12.3] - 2025-11-29
 
 ### Fixed
@@ -491,6 +514,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of tsbridge - a lightweight proxy manager built on Tailscale's tsnet library
 
+[0.13.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.13.0
 [0.12.3]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.3
 [0.12.2]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.2
 [0.12.1]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.1
