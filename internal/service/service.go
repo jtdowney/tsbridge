@@ -192,6 +192,14 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 	handler, err := svc.CreateHandler()
 	if err != nil {
 		_ = listener.Close()
+		if r.tsServer != nil {
+			if closeErr := r.tsServer.CloseService(svcCfg.Name); closeErr != nil {
+				slog.Debug("failed to close tsnet server after handler failure",
+					"service", svcCfg.Name,
+					"error", closeErr,
+				)
+			}
+		}
 		slog.Debug("handler creation failed",
 			"service", svcCfg.Name,
 			"duration", time.Since(handlerStart),

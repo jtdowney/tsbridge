@@ -2523,3 +2523,97 @@ func TestRegistry_Shutdown_WithMetrics(t *testing.T) {
 	// that the service was actually stopped
 	assert.Len(t, registry.services, 1) // services map still contains entries after shutdown
 }
+
+func TestStartService_CleansUpTsnetServerOnHandlerFailure(t *testing.T) {
+	closeCallCount := 0
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		mock := tsnet.NewMockTSNetServer()
+		mock.CloseFunc = func() error {
+			closeCallCount++
+			return nil
+		}
+		return mock
+	}
+
+	tsServerCfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+	tsServer, err := tailscale.NewServerWithFactory(tsServerCfg, factory)
+	require.NoError(t, err)
+	defer tsServer.Close()
+
+	cfg := &config.Config{
+		Global: config.Global{},
+		Services: []config.Service{
+			{
+				Name:        "failing-service",
+				BackendAddr: "", // Empty backend address causes CreateHandler to fail
+				TLSMode:     "off",
+			},
+		},
+	}
+
+	registry := NewRegistry(cfg, tsServer)
+
+	err = registry.StartServices()
+	require.Error(t, err, "expected error when handler creation fails")
+
+	assert.Equal(t, 1, closeCallCount, "tsnet server Close() should be called once for cleanup")
+
+	_, exists := registry.GetService("failing-service")
+	assert.False(t, exists, "service should not be in registry after failure")
+}
+
+func TestStartService_PartialFailure_CleansUpTsnetServers(t *testing.T) {
+	closedServices := make(map[string]bool)
+	mu := sync.Mutex{}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		mock := tsnet.NewMockTSNetServer()
+		mock.CloseFunc = func() error {
+			mu.Lock()
+			closedServices[serviceName] = true
+			mu.Unlock()
+			return nil
+		}
+		return mock
+	}
+
+	tsServerCfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+	tsServer, err := tailscale.NewServerWithFactory(tsServerCfg, factory)
+	require.NoError(t, err)
+	defer tsServer.Close()
+
+	cfg := &config.Config{
+		Global: config.Global{},
+		Services: []config.Service{
+			{
+				Name:        "good-service",
+				BackendAddr: "localhost:8080",
+				TLSMode:     "off",
+			},
+			{
+				Name:        "bad-service",
+				BackendAddr: "", // Empty backend address will fail handler creation
+				TLSMode:     "off",
+			},
+		},
+	}
+
+	registry := NewRegistry(cfg, tsServer)
+	err = registry.StartServices()
+
+	require.Error(t, err, "expected partial failure error")
+
+	mu.Lock()
+	badServiceClosed := closedServices["bad-service"]
+	mu.Unlock()
+	assert.True(t, badServiceClosed, "bad-service tsnet server should be closed after handler failure")
+
+	goodSvc, exists := registry.GetService("good-service")
+	assert.True(t, exists, "good-service should exist in registry")
+	assert.NotNil(t, goodSvc, "good-service should not be nil")
+}
