@@ -1,10 +1,10 @@
 repos:
   - repo: https://github.com/TekWizely/pre-commit-golang
-    rev: v1.0.0-rc.1
+    rev: v1.0.0-rc.4
     hooks:
       - id: go-mod-tidy
       - id: go-fmt
   - repo: https://github.com/golangci/golangci-lint
-    rev: v2.5.0
+    rev: v2.6.2
     hooks:
       - id: golangci-lint
