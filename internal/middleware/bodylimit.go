@@ -80,3 +80,10 @@ func (w *maxBytesResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	}
 	return hijacker.Hijack()
 }
+
+// Flush implements the http.Flusher interface for streaming support
+func (w *maxBytesResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
