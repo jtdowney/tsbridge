@@ -335,3 +335,24 @@ func TestMaxBytesHandlerMissingContentLength(t *testing.T) {
 	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
 	assert.Contains(t, rec.Body.String(), "Request body too large")
 }
+
+func TestMaxBytesHandlerFlushSupport(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		flusher, ok := w.(http.Flusher)
+		require.True(t, ok, "ResponseWriter should implement http.Flusher for streaming support")
+
+		w.Write([]byte("chunk1"))
+		flusher.Flush()
+		w.Write([]byte("chunk2"))
+		flusher.Flush()
+	})
+
+	wrapped := MaxBytesHandler(1024)(handler)
+
+	req := httptest.NewRequest("GET", "/", nil)
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+
+	assert.True(t, rec.Flushed, "Handler should have flushed the response")
+	assert.Equal(t, "chunk1chunk2", rec.Body.String())
+}
