@@ -47,6 +47,9 @@ jobs:
         with:
           go-version-file: "go.mod"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -118,6 +121,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: "go.mod"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
