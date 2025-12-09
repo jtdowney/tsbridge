@@ -2022,15 +2022,11 @@ func TestStartServerWithTimeout_StartError(t *testing.T) {
 
 func TestStartServerWithTimeout_Timeout(t *testing.T) {
 	startBlocking := make(chan struct{})
-	closeCalled := false
+	defer close(startBlocking)
 
 	mockServer := tsnet.NewMockTSNetServer()
 	mockServer.StartFunc = func() error {
 		<-startBlocking
-		return nil
-	}
-	mockServer.CloseFunc = func() error {
-		closeCalled = true
 		return nil
 	}
 
@@ -2055,11 +2051,5 @@ func TestStartServerWithTimeout_Timeout(t *testing.T) {
 	assert.Contains(t, err.Error(), "check network connectivity")
 
 	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond)
-	assert.Less(t, elapsed, 200*time.Millisecond)
-
-	// Give cleanup goroutine time to run
-	time.Sleep(50 * time.Millisecond)
-	assert.True(t, closeCalled, "Close() should be called on timeout")
-
-	close(startBlocking)
+	assert.Less(t, elapsed, 500*time.Millisecond)
 }

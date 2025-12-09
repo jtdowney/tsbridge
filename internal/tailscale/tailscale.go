@@ -224,11 +224,6 @@ func (s *Server) startServerWithTimeout(server tsnetpkg.TSNetServer, serviceName
 			"timeout", timeout,
 			"duration", time.Since(start),
 		)
-		go func() {
-			if closeErr := server.Close(); closeErr != nil {
-				slog.Debug("failed to close server after start timeout", "service", serviceName, "error", closeErr)
-			}
-		}()
 		return tserrors.NewTimeoutError(fmt.Sprintf("starting tsnet server for service %q (check network connectivity to Tailscale)", serviceName), timeout)
 	}
 }
