@@ -162,8 +162,11 @@ const (
 	// ServiceStopTimeout is the timeout for stopping a service gracefully.
 	ServiceStopTimeout = 5 * time.Second
 
-	// TsnetServerStartTimeout is the timeout for starting a tsnet server.
+	// TsnetServerStartTimeout is the delay before certificate priming.
 	TsnetServerStartTimeout = 5 * time.Second
+
+	// TsnetServerConnectTimeout is the timeout for connecting to Tailscale control plane.
+	TsnetServerConnectTimeout = 30 * time.Second
 
 	// TsnetServerCloseTimeout is the timeout for closing a tsnet server gracefully.
 	TsnetServerCloseTimeout = 3 * time.Second

@@ -196,20 +196,32 @@ func (s *Server) prepareServiceAuth(serviceServer tsnetpkg.TSNetServer, svc conf
 
 // startServiceServer starts the tsnet server for a service.
 func (s *Server) startServiceServer(serviceServer tsnetpkg.TSNetServer, serviceName string) error {
-	startTime := time.Now()
 	slog.Debug("starting tsnet server", "service", serviceName)
-	if err := serviceServer.Start(); err != nil {
-		slog.Debug("tsnet server start failed",
-			"service", serviceName,
-			"duration", time.Since(startTime),
-			"error", err,
-		)
+	return s.startServerWithTimeout(serviceServer, serviceName, constants.TsnetServerConnectTimeout)
+}
+
+// startServerWithTimeout starts a tsnet server with a timeout to prevent hanging.
+// Uses the context-aware Up() method which handles cancellation internally,
+// avoiding concurrency issues between Start() and Close().
+func (s *Server) startServerWithTimeout(server tsnetpkg.TSNetServer, serviceName string, timeout time.Duration) error {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	_, err := server.Up(ctx)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("tsnet server start timed out",
+				"service", serviceName,
+				"timeout", timeout,
+				"duration", time.Since(start),
+			)
+			return tserrors.NewTimeoutError(fmt.Sprintf("starting tsnet server for service %q (check network connectivity to Tailscale)", serviceName), timeout)
+		}
 		return tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", serviceName))
 	}
-	slog.Debug("tsnet server started successfully",
-		"service", serviceName,
-		"duration", time.Since(startTime),
-	)
+
+	slog.Debug("tsnet server started successfully", "service", serviceName, "duration", time.Since(start))
 	return nil
 }
 

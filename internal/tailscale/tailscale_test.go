@@ -19,6 +19,7 @@ import (
 	"tailscale.com/ipn/ipnstate"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	tserrors "github.com/jtdowney/tsbridge/internal/errors"
 	tsnet "github.com/jtdowney/tsbridge/internal/tsnet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1811,8 +1812,8 @@ func TestListen_CleansUpServerOnStartFailure(t *testing.T) {
 	closeCalled := false
 
 	mockServer := tsnet.NewMockTSNetServer()
-	mockServer.StartFunc = func() error {
-		return errors.New("simulated start failure")
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		return nil, errors.New("simulated start failure")
 	}
 	mockServer.CloseFunc = func() error {
 		closeCalled = true
@@ -1843,19 +1844,19 @@ func TestListen_CleansUpServerOnStartFailure(t *testing.T) {
 
 	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after start failure")
 
-	assert.True(t, closeCalled, "Close() should be called when Start() fails")
+	assert.True(t, closeCalled, "Close() should be called when Up() fails")
 }
 
 func TestListen_CleansUpServerOnListenerFailure(t *testing.T) {
 	tempDir := t.TempDir()
 
 	closeCalled := false
-	startCalled := false
+	upCalled := false
 
 	mockServer := tsnet.NewMockTSNetServer()
-	mockServer.StartFunc = func() error {
-		startCalled = true
-		return nil
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		upCalled = true
+		return &ipnstate.Status{}, nil
 	}
 	mockServer.ListenFunc = func(network, addr string) (net.Listener, error) {
 		return nil, errors.New("simulated listener failure")
@@ -1886,7 +1887,7 @@ func TestListen_CleansUpServerOnListenerFailure(t *testing.T) {
 
 	require.Error(t, err)
 
-	assert.True(t, startCalled, "Start() should be called before listener creation")
+	assert.True(t, upCalled, "Up() should be called before listener creation")
 
 	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after listener failure")
 
@@ -1973,4 +1974,79 @@ func TestListen_CleansUpServerOnFunnelListenerFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after funnel listener failure")
 	assert.True(t, closeCalled, "Close() should be called when funnel listener creation fails")
+}
+
+func TestStartServerWithTimeout_Success(t *testing.T) {
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		return &ipnstate.Status{}, nil
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	err = server.startServerWithTimeout(mockServer, "test-service", 5*time.Second)
+	assert.NoError(t, err)
+}
+
+func TestStartServerWithTimeout_UpError(t *testing.T) {
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		return nil, errors.New("connection refused")
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	err = server.startServerWithTimeout(mockServer, "test-service", 5*time.Second)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "starting tsnet server")
+	assert.Contains(t, err.Error(), "connection refused")
+}
+
+func TestStartServerWithTimeout_Timeout(t *testing.T) {
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	start := time.Now()
+	err = server.startServerWithTimeout(mockServer, "test-service", 100*time.Millisecond)
+	elapsed := time.Since(start)
+
+	assert.Error(t, err)
+	assert.True(t, tserrors.IsTimeout(err), "expected timeout error")
+	assert.Contains(t, err.Error(), "starting tsnet server")
+	assert.Contains(t, err.Error(), "check network connectivity")
+
+	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond)
+	assert.Less(t, elapsed, 500*time.Millisecond)
 }
