@@ -33,6 +33,10 @@ type TSNetServer interface {
 	// Start initializes the server connection to Tailscale.
 	Start() error
 
+	// Up connects the server to the tailnet with context support for timeout/cancellation.
+	// It returns the server status on success or an error (including context.DeadlineExceeded on timeout).
+	Up(ctx context.Context) (*ipnstate.Status, error)
+
 	// LocalClient returns a LocalClient for this server.
 	LocalClient() (LocalClient, error)
 
@@ -191,6 +195,34 @@ func (s *RealTSNetServer) Start() error {
 	return err
 }
 
+// Up implements TSNetServer with context support for timeout/cancellation.
+func (s *RealTSNetServer) Up(ctx context.Context) (*ipnstate.Status, error) {
+	start := time.Now()
+	slog.Debug("tsnet server Up() called",
+		"hostname", s.Hostname,
+		"ephemeral", s.Ephemeral,
+		"dir", s.Dir,
+		"has_auth_key", s.AuthKey != "",
+	)
+
+	status, err := s.Server.Up(ctx)
+
+	if err != nil {
+		slog.Debug("tsnet server Up() failed",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+			"error", err,
+		)
+	} else {
+		slog.Debug("tsnet server Up() succeeded",
+			"hostname", s.Hostname,
+			"duration", time.Since(start),
+		)
+	}
+
+	return status, err
+}
+
 // LocalClient implements TSNetServer.
 func (s *RealTSNetServer) LocalClient() (LocalClient, error) {
 	lc, err := s.Server.LocalClient()
@@ -253,6 +285,7 @@ type MockTSNetServer struct {
 	ListenFunnelFunc func(network, addr string) (net.Listener, error)
 	CloseFunc        func() error
 	StartFunc        func() error
+	UpFunc           func(ctx context.Context) (*ipnstate.Status, error)
 	LocalClientFunc  func() (LocalClient, error)
 }
 
@@ -276,6 +309,9 @@ func NewMockTSNetServer() *MockTSNetServer {
 		},
 		StartFunc: func() error {
 			return nil
+		},
+		UpFunc: func(ctx context.Context) (*ipnstate.Status, error) {
+			return &ipnstate.Status{}, nil
 		},
 		LocalClientFunc: func() (LocalClient, error) {
 			return &MockLocalClient{}, nil
@@ -339,6 +375,11 @@ func (m *MockTSNetServer) Close() error {
 // Start implements TSNetServer.
 func (m *MockTSNetServer) Start() error {
 	return m.StartFunc()
+}
+
+// Up implements TSNetServer.
+func (m *MockTSNetServer) Up(ctx context.Context) (*ipnstate.Status, error) {
+	return m.UpFunc(ctx)
 }
 
 // LocalClient implements TSNetServer.

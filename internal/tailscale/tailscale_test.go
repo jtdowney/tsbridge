@@ -1812,8 +1812,8 @@ func TestListen_CleansUpServerOnStartFailure(t *testing.T) {
 	closeCalled := false
 
 	mockServer := tsnet.NewMockTSNetServer()
-	mockServer.StartFunc = func() error {
-		return errors.New("simulated start failure")
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		return nil, errors.New("simulated start failure")
 	}
 	mockServer.CloseFunc = func() error {
 		closeCalled = true
@@ -1844,19 +1844,19 @@ func TestListen_CleansUpServerOnStartFailure(t *testing.T) {
 
 	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after start failure")
 
-	assert.True(t, closeCalled, "Close() should be called when Start() fails")
+	assert.True(t, closeCalled, "Close() should be called when Up() fails")
 }
 
 func TestListen_CleansUpServerOnListenerFailure(t *testing.T) {
 	tempDir := t.TempDir()
 
 	closeCalled := false
-	startCalled := false
+	upCalled := false
 
 	mockServer := tsnet.NewMockTSNetServer()
-	mockServer.StartFunc = func() error {
-		startCalled = true
-		return nil
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		upCalled = true
+		return &ipnstate.Status{}, nil
 	}
 	mockServer.ListenFunc = func(network, addr string) (net.Listener, error) {
 		return nil, errors.New("simulated listener failure")
@@ -1887,7 +1887,7 @@ func TestListen_CleansUpServerOnListenerFailure(t *testing.T) {
 
 	require.Error(t, err)
 
-	assert.True(t, startCalled, "Start() should be called before listener creation")
+	assert.True(t, upCalled, "Up() should be called before listener creation")
 
 	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after listener failure")
 
@@ -1978,8 +1978,8 @@ func TestListen_CleansUpServerOnFunnelListenerFailure(t *testing.T) {
 
 func TestStartServerWithTimeout_Success(t *testing.T) {
 	mockServer := tsnet.NewMockTSNetServer()
-	mockServer.StartFunc = func() error {
-		return nil
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		return &ipnstate.Status{}, nil
 	}
 
 	factory := func(serviceName string) tsnet.TSNetServer {
@@ -1997,10 +1997,10 @@ func TestStartServerWithTimeout_Success(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestStartServerWithTimeout_StartError(t *testing.T) {
+func TestStartServerWithTimeout_UpError(t *testing.T) {
 	mockServer := tsnet.NewMockTSNetServer()
-	mockServer.StartFunc = func() error {
-		return errors.New("connection refused")
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		return nil, errors.New("connection refused")
 	}
 
 	factory := func(serviceName string) tsnet.TSNetServer {
@@ -2021,13 +2021,10 @@ func TestStartServerWithTimeout_StartError(t *testing.T) {
 }
 
 func TestStartServerWithTimeout_Timeout(t *testing.T) {
-	startBlocking := make(chan struct{})
-	defer close(startBlocking)
-
 	mockServer := tsnet.NewMockTSNetServer()
-	mockServer.StartFunc = func() error {
-		<-startBlocking
-		return nil
+	mockServer.UpFunc = func(ctx context.Context) (*ipnstate.Status, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
 	}
 
 	factory := func(serviceName string) tsnet.TSNetServer {

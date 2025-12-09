@@ -200,32 +200,29 @@ func (s *Server) startServiceServer(serviceServer tsnetpkg.TSNetServer, serviceN
 	return s.startServerWithTimeout(serviceServer, serviceName, constants.TsnetServerConnectTimeout)
 }
 
-// startServerWithTimeout starts a tsnet server with a timeout to prevent hanging
+// startServerWithTimeout starts a tsnet server with a timeout to prevent hanging.
+// Uses the context-aware Up() method which handles cancellation internally,
+// avoiding concurrency issues between Start() and Close().
 func (s *Server) startServerWithTimeout(server tsnetpkg.TSNetServer, serviceName string, timeout time.Duration) error {
 	start := time.Now()
-	done := make(chan error, 1)
-	go func() {
-		done <- server.Start()
-	}()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
 
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	select {
-	case err := <-done:
-		if err != nil {
-			return tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", serviceName))
+	_, err := server.Up(ctx)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("tsnet server start timed out",
+				"service", serviceName,
+				"timeout", timeout,
+				"duration", time.Since(start),
+			)
+			return tserrors.NewTimeoutError(fmt.Sprintf("starting tsnet server for service %q (check network connectivity to Tailscale)", serviceName), timeout)
 		}
-		slog.Debug("tsnet server started successfully", "service", serviceName, "duration", time.Since(start))
-		return nil
-	case <-timer.C:
-		slog.Warn("tsnet server start timed out",
-			"service", serviceName,
-			"timeout", timeout,
-			"duration", time.Since(start),
-		)
-		return tserrors.NewTimeoutError(fmt.Sprintf("starting tsnet server for service %q (check network connectivity to Tailscale)", serviceName), timeout)
+		return tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", serviceName))
 	}
+
+	slog.Debug("tsnet server started successfully", "service", serviceName, "duration", time.Since(start))
+	return nil
 }
 
 // createServiceListener creates the appropriate net.Listener based on TLS mode and funnel settings.
