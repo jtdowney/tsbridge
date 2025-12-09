@@ -196,21 +196,41 @@ func (s *Server) prepareServiceAuth(serviceServer tsnetpkg.TSNetServer, svc conf
 
 // startServiceServer starts the tsnet server for a service.
 func (s *Server) startServiceServer(serviceServer tsnetpkg.TSNetServer, serviceName string) error {
-	startTime := time.Now()
 	slog.Debug("starting tsnet server", "service", serviceName)
-	if err := serviceServer.Start(); err != nil {
-		slog.Debug("tsnet server start failed",
+	return s.startServerWithTimeout(serviceServer, serviceName, constants.TsnetServerConnectTimeout)
+}
+
+// startServerWithTimeout starts a tsnet server with a timeout to prevent hanging
+func (s *Server) startServerWithTimeout(server tsnetpkg.TSNetServer, serviceName string, timeout time.Duration) error {
+	start := time.Now()
+	done := make(chan error, 1)
+	go func() {
+		done <- server.Start()
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", serviceName))
+		}
+		slog.Debug("tsnet server started successfully", "service", serviceName, "duration", time.Since(start))
+		return nil
+	case <-timer.C:
+		slog.Warn("tsnet server start timed out",
 			"service", serviceName,
-			"duration", time.Since(startTime),
-			"error", err,
+			"timeout", timeout,
+			"duration", time.Since(start),
 		)
-		return tserrors.WrapResource(err, fmt.Sprintf("starting tsnet server for service %q", serviceName))
+		go func() {
+			if closeErr := server.Close(); closeErr != nil {
+				slog.Debug("failed to close server after start timeout", "service", serviceName, "error", closeErr)
+			}
+		}()
+		return tserrors.NewTimeoutError(fmt.Sprintf("starting tsnet server for service %q (check network connectivity to Tailscale)", serviceName), timeout)
 	}
-	slog.Debug("tsnet server started successfully",
-		"service", serviceName,
-		"duration", time.Since(startTime),
-	)
-	return nil
 }
 
 // createServiceListener creates the appropriate net.Listener based on TLS mode and funnel settings.

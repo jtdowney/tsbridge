@@ -19,6 +19,7 @@ import (
 	"tailscale.com/ipn/ipnstate"
 
 	"github.com/jtdowney/tsbridge/internal/config"
+	tserrors "github.com/jtdowney/tsbridge/internal/errors"
 	tsnet "github.com/jtdowney/tsbridge/internal/tsnet"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1973,4 +1974,92 @@ func TestListen_CleansUpServerOnFunnelListenerFailure(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, server.GetServiceServer("test-service"), "server should be removed from map after funnel listener failure")
 	assert.True(t, closeCalled, "Close() should be called when funnel listener creation fails")
+}
+
+func TestStartServerWithTimeout_Success(t *testing.T) {
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		return nil
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	err = server.startServerWithTimeout(mockServer, "test-service", 5*time.Second)
+	assert.NoError(t, err)
+}
+
+func TestStartServerWithTimeout_StartError(t *testing.T) {
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		return errors.New("connection refused")
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	err = server.startServerWithTimeout(mockServer, "test-service", 5*time.Second)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "starting tsnet server")
+	assert.Contains(t, err.Error(), "connection refused")
+}
+
+func TestStartServerWithTimeout_Timeout(t *testing.T) {
+	startBlocking := make(chan struct{})
+	closeCalled := false
+
+	mockServer := tsnet.NewMockTSNetServer()
+	mockServer.StartFunc = func() error {
+		<-startBlocking
+		return nil
+	}
+	mockServer.CloseFunc = func() error {
+		closeCalled = true
+		return nil
+	}
+
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return mockServer
+	}
+
+	cfg := config.Tailscale{
+		AuthKey: "test-key",
+	}
+
+	server, err := NewServerWithFactory(cfg, factory)
+	require.NoError(t, err)
+
+	start := time.Now()
+	err = server.startServerWithTimeout(mockServer, "test-service", 100*time.Millisecond)
+	elapsed := time.Since(start)
+
+	assert.Error(t, err)
+	assert.True(t, tserrors.IsTimeout(err), "expected timeout error")
+	assert.Contains(t, err.Error(), "starting tsnet server")
+	assert.Contains(t, err.Error(), "check network connectivity")
+
+	assert.GreaterOrEqual(t, elapsed, 100*time.Millisecond)
+	assert.Less(t, elapsed, 200*time.Millisecond)
+
+	// Give cleanup goroutine time to run
+	time.Sleep(50 * time.Millisecond)
+	assert.True(t, closeCalled, "Close() should be called on timeout")
+
+	close(startBlocking)
 }
