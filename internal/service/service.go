@@ -658,17 +658,43 @@ func (r *Registry) UpdateService(name string, newCfg config.Service) error {
 	// Start the new service configuration
 	newSvc, err := r.startService(newCfg)
 	if err != nil {
-		// If we fail to start the new service, remove it from registry
-		// to avoid leaving a stopped service in the registry
-		delete(r.services, name)
+		// Attempt rollback: try to restart the old service configuration
+		slog.Warn("failed to start updated service, attempting rollback",
+			"service", name,
+			"error", err,
+		)
 
-		// Record failure metric
-		if r.metricsCollector != nil {
-			r.metricsCollector.RecordServiceOperation("update", false, time.Since(start))
-			r.metricsCollector.SetActiveServices(len(r.services))
+		rollbackSvc, rollbackErr := r.startService(oldConfig)
+		if rollbackErr != nil {
+			// Both new service and rollback failed - remove from registry
+			slog.Error("rollback failed after update failure",
+				"service", name,
+				"update_error", err,
+				"rollback_error", rollbackErr,
+			)
+			delete(r.services, name)
+
+			if r.metricsCollector != nil {
+				r.metricsCollector.RecordServiceOperation("update", false, time.Since(start))
+				r.metricsCollector.SetActiveServices(len(r.services))
+			}
+
+			return fmt.Errorf("update failed and rollback failed for %s: update error: %w, rollback error: %v",
+				name, err, rollbackErr)
 		}
 
-		return fmt.Errorf("failed to start updated service %s: %w", name, err)
+		// Rollback succeeded - service is back to old config
+		slog.Info("rollback succeeded after update failure",
+			"service", name,
+			"backend", oldConfig.BackendAddr,
+		)
+		r.services[name] = rollbackSvc
+
+		if r.metricsCollector != nil {
+			r.metricsCollector.RecordServiceOperation("update", false, time.Since(start))
+		}
+
+		return fmt.Errorf("failed to start updated service %s (rolled back to previous config): %w", name, err)
 	}
 
 	// Replace in registry
