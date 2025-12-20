@@ -170,6 +170,11 @@ const (
 
 	// TsnetServerCloseTimeout is the timeout for closing a tsnet server gracefully.
 	TsnetServerCloseTimeout = 3 * time.Second
+
+	// OAuthHTTPTimeout is the timeout for individual OAuth HTTP operations
+	// (token exchange and API calls). This prevents indefinite hangs when
+	// the Tailscale API is unresponsive.
+	OAuthHTTPTimeout = 30 * time.Second
 )
 
 // Retry configuration constants.

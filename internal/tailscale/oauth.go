@@ -158,7 +158,9 @@ func isRetryableError(err error) bool {
 
 // generateAuthKeyWithOAuthDirect generates a Tailscale auth key using OAuth2 client credentials (no retry)
 func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL string, tags []string, ephemeral bool, preauthorized bool) (string, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), constants.OAuthHTTPTimeout)
+	defer cancel()
+
 	start := time.Now()
 
 	slog.Debug("starting OAuth token exchange",
