@@ -670,6 +670,36 @@ func TestNewHandlerWithErrors(t *testing.T) {
 	}
 }
 
+func TestNewHandler_NilTransportConfig(t *testing.T) {
+	// Create a backend server
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer backend.Close()
+
+	// Create handler with nil TransportConfig - should not panic
+	handler, err := NewHandler(&HandlerConfig{
+		BackendAddr:     backend.URL,
+		TransportConfig: nil, // Explicitly nil
+	})
+	require.NoError(t, err, "NewHandler should not error with nil TransportConfig")
+	require.NotNil(t, handler, "Handler should not be nil")
+	defer handler.Close()
+
+	// Verify handler works correctly
+	httpHandler := handler.(*httpHandler)
+	require.NotNil(t, httpHandler.transport, "Transport should be created even with nil config")
+
+	// Make a request to verify functionality
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "OK", w.Body.String())
+}
+
 func TestProxyErrorTypes(t *testing.T) {
 	tests := []struct {
 		name       string
