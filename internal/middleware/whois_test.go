@@ -219,6 +219,102 @@ func TestWhoisCaching(t *testing.T) {
 	}
 }
 
+func TestWhoisCaching_DifferentSourcePorts(t *testing.T) {
+	// This test verifies that the cache key uses only the IP address,
+	// not the full host:port. This ensures cache hits when the same
+	// client connects from different source ports.
+	lookupCount := 0
+	whoisFunc := func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+		lookupCount++
+		return &apitype.WhoIsResponse{
+			UserProfile: &tailcfg.UserProfile{
+				LoginName:   "user@example.com",
+				DisplayName: "Test User",
+			},
+		}, nil
+	}
+
+	whoisClient := &MockWhoisClient{
+		WhoIsFunc: whoisFunc,
+	}
+
+	middleware := Whois(whoisClient, true, 100*time.Millisecond, 100, 5*time.Minute)
+
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := middleware(nextHandler)
+
+	// First request from port 12345
+	req1 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req1.RemoteAddr = "100.64.1.2:12345"
+	w1 := httptest.NewRecorder()
+	handler.ServeHTTP(w1, req1)
+
+	assert.Equal(t, 1, lookupCount, "First request should trigger lookup")
+
+	// Second request from different port (54321) - should hit cache
+	req2 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req2.RemoteAddr = "100.64.1.2:54321"
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req2)
+
+	assert.Equal(t, 1, lookupCount, "Second request from different port should use cache")
+
+	// Third request from yet another port - should still hit cache
+	req3 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req3.RemoteAddr = "100.64.1.2:9999"
+	w3 := httptest.NewRecorder()
+	handler.ServeHTTP(w3, req3)
+
+	assert.Equal(t, 1, lookupCount, "Third request from different port should use cache")
+
+	// Fourth request from different IP - should trigger new lookup
+	req4 := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req4.RemoteAddr = "100.64.1.3:12345"
+	w4 := httptest.NewRecorder()
+	handler.ServeHTTP(w4, req4)
+
+	assert.Equal(t, 2, lookupCount, "Request from different IP should trigger new lookup")
+}
+
+func TestExtractHostFromRemoteAddr(t *testing.T) {
+	tests := []struct {
+		name       string
+		remoteAddr string
+		wantHost   string
+	}{
+		{
+			name:       "IPv4 with port",
+			remoteAddr: "100.64.1.2:12345",
+			wantHost:   "100.64.1.2",
+		},
+		{
+			name:       "IPv6 with port",
+			remoteAddr: "[fd7a:115c:a1e0::1]:54321",
+			wantHost:   "fd7a:115c:a1e0::1",
+		},
+		{
+			name:       "IPv4 without port (fallback)",
+			remoteAddr: "100.64.1.2",
+			wantHost:   "100.64.1.2",
+		},
+		{
+			name:       "empty string (fallback)",
+			remoteAddr: "",
+			wantHost:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractHostFromRemoteAddr(tt.remoteAddr)
+			assert.Equal(t, tt.wantHost, got)
+		})
+	}
+}
+
 func TestWhoisHeaderInjectionPrevention(t *testing.T) {
 	tests := []struct {
 		name        string
