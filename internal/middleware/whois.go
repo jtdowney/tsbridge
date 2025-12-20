@@ -25,6 +25,18 @@ func sanitizeHeaderValue(v string) string {
 	return headerCleaner.Replace(v)
 }
 
+// extractHostFromRemoteAddr extracts just the host portion from a host:port address.
+// This is used for cache keys to ensure the same client IP hits the cache regardless
+// of which source port they connect from.
+func extractHostFromRemoteAddr(remoteAddr string) string {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		// Fallback to full address if not in host:port format
+		return remoteAddr
+	}
+	return host
+}
+
 type WhoisClient interface {
 	WhoIs(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error)
 }
@@ -147,7 +159,8 @@ func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Reque
 	var err error
 
 	if cache != nil {
-		if cached, ok := cache.Get(r.RemoteAddr); ok {
+		cacheKey := extractHostFromRemoteAddr(r.RemoteAddr)
+		if cached, ok := cache.Get(cacheKey); ok {
 			resp = cached
 		} else {
 			resp, err = performWhoisWithRetryLogic(client, timeout, r)
@@ -157,7 +170,7 @@ func performWhoisLookup(client WhoisClient, timeout time.Duration, r *http.Reque
 			}
 
 			if resp != nil {
-				cache.Add(r.RemoteAddr, resp)
+				cache.Add(cacheKey, resp)
 			}
 		}
 	} else {
