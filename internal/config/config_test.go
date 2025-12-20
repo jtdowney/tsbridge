@@ -3604,3 +3604,145 @@ func TestValidateBackendAddress(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateHeaders_CRLFInjection(t *testing.T) {
+	tests := []struct {
+		name      string
+		headers   map[string]string
+		fieldName string
+		wantErr   bool
+		errMsg    string
+	}{
+		{
+			name:      "valid headers",
+			headers:   map[string]string{"X-Custom": "value", "X-Another": "test"},
+			fieldName: "upstream_headers",
+			wantErr:   false,
+		},
+		{
+			name:      "empty headers",
+			headers:   map[string]string{},
+			fieldName: "upstream_headers",
+			wantErr:   false,
+		},
+		{
+			name:      "nil headers",
+			headers:   nil,
+			fieldName: "upstream_headers",
+			wantErr:   false,
+		},
+		{
+			name:      "CR in header key",
+			headers:   map[string]string{"X-Bad\rKey": "value"},
+			fieldName: "upstream_headers",
+			wantErr:   true,
+			errMsg:    "header key",
+		},
+		{
+			name:      "LF in header key",
+			headers:   map[string]string{"X-Bad\nKey": "value"},
+			fieldName: "upstream_headers",
+			wantErr:   true,
+			errMsg:    "header key",
+		},
+		{
+			name:      "CR in header value",
+			headers:   map[string]string{"X-Key": "bad\rvalue"},
+			fieldName: "downstream_headers",
+			wantErr:   true,
+			errMsg:    "header value",
+		},
+		{
+			name:      "LF in header value",
+			headers:   map[string]string{"X-Key": "bad\nvalue"},
+			fieldName: "downstream_headers",
+			wantErr:   true,
+			errMsg:    "header value",
+		},
+		{
+			name:      "CRLF sequence in value",
+			headers:   map[string]string{"X-Key": "bad\r\nX-Injected: evil"},
+			fieldName: "upstream_headers",
+			wantErr:   true,
+			errMsg:    "header value",
+		},
+		{
+			name:      "header injection attempt",
+			headers:   map[string]string{"X-Legit": "value\r\nX-Malicious: injected"},
+			fieldName: "upstream_headers",
+			wantErr:   true,
+			errMsg:    "contains invalid characters",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateHeaders(tt.headers, tt.fieldName)
+			if tt.wantErr {
+				assert.Error(t, err, "Expected error for headers %v", tt.headers)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err, "Expected no error for headers %v", tt.headers)
+			}
+		})
+	}
+}
+
+func TestValidateService_HeaderCRLFInjection(t *testing.T) {
+	// Test that header validation is called during service validation
+	cfg := &Config{}
+
+	tests := []struct {
+		name    string
+		service Service
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid service with headers",
+			service: Service{
+				Name:              "test",
+				BackendAddr:       "http://localhost:8080",
+				UpstreamHeaders:   map[string]string{"X-Custom": "value"},
+				DownstreamHeaders: map[string]string{"X-Response": "header"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid upstream header with CRLF",
+			service: Service{
+				Name:            "test",
+				BackendAddr:     "http://localhost:8080",
+				UpstreamHeaders: map[string]string{"X-Bad": "value\r\nX-Injected: evil"},
+			},
+			wantErr: true,
+			errMsg:  "upstream_headers",
+		},
+		{
+			name: "invalid downstream header with CRLF",
+			service: Service{
+				Name:              "test",
+				BackendAddr:       "http://localhost:8080",
+				DownstreamHeaders: map[string]string{"X-Bad": "value\ninjected"},
+			},
+			wantErr: true,
+			errMsg:  "downstream_headers",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := cfg.validateService(&tt.service)
+			if tt.wantErr {
+				assert.Error(t, err)
+				if tt.errMsg != "" {
+					assert.Contains(t, err.Error(), tt.errMsg)
+				}
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

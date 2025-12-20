@@ -740,6 +740,22 @@ func validateAddr(addr string, fieldName string) error {
 	return nil
 }
 
+// validateHeaders checks header keys and values for CRLF injection attempts.
+// Headers containing CR or LF characters could allow HTTP header injection attacks.
+func validateHeaders(headers map[string]string, fieldName string) error {
+	for key, value := range headers {
+		if strings.ContainsAny(key, "\r\n") {
+			return errors.NewValidationError(
+				fmt.Sprintf("%s: header key %q contains invalid characters (CR/LF)", fieldName, key))
+		}
+		if strings.ContainsAny(value, "\r\n") {
+			return errors.NewValidationError(
+				fmt.Sprintf("%s: header value for %q contains invalid characters (CR/LF)", fieldName, key))
+		}
+	}
+	return nil
+}
+
 // ValidateBackendAddress validates a backend address which can be:
 // - A TCP address in host:port format (e.g., "localhost:8080")
 // - A unix socket path (e.g., "unix:///var/run/app.sock")
@@ -980,6 +996,14 @@ func (c *Config) validateService(svc *Service) error {
 		if len(svc.Tags) == 0 {
 			return errors.NewValidationError("service must have at least one tag when using OAuth authentication")
 		}
+	}
+
+	// Validate header values for CRLF injection
+	if err := validateHeaders(svc.UpstreamHeaders, "upstream_headers"); err != nil {
+		return err
+	}
+	if err := validateHeaders(svc.DownstreamHeaders, "downstream_headers"); err != nil {
+		return err
 	}
 
 	return nil
