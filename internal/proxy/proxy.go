@@ -391,6 +391,12 @@ func (h *httpHandler) Close() error {
 	if h.stopMetrics != nil {
 		close(h.stopMetrics)
 	}
+
+	// Close idle transport connections to prevent lingering after handler shutdown
+	if h.transport != nil {
+		h.transport.CloseIdleConnections()
+	}
+
 	return nil
 }
 
