@@ -170,6 +170,16 @@ const (
 
 	// TsnetServerCloseTimeout is the timeout for closing a tsnet server gracefully.
 	TsnetServerCloseTimeout = 3 * time.Second
+
+	// OAuthHTTPTimeout is the timeout for individual OAuth HTTP operations
+	// (token exchange and API calls). This prevents indefinite hangs when
+	// the Tailscale API is unresponsive.
+	OAuthHTTPTimeout = 30 * time.Second
+
+	// OAuthRetryMaxElapsedTime is the maximum total time for all OAuth retry attempts.
+	// This is longer than the general RetryMaxElapsedTime to accommodate the longer
+	// OAuthHTTPTimeout per attempt (30s * 3 attempts + backoff delays).
+	OAuthRetryMaxElapsedTime = 100 * time.Second
 )
 
 // Retry configuration constants.
