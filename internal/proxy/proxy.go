@@ -115,8 +115,12 @@ func NewHandler(cfg *HandlerConfig) (Handler, error) {
 	originalDirector := h.proxy.Director
 	h.proxy.Director = createProxyDirector(h, originalDirector)
 
-	// Configure transport
-	h.transport = createProxyTransport(cfg.BackendAddr, cfg.TransportConfig, cfg.InsecureSkipVerify)
+	// Configure transport (default to empty config if nil)
+	transportConfig := cfg.TransportConfig
+	if transportConfig == nil {
+		transportConfig = &TransportConfig{}
+	}
+	h.transport = createProxyTransport(cfg.BackendAddr, transportConfig, cfg.InsecureSkipVerify)
 	h.proxy.Transport = h.transport
 
 	// Configure ModifyResponse to handle downstream headers
