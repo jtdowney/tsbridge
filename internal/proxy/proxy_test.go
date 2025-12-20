@@ -1492,6 +1492,45 @@ func TestTLSConfiguration(t *testing.T) {
 	})
 }
 
+func TestHandler_Close_CleansUpTransport(t *testing.T) {
+	// Create a backend server
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backend.Close()
+
+	// Create handler with transport
+	handler, err := NewHandler(&HandlerConfig{
+		BackendAddr:     backend.URL,
+		TransportConfig: defaultTestTransportConfig(),
+	})
+	require.NoError(t, err)
+
+	httpHandler := handler.(*httpHandler)
+	require.NotNil(t, httpHandler.transport, "transport should be set")
+
+	// Make a request to establish a connection
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Close should succeed and clean up idle connections
+	err = handler.Close()
+	assert.NoError(t, err)
+}
+
+func TestHandler_Close_NilTransport(t *testing.T) {
+	// Test that Close() doesn't panic when transport is nil
+	h := &httpHandler{
+		transport:   nil,
+		stopMetrics: nil,
+	}
+
+	err := h.Close()
+	assert.NoError(t, err)
+}
+
 // BenchmarkActiveRequestsAccess benchmarks the performance of activeRequests counter operations
 func BenchmarkActiveRequestsAccess(b *testing.B) {
 	// Create a simple backend
