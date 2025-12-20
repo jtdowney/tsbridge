@@ -65,7 +65,7 @@ func generateAuthKeyWithOAuth(oauthConfig *oauth2.Config, apiBaseURL string, tag
 	b := backoff.NewExponentialBackOff()
 	b.InitialInterval = constants.RetryInitialInterval
 	b.MaxInterval = constants.RetryMaxInterval
-	b.MaxElapsedTime = constants.RetryMaxElapsedTime
+	b.MaxElapsedTime = constants.OAuthRetryMaxElapsedTime
 	b.Multiplier = constants.RetryMultiplier
 	b.RandomizationFactor = constants.RetryRandomizationFactor
 
