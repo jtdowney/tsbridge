@@ -206,15 +206,25 @@ func (p *Provider) parseServiceConfig(container container.Summary) (*config.Serv
 	// Backend address
 	backendAddr := parser.getString("service.backend_addr")
 	if backendAddr == "" {
-		// Default to port from label or first exposed port
+		// Default to port from label or single exposed port
 		port := parser.getString("service.port")
 		if port == "" {
-			// Try to get the first exposed port
-			for p := range container.Ports {
-				if container.Ports[p].PrivatePort != 0 {
-					port = fmt.Sprintf("%d", container.Ports[p].PrivatePort)
-					break
+			// Collect all exposed ports
+			var exposedPorts []uint16
+			for _, pt := range container.Ports {
+				if pt.PrivatePort != 0 {
+					exposedPorts = append(exposedPorts, pt.PrivatePort)
 				}
+			}
+
+			switch len(exposedPorts) {
+			case 0:
+				// No ports exposed, will error below
+			case 1:
+				port = fmt.Sprintf("%d", exposedPorts[0])
+			default:
+				return nil, errors.NewProviderError("docker", errors.ErrTypeValidation,
+					fmt.Sprintf("container exposes multiple ports %v; specify tsbridge.service.port or tsbridge.service.backend_addr", exposedPorts))
 			}
 		}
 

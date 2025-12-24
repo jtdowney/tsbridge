@@ -767,6 +767,115 @@ func getDockerParsedTailscaleFields() map[string]bool {
 	}
 }
 
+// TestParseServiceConfigPortDetection tests port auto-detection behavior
+func TestParseServiceConfigPortDetection(t *testing.T) {
+	provider := &Provider{
+		labelPrefix: "tsbridge",
+	}
+
+	tests := []struct {
+		name        string
+		labels      map[string]string
+		ports       []container.Port
+		shouldError bool
+		errorMsg    string
+		wantBackend string
+	}{
+		{
+			name: "single exposed port auto-detected",
+			labels: map[string]string{
+				"tsbridge.enabled": "true",
+			},
+			ports: []container.Port{
+				{PrivatePort: 8080},
+			},
+			shouldError: false,
+			wantBackend: "test-container:8080",
+		},
+		{
+			name: "multiple exposed ports without explicit port errors",
+			labels: map[string]string{
+				"tsbridge.enabled": "true",
+			},
+			ports: []container.Port{
+				{PrivatePort: 8080},
+				{PrivatePort: 8443},
+			},
+			shouldError: true,
+			errorMsg:    "container exposes multiple ports",
+		},
+		{
+			name: "multiple exposed ports with explicit service.port succeeds",
+			labels: map[string]string{
+				"tsbridge.enabled":      "true",
+				"tsbridge.service.port": "8080",
+			},
+			ports: []container.Port{
+				{PrivatePort: 8080},
+				{PrivatePort: 8443},
+			},
+			shouldError: false,
+			wantBackend: "test-container:8080",
+		},
+		{
+			name: "multiple exposed ports with explicit backend_addr succeeds",
+			labels: map[string]string{
+				"tsbridge.enabled":              "true",
+				"tsbridge.service.backend_addr": "mybackend:9000",
+			},
+			ports: []container.Port{
+				{PrivatePort: 8080},
+				{PrivatePort: 8443},
+			},
+			shouldError: false,
+			wantBackend: "mybackend:9000",
+		},
+		{
+			name: "no exposed ports errors",
+			labels: map[string]string{
+				"tsbridge.enabled": "true",
+			},
+			ports:       []container.Port{},
+			shouldError: true,
+			errorMsg:    "backend address could not be determined",
+		},
+		{
+			name: "ports with zero private port ignored",
+			labels: map[string]string{
+				"tsbridge.enabled": "true",
+			},
+			ports: []container.Port{
+				{PrivatePort: 0, PublicPort: 32000}, // Only host binding, no private port
+				{PrivatePort: 8080},
+			},
+			shouldError: false,
+			wantBackend: "test-container:8080",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := container.Summary{
+				Names:  []string{"/test-container"},
+				Labels: tt.labels,
+				Ports:  tt.ports,
+			}
+
+			svc, err := provider.parseServiceConfig(c)
+			if tt.shouldError {
+				assert.Error(t, err)
+				if tt.errorMsg != "" {
+					assert.Contains(t, err.Error(), tt.errorMsg)
+				}
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, svc)
+				assert.Equal(t, tt.wantBackend, svc.BackendAddr)
+			}
+		})
+	}
+}
+
 // TestDockerControlURLParsing tests that control_url is properly parsed from Docker labels
 func TestDockerControlURLParsing(t *testing.T) {
 	provider := &Provider{
