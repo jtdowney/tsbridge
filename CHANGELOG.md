@@ -5,6 +5,36 @@ All notable changes to tsbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.13.1] - 2025-01-11
+
+### Fixed
+
+- Error on ambiguous Docker port detection (#165)
+  - Containers with multiple exposed ports now require explicit port configuration
+  - Prevents non-deterministic backend address selection during reloads
+- Add timeout to OAuth HTTP operations (#160)
+  - 30-second timeout prevents indefinite blocking when Tailscale API is unresponsive
+- Handle nil TransportConfig in NewHandler (#159)
+- Close idle transport connections on handler close (#158)
+  - Prevents resource leaks when services are stopped
+- Normalize whois cache key to IP only (#157)
+  - Improves cache hit rate by stripping port from cache keys
+- Add timeout to tsnet.Server.Start() to prevent indefinite blocking (#153)
+  - 30-second timeout when control plane is unreachable
+  - Clear error message suggests checking connectivity
+- Add http.Flusher support to body limit middleware (#149)
+  - Enables streaming responses through the middleware
+
+### Dependencies
+
+- Bump tailscale.com from 1.90.9 to 1.92.5 (#152, #155, #162, #166)
+- Bump github.com/knadh/koanf/providers/file from 1.2.0 to 1.2.1 (#163)
+- Bump golang.org/x/oauth2 from 0.33.0 to 0.34.0 (#154)
+
+### Development
+
+- Update Alpine base image for Docker to 3.23 (#151)
+
 ## [0.13.0] - 2025-12-04
 
 ### Added
@@ -514,6 +544,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of tsbridge - a lightweight proxy manager built on Tailscale's tsnet library
 
+[0.13.1]: https://github.com/jtdowney/tsbridge/releases/tag/v0.13.1
 [0.13.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.13.0
 [0.12.3]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.3
 [0.12.2]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.2
