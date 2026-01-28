@@ -6,36 +6,37 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
+  outputs = {
+    self,
+    nixpkgs,
+    flake-utils,
+  }:
+    flake-utils.lib.eachDefaultSystem (
+      system: let
         pkgs = nixpkgs.legacyPackages.${system};
-        
-        # Go version matching go.mod requirement (1.25.5)
-        go = pkgs.go_1_22; # Using Go 1.22 as 1.25 is not available yet
-        
-      in
-      {
+
+        go = pkgs.go_1_26;
+      in {
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             # Core development tools
             go
             gotools
-            gopls          # Go language server for IDE support
-            
+            gopls # Go language server for IDE support
+
             # Testing and quality tools
-            golangci-lint  # Main linter as specified in AGENTS.md
-            staticcheck    # Additional static analysis tool
-            govulncheck    # Go vulnerability checker
-            
+            golangci-lint # Main linter as specified in AGENTS.md
+            staticcheck # Additional static analysis tool
+            govulncheck # Go vulnerability checker
+
             # Build and automation tools
-            gnumake        # For Makefile targets
-            goreleaser     # For releases (mentioned in Makefile)
-            
+            gnumake # For Makefile targets
+            goreleaser # For releases (mentioned in Makefile)
+
             # Development workflow tools
-            pre-commit     # Pre-commit hooks
-            git            # Version control and for version info in builds
-            
+            pre-commit # Pre-commit hooks
+            git # Version control and for version info in builds
+
             # Docker tools (for container builds mentioned in Makefile)
             docker
             docker-buildx
@@ -67,20 +68,20 @@
             echo "Go version: $(go version)"
             echo "Project: tsbridge - Tailscale tsnet proxy manager"
             echo ""
-            
+
             # Set up Go environment
             export GOPATH="${pkgs.buildGoModule}/share/go"
             export GOCACHE="$PWD/.cache/go-build"
             export GOMODCACHE="$PWD/.cache/go-mod"
-            
+
             # Create cache directories if they don't exist
             mkdir -p .cache/go-build .cache/go-mod
-            
+
             # Check if pre-commit is installed and suggest setup
             if [ ! -f .git/hooks/pre-commit ]; then
               echo "💡 Tip: Run 'pre-commit install' to set up Git hooks for automatic formatting and linting"
             fi
-            
+
             # Verify Go module is ready
             if [ ! -f go.sum ]; then
               echo "📦 Running go mod download to fetch dependencies..."
@@ -90,29 +91,29 @@
 
           # Additional environment variables for Go development
           CGO_ENABLED = "1";
-          
+
           # Set Go build flags for development
           GOFLAGS = "-buildvcs=true";
         };
-        
+
         # Optional: Add packages that can be built from this flake
         packages.default = pkgs.buildGoModule {
           pname = "tsbridge";
           version = "dev";
-          
+
           src = ./.;
-          
+
           vendorHash = null; # Will need to be updated when dependencies change
-          
+
           ldflags = [
             "-X main.version=dev"
           ];
-          
+
           meta = with pkgs.lib; {
             description = "A Go-based proxy manager built on Tailscale's tsnet library";
             homepage = "https://github.com/jtdowney/tsbridge";
             license = licenses.mit; # Adjust based on actual license
-            maintainers = [ ];
+            maintainers = [];
           };
         };
       }
