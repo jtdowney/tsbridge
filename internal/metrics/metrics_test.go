@@ -1069,3 +1069,51 @@ func (fw *failingWriter) Write(b []byte) (int, error) {
 }
 
 func (fw *failingWriter) WriteHeader(statusCode int) {}
+
+func TestGetServiceMetrics(t *testing.T) {
+	collector := NewCollector()
+	serviceName := "test-service"
+
+	// Record some metrics
+	collector.RequestsTotal.WithLabelValues(serviceName, "200").Add(100)
+	collector.RequestsTotal.WithLabelValues(serviceName, "500").Add(5)
+	collector.RequestsTotal.WithLabelValues("other-service", "200").Add(50)
+
+	collector.ErrorsTotal.WithLabelValues(serviceName, "backend").Add(3)
+	collector.ErrorsTotal.WithLabelValues(serviceName, "timeout").Add(2)
+	collector.ErrorsTotal.WithLabelValues("other-service", "backend").Add(10)
+
+	// Record request durations (0.1s, 0.2s, 0.3s = avg 0.2s = 200ms)
+	collector.RequestDuration.WithLabelValues(serviceName).Observe(0.1)
+	collector.RequestDuration.WithLabelValues(serviceName).Observe(0.2)
+	collector.RequestDuration.WithLabelValues(serviceName).Observe(0.3)
+	collector.RequestDuration.WithLabelValues("other-service").Observe(0.5)
+
+	// Get metrics for the test service
+	metrics := collector.GetServiceMetrics(serviceName)
+
+	// Verify totals (100 + 5 = 105 requests)
+	assert.Equal(t, int64(105), metrics.TotalRequests)
+
+	// Verify errors (3 + 2 = 5 errors)
+	assert.Equal(t, int64(5), metrics.TotalErrors)
+
+	// Verify average response time (0.1 + 0.2 + 0.3) / 3 * 1000 = 200ms
+	assert.InDelta(t, 200.0, metrics.AvgResponseTime, 1.0)
+
+	// Verify other service is not included
+	otherMetrics := collector.GetServiceMetrics("other-service")
+	assert.Equal(t, int64(50), otherMetrics.TotalRequests)
+	assert.Equal(t, int64(10), otherMetrics.TotalErrors)
+}
+
+func TestGetServiceMetrics_NoData(t *testing.T) {
+	collector := NewCollector()
+
+	// Get metrics for a service with no data
+	metrics := collector.GetServiceMetrics("nonexistent-service")
+
+	assert.Equal(t, int64(0), metrics.TotalRequests)
+	assert.Equal(t, int64(0), metrics.TotalErrors)
+	assert.Equal(t, 0.0, metrics.AvgResponseTime)
+}
