@@ -26,7 +26,7 @@
 
             # Testing and quality tools
             golangci-lint # Main linter as specified in AGENTS.md
-            staticcheck # Additional static analysis tool
+            go-tools # Multiple tools like staticcheck
             govulncheck # Go vulnerability checker
 
             # Build and automation tools
