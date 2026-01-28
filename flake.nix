@@ -26,7 +26,7 @@
 
             # Testing and quality tools
             golangci-lint # Main linter as specified in AGENTS.md
-            go-tools # Multiple tools like staticcheck
+            go-tools # Multiple tools like staticcheck (includes staticcheck)
             govulncheck # Go vulnerability checker
 
             # Build and automation tools
@@ -70,7 +70,6 @@
             echo ""
 
             # Set up Go environment
-            export GOPATH="${pkgs.buildGoModule}/share/go"
             export GOCACHE="$PWD/.cache/go-build"
             export GOMODCACHE="$PWD/.cache/go-mod"
 
@@ -97,25 +96,19 @@
         };
 
         # Optional: Add packages that can be built from this flake
-        packages.default = pkgs.buildGoModule {
-          pname = "tsbridge";
-          version = "dev";
-
-          src = ./.;
-
-          vendorHash = null; # Will need to be updated when dependencies change
-
-          ldflags = [
-            "-X main.version=dev"
-          ];
-
-          meta = with pkgs.lib; {
-            description = "A Go-based proxy manager built on Tailscale's tsnet library";
-            homepage = "https://github.com/jtdowney/tsbridge";
-            license = licenses.mit; # Adjust based on actual license
-            maintainers = [];
-          };
-        };
+        # packages.default = pkgs.buildGoModule {
+        #   pname = "tsbridge";
+        #   version = "dev";
+        #   src = ./.;
+        #   vendorHash = null; # Will need to be updated when dependencies change
+        #   ldflags = [ "-X main.version=dev" ];
+        #   meta = with pkgs.lib; {
+        #     description = "A Go-based proxy manager built on Tailscale's tsnet library";
+        #     homepage = "https://github.com/jtdowney/tsbridge";
+        #     license = licenses.mit; # Adjust based on actual license
+        #     maintainers = [];
+        #   };
+        # };
       }
     );
 }
