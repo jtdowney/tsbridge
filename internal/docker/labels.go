@@ -163,6 +163,7 @@ func (p *Provider) parseGlobalConfig(container *container.Summary, cfg *config.C
 	// Parse global configuration
 	cfg.Global = config.Global{
 		MetricsAddr:              parser.getString("global.metrics_addr"),
+		WebAddr:                  parser.getString("global.web_addr"),
 		ReadHeaderTimeout:        parser.getDuration("global.read_header_timeout"),
 		WriteTimeout:             parser.getDuration("global.write_timeout"),
 		IdleTimeout:              parser.getDuration("global.idle_timeout"),

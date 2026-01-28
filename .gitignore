@@ -36,3 +36,5 @@ Thumbs.db
 .serena
 .claude/settings.local.json
 .cache
+
+.env

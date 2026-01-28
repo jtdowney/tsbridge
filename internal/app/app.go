@@ -13,9 +13,16 @@ import (
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/service"
 	"github.com/jtdowney/tsbridge/internal/tailscale"
+	"github.com/jtdowney/tsbridge/internal/web"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )
+
+// webServer interface for web server operations
+type webServer interface {
+	Start() error
+	Stop(ctx context.Context) error
+}
 
 // App encapsulates the tsbridge application lifecycle
 type App struct {
@@ -24,6 +31,7 @@ type App struct {
 	tsServer      *tailscale.Server
 	registry      *service.Registry
 	metricsServer *metrics.Server
+	webServer     webServer
 	startOnce     sync.Once
 	stopOnce      sync.Once
 	configWatcher context.CancelFunc
@@ -110,6 +118,17 @@ func NewAppWithOptions(cfg *config.Config, opts Options) (*App, error) {
 		}
 	}
 
+	// Setup web server if configured
+	if cfg.Global.WebAddr != "" {
+		if err := app.setupWebServer(); err != nil {
+			// Clean up if web server setup fails
+			if opts.TSServer == nil {
+				tsServer.Close()
+			}
+			return nil, tserrors.WrapResource(err, "failed to setup web server")
+		}
+	}
+
 	return app, nil
 }
 
@@ -140,6 +159,17 @@ func (a *App) setupMetrics() error {
 	return nil
 }
 
+// setupWebServer initializes the web server.
+func (a *App) setupWebServer() error {
+	slog.Debug("creating web server")
+	webSrv, err := web.NewServer(a.cfg.Global.WebAddr, a)
+	if err != nil {
+		return tserrors.WrapResource(err, "failed to create web server")
+	}
+	a.webServer = webSrv
+	return nil
+}
+
 // Start starts the application and all its services
 func (a *App) Start(ctx context.Context) error {
 	var startErr error
@@ -165,6 +195,17 @@ func (a *App) Start(ctx context.Context) error {
 				return
 			}
 			slog.Info("metrics server listening", "address", a.metricsServer.Addr())
+		}
+
+		// Start web server if configured
+		if a.webServer != nil {
+			slog.Debug("starting web server", "address", a.cfg.Global.WebAddr)
+			go func() {
+				if err := a.webServer.Start(); err != nil {
+					slog.Error("web server error", "error", err)
+				}
+			}()
+			slog.Info("web server listening", "address", a.cfg.Global.WebAddr)
 		}
 
 		// Start services
@@ -226,6 +267,15 @@ func (a *App) performShutdown(ctx context.Context) error {
 		if err := a.metricsServer.Shutdown(ctx); err != nil {
 			wrappedErr := tserrors.WrapInternal(err, "failed to shutdown metrics server")
 			slog.Error("failed to shutdown metrics server", "error", err)
+			errs = append(errs, wrappedErr)
+		}
+	}
+
+	// Shutdown web server if running
+	if a.webServer != nil {
+		if err := a.webServer.Stop(ctx); err != nil {
+			wrappedErr := tserrors.WrapInternal(err, "failed to shutdown web server")
+			slog.Error("failed to shutdown web server", "error", err)
 			errs = append(errs, wrappedErr)
 		}
 	}
@@ -356,4 +406,18 @@ func (a *App) MetricsAddr() string {
 		return ""
 	}
 	return a.metricsServer.Addr()
+}
+
+// GetConfig returns the current configuration.
+func (a *App) GetConfig() *config.Config {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.cfg
+}
+
+// GetRegistry returns the service registry.
+func (a *App) GetRegistry() *service.Registry {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.registry
 }
