@@ -15,6 +15,7 @@ import (
 	"github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	dto "github.com/prometheus/client_model/go"
 )
 
 // Collector holds all prometheus metrics for tsbridge
@@ -211,6 +212,87 @@ func (c *Collector) RecordConfigReload(success bool, duration time.Duration) {
 	}
 	c.ConfigReloads.WithLabelValues(status).Inc()
 	c.ConfigReloadDuration.Observe(duration.Seconds())
+}
+
+// ServiceMetrics contains aggregated metrics for a service.
+type ServiceMetrics struct {
+	TotalRequests   int64
+	TotalErrors     int64
+	AvgResponseTime float64 // in milliseconds
+}
+
+// GetServiceMetrics retrieves aggregated metrics for a specific service.
+func (c *Collector) GetServiceMetrics(serviceName string) ServiceMetrics {
+	var result ServiceMetrics
+
+	// Collect and process requests
+	result.TotalRequests = c.collectCounterSum(c.RequestsTotal, serviceName)
+
+	// Collect and process errors
+	result.TotalErrors = c.collectCounterSum(c.ErrorsTotal, serviceName)
+
+	// Collect and process response times
+	result.AvgResponseTime = c.collectHistogramAvg(c.RequestDuration, serviceName)
+
+	return result
+}
+
+// collectCounterSum collects metrics from a CounterVec and sums values for a service.
+func (c *Collector) collectCounterSum(counter *prometheus.CounterVec, serviceName string) int64 {
+	var total int64
+
+	ch := make(chan prometheus.Metric, 100)
+	go func() {
+		counter.Collect(ch)
+		close(ch)
+	}()
+
+	for m := range ch {
+		metric := &dto.Metric{}
+		if err := m.Write(metric); err != nil {
+			continue
+		}
+		if hasLabel(metric, "service", serviceName) {
+			total += int64(metric.GetCounter().GetValue())
+		}
+	}
+
+	return total
+}
+
+// collectHistogramAvg collects metrics from a HistogramVec and returns the average for a service.
+func (c *Collector) collectHistogramAvg(histogram *prometheus.HistogramVec, serviceName string) float64 {
+	ch := make(chan prometheus.Metric, 100)
+	go func() {
+		histogram.Collect(ch)
+		close(ch)
+	}()
+
+	for m := range ch {
+		metric := &dto.Metric{}
+		if err := m.Write(metric); err != nil {
+			continue
+		}
+		if hasLabel(metric, "service", serviceName) {
+			h := metric.GetHistogram()
+			if h != nil && h.GetSampleCount() > 0 {
+				// Calculate average and convert to milliseconds
+				return (h.GetSampleSum() / float64(h.GetSampleCount())) * 1000
+			}
+		}
+	}
+
+	return 0
+}
+
+// hasLabel checks if a metric has a specific label with a given value.
+func hasLabel(metric *dto.Metric, name, value string) bool {
+	for _, label := range metric.GetLabel() {
+		if label.GetName() == name && label.GetValue() == value {
+			return true
+		}
+	}
+	return false
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code

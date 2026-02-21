@@ -53,6 +53,7 @@ type Global struct {
 	AccessLog             *bool          `mapstructure:"access_log"`              // Enable access logging (default: true)
 	TrustedProxies        []string       `mapstructure:"trusted_proxies"`         // List of trusted proxy IPs or CIDR ranges
 	MetricsAddr           string         `mapstructure:"metrics_addr"`            // Address for Prometheus metrics
+	WebAddr               string         `mapstructure:"web_addr"`                // Address for web interface (e.g., ":8080")
 	ResponseHeaderTimeout *time.Duration `mapstructure:"response_header_timeout"` // Timeout for backend response headers
 	ShutdownTimeout       *time.Duration `mapstructure:"shutdown_timeout"`        // Max duration for graceful shutdown
 	WriteTimeout          *time.Duration `mapstructure:"write_timeout"`           // Max duration for writing response
