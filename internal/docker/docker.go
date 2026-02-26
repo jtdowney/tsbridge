@@ -180,6 +180,17 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 	if err := p.parseGlobalConfig(selfContainer, cfg); err != nil {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeConfig, "parsing global configuration")
 	}
+	// Parse service names from tsbridge container labels (new discovery mechanism)
+	labelServiceNames := p.parseServiceNames(selfContainer.Labels)
+	labelContainers := []container.Summary{}
+	if len(labelServiceNames) > 0 {
+		slog.Debug("discovering services from tsbridge container labels", "service_names", labelServiceNames)
+		labelContainers, err = p.findContainersByNames(ctx, labelServiceNames)
+		if err != nil {
+			return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeResource, "finding containers by names")
+		}
+		slog.Debug("found containers from tsbridge labels", "count", len(labelContainers))
+	}
 
 	// Reuse cached Tailscale config on subsequent loads. The initial
 	// config resolution clears auth key env vars (TS_AUTHKEY) to prevent
@@ -195,9 +206,12 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 	if err != nil {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeResource, "finding service containers")
 	}
-	slog.Debug("found service containers", "count", len(serviceContainers))
 
-	// Parse service configurations
+	// Parse service configurations and merge from both discovery mechanisms
+	// Use a map to deduplicate services by name - traditional discovery takes precedence
+	serviceMap := make(map[string]config.Service)
+
+	// First, process containers from traditional discovery (tsbridge.enabled=true)
 	for _, container := range serviceContainers {
 		containerName := ""
 		if len(container.Names) > 0 {
@@ -211,7 +225,36 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 				"error", err)
 			continue
 		}
-		cfg.Services = append(cfg.Services, *svc)
+		serviceMap[svc.Name] = *svc
+	}
+
+	// Then, process containers from new discovery (via tsbridge container labels)
+	// Only add if service name is not already present (traditional takes precedence)
+	for _, container := range labelContainers {
+		containerName := ""
+		if len(container.Names) > 0 {
+			containerName = container.Names[0]
+		}
+
+		svc, err := p.parseServiceConfig(container)
+		if err != nil {
+			slog.Warn("failed to parse service configuration",
+				"container", containerName,
+				"error", err)
+			continue
+		}
+
+		// Only add if not already present from traditional discovery
+		if _, exists := serviceMap[svc.Name]; !exists {
+			serviceMap[svc.Name] = *svc
+			slog.Info("Service discovered via tsbridge container labels", "service", svc.Name)
+		}
+	}
+
+	// Convert map to slice
+	cfg.Services = make([]config.Service, 0, len(serviceMap))
+	for _, svc := range serviceMap {
+		cfg.Services = append(cfg.Services, svc)
 	}
 
 	// Apply standard configuration processing
@@ -620,6 +663,55 @@ func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summa
 	}
 
 	return serviceContainers, nil
+}
+
+
+// findContainersByNames finds containers matching any of the given service names.
+// It queries all running containers and matches against their Names field.
+// Unlike findServiceContainers, this does NOT require tsbridge.enabled=true.
+// Container names in Docker are prefixed with '/', so they are stripped before matching.
+func (p *Provider) findContainersByNames(ctx context.Context, serviceNames []string) ([]container.Summary, error) {
+	// Return empty slice for nil or empty service names
+	if len(serviceNames) == 0 {
+		return []container.Summary{}, nil
+	}
+
+	// Query all running containers (no label filter)
+	opts := container.ListOptions{
+		Filters: filters.NewArgs(
+			filters.Arg("status", "running"),
+		),
+	}
+
+	containers, err := p.client.ContainerList(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create a set of service names for O(1) lookup
+	serviceNameSet := make(map[string]struct{}, len(serviceNames))
+	for _, name := range serviceNames {
+		serviceNameSet[name] = struct{}{}
+	}
+
+	// Find containers whose names match any service name
+	var matching []container.Summary
+	for _, c := range containers {
+		for _, name := range c.Names {
+			// Strip leading '/' from container name
+			containerName := strings.TrimPrefix(name, "/")
+			if _, matches := serviceNameSet[containerName]; matches {
+				matching = append(matching, c)
+				break // Only add each container once
+			}
+		}
+	}
+
+	if matching == nil {
+		return []container.Summary{}, nil
+	}
+
+	return matching, nil
 }
 
 // getContainerByID gets a container by ID
