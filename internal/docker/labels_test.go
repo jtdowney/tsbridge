@@ -2,6 +2,7 @@ package docker
 
 import (
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 
@@ -973,6 +974,123 @@ func TestDockerServiceOAuthPreauthorizedParsing(t *testing.T) {
 				require.NotNil(t, svc.OAuthPreauthorized)
 				assert.Equal(t, *tt.expected, *svc.OAuthPreauthorized)
 			}
+		})
+	}
+}
+func TestParseServiceNames(t *testing.T) {
+	provider := &Provider{
+		labelPrefix: "tsbridge",
+	}
+
+	tests := []struct {
+		name          string
+		labels        map[string]string
+		expectedNames []string
+	}{
+		{
+			name:          "empty labels map",
+			labels:        map[string]string{},
+			expectedNames: nil,
+		},
+		{
+			name: "no matching service labels",
+			labels: map[string]string{
+				"tsbridge.enabled":             "true",
+				"tsbridge.tailscale.state_dir": "/var/lib/tsbridge",
+			},
+			expectedNames: nil,
+		},
+		{
+			name: "single service with one property",
+			labels: map[string]string{
+				"tsbridge.enabled":                "true",
+				"tsbridge.service.nextcloud.port": "80",
+			},
+			expectedNames: []string{"nextcloud"},
+		},
+		{
+			name: "single service with multiple properties",
+			labels: map[string]string{
+				"tsbridge.enabled":                "true",
+				"tsbridge.service.nextcloud.port": "80",
+				"tsbridge.service.nextcloud.tags": "tag:prod",
+			},
+			expectedNames: []string{"nextcloud"},
+		},
+		{
+			name: "multiple services",
+			labels: map[string]string{
+				"tsbridge.enabled":                "true",
+				"tsbridge.service.nextcloud.port": "80",
+				"tsbridge.service.redis.port":     "6379",
+			},
+			expectedNames: []string{"nextcloud", "redis"},
+		},
+		{
+			name: "multiple services with multiple properties",
+			labels: map[string]string{
+				"tsbridge.enabled":                "true",
+				"tsbridge.service.nextcloud.port": "80",
+				"tsbridge.service.nextcloud.tags": "tag:prod",
+				"tsbridge.service.redis.port":     "6379",
+				"tsbridge.service.redis.tags":     "tag:cache",
+			},
+			expectedNames: []string{"nextcloud", "redis"},
+		},
+		{
+			name: "duplicate service names should deduplicate",
+			labels: map[string]string{
+				"tsbridge.enabled":                "true",
+				"tsbridge.service.nextcloud.port": "80",
+				"tsbridge.service.nextcloud.tags": "tag:prod",
+			},
+			expectedNames: []string{"nextcloud"},
+		},
+		{
+			name: "custom label prefix - using tsbridge prefix",
+			labels: map[string]string{
+				"tsbridge.enabled":            "true",
+				"tsbridge.service.myapp.port": "3000",
+			},
+			expectedNames: []string{"myapp"},
+		},
+
+		{
+			name: "service name with hyphen",
+			labels: map[string]string{
+				"tsbridge.enabled":                 "true",
+				"tsbridge.service.my-web-app.port": "8080",
+			},
+			expectedNames: []string{"my-web-app"},
+		},
+		{
+			name: "service name with underscore",
+			labels: map[string]string{
+				"tsbridge.enabled":                 "true",
+				"tsbridge.service.my_web_app.port": "8080",
+			},
+			expectedNames: []string{"my_web_app"},
+		},
+		{
+			name: "ignores non-service labels with similar prefix",
+			labels: map[string]string{
+				"tsbridge.enabled":          "true",
+				"tsbridge.servicefoo.port":  "80",
+				"tsbridge.service.bar.port": "8080",
+			},
+			expectedNames: []string{"bar"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := provider.parseServiceNames(tt.labels)
+
+			// Convert to sorted slice for comparison to ensure deterministic results
+			sort.Strings(result)
+			sort.Strings(tt.expectedNames)
+
+			assert.Equal(t, tt.expectedNames, result)
 		})
 	}
 }
