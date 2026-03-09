@@ -29,14 +29,14 @@ func (m *testRegistryProvider) Name() string {
 
 // testProviderFactory creates test providers
 func testProviderFactory(name string) ProviderFactory {
-	return func(opts interface{}) (Provider, error) {
+	return func(opts any) (Provider, error) {
 		return &testRegistryProvider{name: name}, nil
 	}
 }
 
 // errorProviderFactory returns an error
 func errorProviderFactory(errMsg string) ProviderFactory {
-	return func(opts interface{}) (Provider, error) {
+	return func(opts any) (Provider, error) {
 		return nil, fmt.Errorf("%s", errMsg)
 	}
 }
@@ -98,7 +98,7 @@ func TestProviderRegistry_Get(t *testing.T) {
 		name         string
 		registered   map[string]ProviderFactory
 		getProvider  string
-		opts         interface{}
+		opts         any
 		expectError  bool
 		errorMessage string
 	}{
@@ -132,7 +132,7 @@ func TestProviderRegistry_Get(t *testing.T) {
 		{
 			name: "get with options",
 			registered: map[string]ProviderFactory{
-				"test": func(opts interface{}) (Provider, error) {
+				"test": func(opts any) (Provider, error) {
 					str, ok := opts.(string)
 					if !ok {
 						return nil, fmt.Errorf("expected string options")
@@ -221,10 +221,10 @@ func TestProviderRegistry_ThreadSafety(t *testing.T) {
 	wg.Add(numWorkers * 3) // 3 types of operations
 
 	// Concurrent Register operations
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		go func(workerID int) {
 			defer wg.Done()
-			for j := 0; j < numOps; j++ {
+			for j := range numOps {
 				name := fmt.Sprintf("provider_%d_%d", workerID, j)
 				registry.Register(name, testProviderFactory(name))
 			}
@@ -232,10 +232,10 @@ func TestProviderRegistry_ThreadSafety(t *testing.T) {
 	}
 
 	// Concurrent Get operations
-	for i := 0; i < numWorkers; i++ {
+	for i := range numWorkers {
 		go func(workerID int) {
 			defer wg.Done()
-			for j := 0; j < numOps; j++ {
+			for j := range numOps {
 				// Try to get both existing and non-existing providers
 				name := fmt.Sprintf("provider_%d_%d", workerID%numWorkers, j)
 				_, _ = registry.Get(name, nil)
@@ -244,10 +244,10 @@ func TestProviderRegistry_ThreadSafety(t *testing.T) {
 	}
 
 	// Concurrent List operations
-	for i := 0; i < numWorkers; i++ {
+	for range numWorkers {
 		go func() {
 			defer wg.Done()
-			for j := 0; j < numOps; j++ {
+			for range numOps {
 				_ = registry.List()
 			}
 		}()
@@ -270,7 +270,7 @@ func TestProviderRegistry_ThreadSafety(t *testing.T) {
 func TestFileProviderFactory(t *testing.T) {
 	tests := []struct {
 		name        string
-		opts        interface{}
+		opts        any
 		expectError bool
 	}{
 		{
@@ -319,7 +319,7 @@ func TestDockerProviderFactory(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		opts        interface{}
+		opts        any
 		expectError bool
 		errorMsg    string
 	}{

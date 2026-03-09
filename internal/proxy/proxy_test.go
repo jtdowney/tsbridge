@@ -1189,7 +1189,7 @@ func TestConnectionPoolMetricsCollection(t *testing.T) {
 		defer handler.Close()
 
 		// Make some requests to establish connections
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			req := httptest.NewRequest("GET", "http://example.com/", nil)
 			w := httptest.NewRecorder()
 			handler.ServeHTTP(w, req)
@@ -1251,7 +1251,7 @@ func TestConnectionPoolMetricsCollection(t *testing.T) {
 		// Use a channel to coordinate request timing
 		startRequests := make(chan struct{})
 
-		for i := 0; i < numWorkers; i++ {
+		for range numWorkers {
 			go func() {
 				defer wg.Done()
 				<-startRequests // Wait for signal to start
@@ -1332,11 +1332,11 @@ func TestActiveRequestsThreadSafety(t *testing.T) {
 		start := make(chan struct{})
 
 		// Start goroutines that make requests (writing to activeRequests)
-		for i := 0; i < numWorkers; i++ {
+		for range numWorkers {
 			go func() {
 				defer wg.Done()
 				<-start
-				for j := 0; j < numIterations; j++ {
+				for range numIterations {
 					req := httptest.NewRequest("GET", "/", nil)
 					w := httptest.NewRecorder()
 					httpHandler.ServeHTTP(w, req)
@@ -1345,11 +1345,11 @@ func TestActiveRequestsThreadSafety(t *testing.T) {
 		}
 
 		// Start goroutines that collect metrics (reading activeRequests)
-		for i := 0; i < numWorkers; i++ {
+		for range numWorkers {
 			go func() {
 				defer wg.Done()
 				<-start
-				for j := 0; j < numIterations; j++ {
+				for range numIterations {
 					// Test both the getter method and collectMetrics
 					_ = httpHandler.getActiveRequests()
 					httpHandler.collectMetrics()

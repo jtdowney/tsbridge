@@ -100,12 +100,12 @@ func TestParseBool(t *testing.T) {
 		{
 			name:     "true value",
 			value:    "true",
-			expected: boolPtr(true),
+			expected: new(true),
 		},
 		{
 			name:     "false value",
 			value:    "false",
-			expected: boolPtr(false),
+			expected: new(false),
 		},
 		{
 			name:     "empty string",
@@ -121,12 +121,12 @@ func TestParseBool(t *testing.T) {
 		{
 			name:     "1 as true",
 			value:    "1",
-			expected: boolPtr(true),
+			expected: new(true),
 		},
 		{
 			name:     "0 as false",
 			value:    "0",
-			expected: boolPtr(false),
+			expected: new(false),
 		},
 	}
 
@@ -158,17 +158,17 @@ func TestParseInt(t *testing.T) {
 		{
 			name:     "valid int",
 			value:    "42",
-			expected: intPtr(42),
+			expected: new(42),
 		},
 		{
 			name:     "zero",
 			value:    "0",
-			expected: intPtr(0),
+			expected: new(0),
 		},
 		{
 			name:     "negative int",
 			value:    "-5",
-			expected: intPtr(-5),
+			expected: new(-5),
 		},
 		{
 			name:     "empty string",
@@ -294,12 +294,15 @@ func TestLabelParser(t *testing.T) {
 }
 
 // Helper functions
+//
+//go:fix inline
 func boolPtr(b bool) *bool {
-	return &b
+	return new(b)
 }
 
+//go:fix inline
 func intPtr(i int) *int {
-	return &i
+	return new(i)
 }
 
 // TestHeaderInjectionVulnerabilities tests for header injection security issues
@@ -576,11 +579,11 @@ func TestParseServiceConfigBackendValidation(t *testing.T) {
 func TestConfigParityBetweenTOMLAndDocker(t *testing.T) {
 	t.Run("Global config fields", func(t *testing.T) {
 		// Get all fields from the Global struct
-		globalType := reflect.TypeOf(config.Global{})
+		globalType := reflect.TypeFor[config.Global]()
 		dockerParsedFields := getDockerParsedGlobalFields()
 
-		for i := 0; i < globalType.NumField(); i++ {
-			field := globalType.Field(i)
+		for field := range globalType.Fields() {
+			field := field
 			mapstructureTag := field.Tag.Get("mapstructure")
 			if mapstructureTag == "" {
 				continue // Skip fields without mapstructure tag
@@ -596,11 +599,11 @@ func TestConfigParityBetweenTOMLAndDocker(t *testing.T) {
 
 	t.Run("Service config fields", func(t *testing.T) {
 		// Get all fields from the Service struct
-		serviceType := reflect.TypeOf(config.Service{})
+		serviceType := reflect.TypeFor[config.Service]()
 		dockerParsedFields := getDockerParsedServiceFields()
 
-		for i := 0; i < serviceType.NumField(); i++ {
-			field := serviceType.Field(i)
+		for field := range serviceType.Fields() {
+			field := field
 			mapstructureTag := field.Tag.Get("mapstructure")
 			if mapstructureTag == "" {
 				continue // Skip fields without mapstructure tag
@@ -616,11 +619,11 @@ func TestConfigParityBetweenTOMLAndDocker(t *testing.T) {
 
 	t.Run("Tailscale config fields", func(t *testing.T) {
 		// Get all fields from the Tailscale struct
-		tailscaleType := reflect.TypeOf(config.Tailscale{})
+		tailscaleType := reflect.TypeFor[config.Tailscale]()
 		dockerParsedFields := getDockerParsedTailscaleFields()
 
-		for i := 0; i < tailscaleType.NumField(); i++ {
-			field := tailscaleType.Field(i)
+		for field := range tailscaleType.Fields() {
+			field := field
 			mapstructureTag := field.Tag.Get("mapstructure")
 			if mapstructureTag == "" {
 				continue // Skip fields without mapstructure tag

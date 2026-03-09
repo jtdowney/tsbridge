@@ -241,7 +241,7 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 
 	// Check status
 	if resp.StatusCode != http.StatusOK {
-		var errResp map[string]interface{}
+		var errResp map[string]any
 		_ = json.NewDecoder(resp.Body).Decode(&errResp)
 		slog.Debug("auth key API error response",
 			"status_code", resp.StatusCode,

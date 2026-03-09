@@ -107,8 +107,8 @@ func (p *labelParser) getHeaders(key string) map[string]string {
 	fullPrefix := fmt.Sprintf("%s.%s.", p.prefix, key)
 
 	for label, value := range p.labels {
-		if strings.HasPrefix(label, fullPrefix) {
-			headerName := strings.TrimPrefix(label, fullPrefix)
+		if after, ok := strings.CutPrefix(label, fullPrefix); ok {
+			headerName := after
 
 			// Validate header name to prevent injection attacks
 			if !isValidHeaderName(headerName) {

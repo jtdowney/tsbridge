@@ -36,7 +36,7 @@ func TestGenerateAuthKeyWithOAuth(t *testing.T) {
 
 		// Return mock token
 		w.Header().Set("Content-Type", "application/json")
-		token := map[string]interface{}{
+		token := map[string]any{
 			"access_token": "mock-access-token",
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -57,19 +57,19 @@ func TestGenerateAuthKeyWithOAuth(t *testing.T) {
 		}
 
 		// Parse request body
-		var keyReq map[string]interface{}
+		var keyReq map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&keyReq); err != nil {
 			t.Fatal(err)
 		}
 
 		// Verify tags are included
-		tags, ok := keyReq["tags"].([]interface{})
+		tags, ok := keyReq["tags"].([]any)
 		if !ok || len(tags) == 0 {
 			t.Error("expected tags in request")
 		}
 
 		// Return mock auth key
-		response := map[string]interface{}{
+		response := map[string]any{
 			"key":     "tskey-auth-mock123",
 			"created": time.Now().Format(time.RFC3339),
 		}
@@ -134,7 +134,7 @@ func TestOAuthTokenRefresh(t *testing.T) {
 		tokenCallCount++
 
 		// Always return valid tokens, but different for each call
-		token := map[string]interface{}{
+		token := map[string]any{
 			"access_token": fmt.Sprintf("mock-access-token-%d", tokenCallCount),
 			"token_type":   "Bearer",
 			"expires_in":   3600,
@@ -151,7 +151,7 @@ func TestOAuthTokenRefresh(t *testing.T) {
 		apiCallCount++
 
 		// Return success for each call
-		response := map[string]interface{}{
+		response := map[string]any{
 			"key":     fmt.Sprintf("tskey-auth-mock-%d", apiCallCount),
 			"created": time.Now().Format(time.RFC3339),
 		}
@@ -342,7 +342,7 @@ func TestGenerateOrResolveAuthKeyWithServiceTags(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v2/oauth/token":
 			// Handle OAuth token request
-			token := map[string]interface{}{
+			token := map[string]any{
 				"access_token": "mock-access-token",
 				"token_type":   "Bearer",
 				"expires_in":   3600,
@@ -353,7 +353,7 @@ func TestGenerateOrResolveAuthKeyWithServiceTags(t *testing.T) {
 			body, _ := io.ReadAll(r.Body)
 			requestBody = body
 
-			response := map[string]interface{}{
+			response := map[string]any{
 				"key":     "tskey-auth-mock123",
 				"created": time.Now().Format(time.RFC3339),
 			}
@@ -507,7 +507,7 @@ func TestOAuthPreauthorizedFlag(t *testing.T) {
 
 				// Return mock token
 				w.Header().Set("Content-Type", "application/json")
-				token := map[string]interface{}{
+				token := map[string]any{
 					"access_token": "mock-access-token",
 					"token_type":   "Bearer",
 					"expires_in":   3600,
@@ -532,7 +532,7 @@ func TestOAuthPreauthorizedFlag(t *testing.T) {
 				requestBody = body
 
 				// Return mock auth key
-				response := map[string]interface{}{
+				response := map[string]any{
 					"key":     "tskey-auth-mock123",
 					"created": time.Now().Format(time.RFC3339),
 				}
@@ -650,7 +650,7 @@ func TestAuthKeyGenerationLogging(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v2/oauth/token":
 			// Handle OAuth token request
-			token := map[string]interface{}{
+			token := map[string]any{
 				"access_token": "mock-access-token",
 				"token_type":   "Bearer",
 				"expires_in":   3600,
@@ -658,7 +658,7 @@ func TestAuthKeyGenerationLogging(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(token)
 		case "/api/v2/tailnet/-/keys":
 			// Handle API request
-			response := map[string]interface{}{
+			response := map[string]any{
 				"key":     "tskey-auth-mock123",
 				"created": time.Now().Format(time.RFC3339),
 			}
@@ -740,7 +740,7 @@ func TestOAuthRetryBehavior(t *testing.T) {
 			tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				tokenCallCount++
 				w.Header().Set("Content-Type", "application/json")
-				token := map[string]interface{}{
+				token := map[string]any{
 					"access_token": "mock-access-token",
 					"token_type":   "Bearer",
 					"expires_in":   3600,
@@ -762,7 +762,7 @@ func TestOAuthRetryBehavior(t *testing.T) {
 
 				// Success response
 				w.Header().Set("Content-Type", "application/json")
-				response := map[string]interface{}{
+				response := map[string]any{
 					"key":     "tskey-auth-mock123",
 					"created": time.Now().Format(time.RFC3339),
 				}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -285,19 +286,21 @@ type ServiceStartupError struct {
 func (e *ServiceStartupError) Error() string {
 	if e.Failed == e.Total {
 		// All services failed
-		msg := fmt.Sprintf("all %d services failed to start:", e.Total)
+		var msg strings.Builder
+		fmt.Fprintf(&msg, "all %d services failed to start:", e.Total)
 		for service, err := range e.Failures {
-			msg += fmt.Sprintf("\n  - %s: %v", service, err)
+			fmt.Fprintf(&msg, "\n  - %s: %v", service, err)
 		}
-		return msg
+		return msg.String()
 	}
 
 	// Partial failure
-	msg := fmt.Sprintf("%d of %d services failed to start:", e.Failed, e.Total)
+	var msg strings.Builder
+	fmt.Fprintf(&msg, "%d of %d services failed to start:", e.Failed, e.Total)
 	for service, err := range e.Failures {
-		msg += fmt.Sprintf("\n  - %s: %v", service, err)
+		fmt.Fprintf(&msg, "\n  - %s: %v", service, err)
 	}
-	return msg
+	return msg.String()
 }
 
 // AllFailed returns true if all services failed to start

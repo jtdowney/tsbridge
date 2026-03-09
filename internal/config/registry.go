@@ -6,7 +6,7 @@ import (
 )
 
 // ProviderFactory is a function that creates a Provider from options
-type ProviderFactory func(opts interface{}) (Provider, error)
+type ProviderFactory func(opts any) (Provider, error)
 
 // ProviderRegistry manages provider factories
 type ProviderRegistry struct {
@@ -29,7 +29,7 @@ func (r *ProviderRegistry) Register(name string, factory ProviderFactory) {
 }
 
 // Get creates a provider using the registered factory
-func (r *ProviderRegistry) Get(name string, opts interface{}) (Provider, error) {
+func (r *ProviderRegistry) Get(name string, opts any) (Provider, error) {
 	r.mu.RLock()
 	factory, exists := r.factories[name]
 	r.mu.RUnlock()
@@ -59,7 +59,7 @@ type FileProviderOptions struct {
 }
 
 // FileProviderFactory creates a file provider
-func FileProviderFactory(opts interface{}) (Provider, error) {
+func FileProviderFactory(opts any) (Provider, error) {
 	fileOpts, ok := opts.(FileProviderOptions)
 	if !ok {
 		return nil, fmt.Errorf("invalid options type for file provider: expected FileProviderOptions, got %T", opts)
@@ -72,7 +72,7 @@ type DockerProviderCreator func(opts DockerProviderOptions) (Provider, error)
 
 // DockerProviderFactory creates a factory function for docker providers
 func DockerProviderFactory(creator DockerProviderCreator) ProviderFactory {
-	return func(opts interface{}) (Provider, error) {
+	return func(opts any) (Provider, error) {
 		dockerOpts, ok := opts.(DockerProviderOptions)
 		if !ok {
 			return nil, fmt.Errorf("invalid options type for docker provider: expected DockerProviderOptions, got %T", opts)

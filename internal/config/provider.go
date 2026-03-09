@@ -53,7 +53,7 @@ var DefaultRegistry = NewProviderRegistry()
 
 // NewProvider creates a provider based on the given type
 func NewProvider(providerType string, configPath string, dockerOpts DockerProviderOptions) (Provider, error) {
-	var opts interface{}
+	var opts any
 
 	switch providerType {
 	case "file":

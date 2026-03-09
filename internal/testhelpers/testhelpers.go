@@ -4,16 +4,22 @@ package testhelpers
 import "time"
 
 // DurationPtr returns a pointer to a time.Duration
+//
+//go:fix inline
 func DurationPtr(d time.Duration) *time.Duration {
-	return &d
+	return new(d)
 }
 
 // Int64Ptr returns a pointer to an int64
+//
+//go:fix inline
 func Int64Ptr(i int64) *int64 {
-	return &i
+	return new(i)
 }
 
 // BoolPtr returns a pointer to a bool
+//
+//go:fix inline
 func BoolPtr(b bool) *bool {
-	return &b
+	return new(b)
 }

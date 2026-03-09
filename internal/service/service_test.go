@@ -377,11 +377,11 @@ func TestService_HandlerWithResponseHeaderTimeout(t *testing.T) {
 				Config: config.Service{
 					Name:                  "test-service",
 					BackendAddr:           "localhost:8080",
-					ResponseHeaderTimeout: testhelpers.DurationPtr(tt.serviceTimeout),
+					ResponseHeaderTimeout: new(tt.serviceTimeout),
 				},
 				globalConfig: &config.Config{
 					Global: config.Global{
-						ResponseHeaderTimeout: testhelpers.DurationPtr(tt.globalTimeout),
+						ResponseHeaderTimeout: new(tt.globalTimeout),
 					},
 				},
 			}
@@ -440,26 +440,26 @@ func TestService_isAccessLogEnabled(t *testing.T) {
 		},
 		{
 			name:        "service override true",
-			serviceLog:  testhelpers.BoolPtr(true),
-			globalLog:   testhelpers.BoolPtr(false),
+			serviceLog:  new(true),
+			globalLog:   new(false),
 			wantEnabled: true,
 		},
 		{
 			name:        "service override false",
-			serviceLog:  testhelpers.BoolPtr(false),
-			globalLog:   testhelpers.BoolPtr(true),
+			serviceLog:  new(false),
+			globalLog:   new(true),
 			wantEnabled: false,
 		},
 		{
 			name:        "global true, no service override",
 			serviceLog:  nil,
-			globalLog:   testhelpers.BoolPtr(true),
+			globalLog:   new(true),
 			wantEnabled: true,
 		},
 		{
 			name:        "global false, no service override",
 			serviceLog:  nil,
-			globalLog:   testhelpers.BoolPtr(false),
+			globalLog:   new(false),
 			wantEnabled: false,
 		},
 	}
@@ -845,7 +845,7 @@ func TestConcurrentShutdown(t *testing.T) {
 
 	// Create multiple mock services with servers
 	numServices := 5
-	for i := 0; i < numServices; i++ {
+	for i := range numServices {
 		serviceName := "test-service-" + string(rune('a'+i))
 		svc := &Service{
 			Name: serviceName,
@@ -1347,13 +1347,11 @@ func TestRegistry_GetService(t *testing.T) {
 
 	// Test that GetService is thread-safe
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range 10 {
+		wg.Go(func() {
 			svc, _ := registry.GetService("test-service-1")
 			assert.NotNil(t, svc)
-		}()
+		})
 	}
 	wg.Wait()
 }
@@ -1476,7 +1474,7 @@ func TestRegistry_AddService_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
@@ -1500,7 +1498,7 @@ func TestRegistry_AddService_Concurrent(t *testing.T) {
 	}
 
 	// Verify all services were added
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		name := fmt.Sprintf("service-%d", i)
 		svc, exists := registry.GetService(name)
 		assert.True(t, exists, "service %s should exist", name)
@@ -1934,7 +1932,7 @@ func TestRegistry_UpdateService_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	errors := make(chan error, 10)
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		wg.Add(2)
 
 		// Update service-1
@@ -2312,7 +2310,7 @@ func TestRegistry_UpdateService_EdgeCases(t *testing.T) {
 		newCfg := config.Service{
 			Name:        "non-existent",
 			BackendAddr: backend.URL,
-			AccessLog:   testhelpers.BoolPtr(true),
+			AccessLog:   new(true),
 		}
 
 		err := registry.UpdateService("non-existent", newCfg)

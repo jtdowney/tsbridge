@@ -377,7 +377,7 @@ func TestListen_EphemeralServices(t *testing.T) {
 				oauthServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					switch r.URL.Path {
 					case "/api/v2/oauth/token":
-						response := map[string]interface{}{
+						response := map[string]any{
 							"access_token": "test-access-token",
 							"token_type":   "Bearer",
 							"expires_in":   3600,
@@ -385,7 +385,7 @@ func TestListen_EphemeralServices(t *testing.T) {
 						w.Header().Set("Content-Type", "application/json")
 						json.NewEncoder(w).Encode(response)
 					case "/api/v2/tailnet/-/keys":
-						response := map[string]interface{}{
+						response := map[string]any{
 							"key":     "tskey-auth-test123",
 							"created": time.Now(),
 						}
@@ -448,7 +448,7 @@ func TestPrepareServiceAuth(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v2/oauth/token":
 			w.Header().Set("Content-Type", "application/json")
-			token := map[string]interface{}{
+			token := map[string]any{
 				"access_token": "mock-access-token",
 				"token_type":   "Bearer",
 				"expires_in":   3600,
@@ -456,7 +456,7 @@ func TestPrepareServiceAuth(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(token)
 		case "/api/v2/tailnet/-/keys":
 			w.Header().Set("Content-Type", "application/json")
-			key := map[string]interface{}{
+			key := map[string]any{
 				"id":          "key123",
 				"key":         "tskey-test-generated",
 				"created":     "2023-01-01T00:00:00Z",
@@ -895,7 +895,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 		switch r.URL.Path {
 		case "/api/v2/oauth/token":
 			// Handle OAuth token request
-			token := map[string]interface{}{
+			token := map[string]any{
 				"access_token": "mock-access-token",
 				"token_type":   "Bearer",
 				"expires_in":   3600,
@@ -903,7 +903,7 @@ func TestGenerateOrResolveAuthKey(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(token)
 		case "/api/v2/tailnet/-/keys":
 			// Handle API request
-			response := map[string]interface{}{
+			response := map[string]any{
 				"key":     "tskey-auth-test123",
 				"created": time.Now().Format(time.RFC3339),
 			}
@@ -1051,7 +1051,7 @@ func TestGenerateOrResolveAuthKeyOAuthFailure(t *testing.T) {
 		case "/api/v2/oauth/token":
 			// Successfully return OAuth token
 			w.Header().Set("Content-Type", "application/json")
-			token := map[string]interface{}{
+			token := map[string]any{
 				"access_token": "mock-access-token",
 				"token_type":   "Bearer",
 				"expires_in":   3600,

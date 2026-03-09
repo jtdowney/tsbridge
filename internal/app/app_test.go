@@ -941,8 +941,7 @@ func TestWatchConfigChanges(t *testing.T) {
 		configCh := make(chan *config.Config, 1)
 
 		// Start watching in background
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 		go app.watchConfigChanges(ctx, configCh)
 
 		// Send new config
@@ -1269,7 +1268,7 @@ func TestReloadConfig(t *testing.T) {
 
 		// Run multiple concurrent reloads
 		done := make(chan bool)
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			go func(port int) {
 				newCfg := &config.Config{
 					Tailscale: cfg.Tailscale,
@@ -1288,7 +1287,7 @@ func TestReloadConfig(t *testing.T) {
 		}
 
 		// Wait for all goroutines
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			<-done
 		}
 
@@ -1588,8 +1587,7 @@ func TestConfigWatchIntegration(t *testing.T) {
 		require.NoError(t, err)
 
 		// Start the app
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		err = app.Start(ctx)
 		require.NoError(t, err)

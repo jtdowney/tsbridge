@@ -248,7 +248,7 @@ func byteSizeDecodeHook() mapstructure.DecodeHookFuncType {
 		data any,
 	) (any, error) {
 		// Only handle *int64 types
-		if t.Kind() != reflect.Ptr || t.Elem().Kind() != reflect.Int64 {
+		if t.Kind() != reflect.Pointer || t.Elem().Kind() != reflect.Int64 {
 			return data, nil
 		}
 
@@ -322,7 +322,7 @@ func redactedStringDecodeHook() mapstructure.DecodeHookFunc {
 		data any,
 	) (any, error) {
 		// Check if we're converting to RedactedString
-		if to != reflect.TypeOf(RedactedString("")) {
+		if to != reflect.TypeFor[RedactedString]() {
 			return data, nil
 		}
 
@@ -817,8 +817,8 @@ func isValidHostname(host string) bool {
 		return false
 	}
 	// Check each label
-	labels := strings.Split(host, ".")
-	for _, label := range labels {
+	labels := strings.SplitSeq(host, ".")
+	for label := range labels {
 		if len(label) == 0 || len(label) > 63 {
 			return false
 		}

@@ -2172,7 +2172,7 @@ func TestConfigString(t *testing.T) {
 	}
 
 	// Verify it's valid JSON
-	var parsed map[string]interface{}
+	var parsed map[string]any
 	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
 		t.Errorf("String() result should be valid JSON, got error: %v", err)
 	}
@@ -3371,8 +3371,9 @@ max_request_body_size = "-1"
 	}
 }
 
+//go:fix inline
 func int64Ptr(i int64) *int64 {
-	return &i
+	return new(i)
 }
 
 func TestValidateBackendAddress(t *testing.T) {

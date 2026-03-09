@@ -101,12 +101,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:          "test-service",
 				BackendAddr:   "http://localhost:8080",
-				FunnelEnabled: boolPtr(true),
+				FunnelEnabled: new(true),
 			},
 			b: Service{
 				Name:          "test-service",
 				BackendAddr:   "http://localhost:8080",
-				FunnelEnabled: boolPtr(false),
+				FunnelEnabled: new(false),
 			},
 			expected: false,
 		},
@@ -120,7 +120,7 @@ func TestServiceConfigEqual(t *testing.T) {
 			b: Service{
 				Name:          "test-service",
 				BackendAddr:   "http://localhost:8080",
-				FunnelEnabled: boolPtr(false),
+				FunnelEnabled: new(false),
 			},
 			expected: false,
 		},
@@ -143,12 +143,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:               "test-service",
 				BackendAddr:        "http://localhost:8080",
-				OAuthPreauthorized: boolPtr(true),
+				OAuthPreauthorized: new(true),
 			},
 			b: Service{
 				Name:               "test-service",
 				BackendAddr:        "http://localhost:8080",
-				OAuthPreauthorized: boolPtr(false),
+				OAuthPreauthorized: new(false),
 			},
 			expected: false,
 		},
@@ -162,7 +162,7 @@ func TestServiceConfigEqual(t *testing.T) {
 			b: Service{
 				Name:               "test-service",
 				BackendAddr:        "http://localhost:8080",
-				OAuthPreauthorized: boolPtr(false),
+				OAuthPreauthorized: new(false),
 			},
 			expected: false,
 		},
@@ -277,12 +277,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:        "test-service",
 				BackendAddr: "http://localhost:8080",
-				AccessLog:   boolPtr(true),
+				AccessLog:   new(true),
 			},
 			b: Service{
 				Name:        "test-service",
 				BackendAddr: "http://localhost:8080",
-				AccessLog:   boolPtr(false),
+				AccessLog:   new(false),
 			},
 			expected: false,
 		},
@@ -319,12 +319,12 @@ func TestServiceConfigEqual(t *testing.T) {
 			a: Service{
 				Name:         "test-service",
 				BackendAddr:  "http://localhost:8080",
-				WhoisEnabled: boolPtr(true),
+				WhoisEnabled: new(true),
 			},
 			b: Service{
 				Name:         "test-service",
 				BackendAddr:  "http://localhost:8080",
-				WhoisEnabled: boolPtr(false),
+				WhoisEnabled: new(false),
 			},
 			expected: false,
 		},
@@ -441,7 +441,7 @@ func TestServiceConfigEqual(t *testing.T) {
 // This test prevents bugs when new fields are added but not included in comparison.
 func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 	// Use reflection to get all fields of Service struct
-	serviceType := reflect.TypeOf(Service{})
+	serviceType := reflect.TypeFor[Service]()
 
 	// List of fields we expect to be compared in ServiceConfigEqual
 	comparedFields := map[string]bool{
@@ -470,8 +470,8 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 	}
 
 	// Check that all struct fields are in our comparison
-	for i := 0; i < serviceType.NumField(); i++ {
-		field := serviceType.Field(i)
+	for field := range serviceType.Fields() {
+		field := field
 		if !comparedFields[field.Name] {
 			t.Errorf("Field %s is not compared in ServiceConfigEqual", field.Name)
 		}
@@ -480,8 +480,8 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 	// Also check that we don't have extra fields in our expected list
 	// that don't actually exist in the struct
 	actualFields := make(map[string]bool)
-	for i := 0; i < serviceType.NumField(); i++ {
-		field := serviceType.Field(i)
+	for field := range serviceType.Fields() {
+		field := field
 		actualFields[field.Name] = true
 	}
 
@@ -493,8 +493,10 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 }
 
 // Helper functions for creating pointers
+//
+//go:fix inline
 func boolPtr(b bool) *bool {
-	return &b
+	return new(b)
 }
 
 // TestServiceConfigEqualWithGoCmp tests the improved implementation using go-cmp
@@ -510,7 +512,7 @@ func TestServiceConfigEqualWithGoCmp(t *testing.T) {
 			a: Service{
 				Name:                  "service-a",
 				BackendAddr:           "http://localhost:8080",
-				WhoisEnabled:          boolPtr(true),
+				WhoisEnabled:          new(true),
 				WhoisTimeout:          testhelpers.DurationPtr(5 * time.Second),
 				TLSMode:               "strict",
 				Tags:                  []string{"prod", "api"},
@@ -518,9 +520,9 @@ func TestServiceConfigEqualWithGoCmp(t *testing.T) {
 				WriteTimeout:          testhelpers.DurationPtr(30 * time.Second),
 				IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
 				ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
-				AccessLog:             boolPtr(true),
+				AccessLog:             new(true),
 				MaxRequestBodySize:    testhelpers.Int64Ptr(1048576),
-				FunnelEnabled:         boolPtr(false),
+				FunnelEnabled:         new(false),
 				Ephemeral:             true,
 				FlushInterval:         testhelpers.DurationPtr(1 * time.Second),
 				UpstreamHeaders: map[string]string{
@@ -536,7 +538,7 @@ func TestServiceConfigEqualWithGoCmp(t *testing.T) {
 			b: Service{
 				Name:                  "service-b",
 				BackendAddr:           "http://localhost:8081",
-				WhoisEnabled:          boolPtr(false),
+				WhoisEnabled:          new(false),
 				WhoisTimeout:          testhelpers.DurationPtr(10 * time.Second),
 				TLSMode:               "off",
 				Tags:                  []string{"dev", "internal"},
@@ -544,9 +546,9 @@ func TestServiceConfigEqualWithGoCmp(t *testing.T) {
 				WriteTimeout:          testhelpers.DurationPtr(60 * time.Second),
 				IdleTimeout:           testhelpers.DurationPtr(240 * time.Second),
 				ResponseHeaderTimeout: testhelpers.DurationPtr(60 * time.Second),
-				AccessLog:             boolPtr(false),
+				AccessLog:             new(false),
 				MaxRequestBodySize:    testhelpers.Int64Ptr(2097152),
-				FunnelEnabled:         boolPtr(true),
+				FunnelEnabled:         new(true),
 				Ephemeral:             false,
 				FlushInterval:         testhelpers.DurationPtr(2 * time.Second),
 				UpstreamHeaders: map[string]string{

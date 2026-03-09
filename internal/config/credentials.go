@@ -33,8 +33,8 @@ func validateFilePath(path string) error {
 	}
 
 	// Additional safety: ensure no path components are . or ..
-	parts := strings.Split(path, string(filepath.Separator))
-	for _, part := range parts {
+	parts := strings.SplitSeq(path, string(filepath.Separator))
+	for part := range parts {
 		if part == ".." || part == "." {
 			return errors.NewValidationError("invalid file path: contains directory traversal")
 		}

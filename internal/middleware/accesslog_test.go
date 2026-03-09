@@ -22,7 +22,7 @@ func TestAccessLog(t *testing.T) {
 		responseSize   int
 		userAgent      string
 		wantLogged     bool
-		checkFields    map[string]interface{}
+		checkFields    map[string]any
 	}{
 		{
 			name:           "logs successful request",
@@ -33,7 +33,7 @@ func TestAccessLog(t *testing.T) {
 			responseSize:   100,
 			userAgent:      "test-agent/1.0",
 			wantLogged:     true,
-			checkFields: map[string]interface{}{
+			checkFields: map[string]any{
 				"method":     "GET",
 				"path":       "/api/test",
 				"status":     200,
@@ -50,7 +50,7 @@ func TestAccessLog(t *testing.T) {
 			responseStatus: http.StatusInternalServerError,
 			responseSize:   50,
 			wantLogged:     true,
-			checkFields: map[string]interface{}{
+			checkFields: map[string]any{
 				"method":     "POST",
 				"path":       "/api/error",
 				"status":     500,
@@ -66,7 +66,7 @@ func TestAccessLog(t *testing.T) {
 			responseStatus: http.StatusOK,
 			responseSize:   10,
 			wantLogged:     true,
-			checkFields: map[string]interface{}{
+			checkFields: map[string]any{
 				"method": "GET",
 				"path":   "/health",
 				"status": 200,

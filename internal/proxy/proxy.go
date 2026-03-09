@@ -263,8 +263,8 @@ func createProxyTransport(backendAddr string, config *TransportConfig, insecureS
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			// Handle unix socket addresses
-			if strings.HasPrefix(backendAddr, "unix://") {
-				socketPath := strings.TrimPrefix(backendAddr, "unix://")
+			if after, ok := strings.CutPrefix(backendAddr, "unix://"); ok {
+				socketPath := after
 				// Use DialContext so dialing respects the request context (timeouts/cancellation)
 				d := net.Dialer{
 					Timeout: config.DialTimeout,

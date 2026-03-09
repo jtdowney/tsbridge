@@ -103,20 +103,20 @@ tags = ["tag:test"]
 					ShutdownTimeout:       testhelpers.DurationPtr(30 * time.Second),
 					ResponseHeaderTimeout: testhelpers.DurationPtr(10 * time.Second),
 					MetricsAddr:           ":9090",
-					AccessLog:             testhelpers.BoolPtr(true),
+					AccessLog:             new(true),
 					TrustedProxies:        []string{"10.0.0.0/8", "172.16.0.0/12"},
 				},
 				Services: []Service{
 					{
 						Name:              "api",
 						BackendAddr:       "localhost:8080",
-						WhoisEnabled:      testhelpers.BoolPtr(true),
+						WhoisEnabled:      new(true),
 						WhoisTimeout:      testhelpers.DurationPtr(5 * time.Second),
 						TLSMode:           "off",
 						ReadHeaderTimeout: testhelpers.DurationPtr(60 * time.Second),
 						WriteTimeout:      testhelpers.DurationPtr(60 * time.Second),
-						AccessLog:         testhelpers.BoolPtr(false),
-						FunnelEnabled:     testhelpers.BoolPtr(true),
+						AccessLog:         new(false),
+						FunnelEnabled:     new(true),
 						Ephemeral:         false,
 						UpstreamHeaders: map[string]string{
 							"X-Custom-Header": "custom-value",
@@ -126,7 +126,7 @@ tags = ["tag:test"]
 					{
 						Name:         "web",
 						BackendAddr:  "localhost:3000",
-						WhoisEnabled: testhelpers.BoolPtr(false),
+						WhoisEnabled: new(false),
 						Tags:         []string{"tag:test"},
 					},
 				},
@@ -489,7 +489,7 @@ func TestNewProviderWithRegistry(t *testing.T) {
 
 		// Mock docker provider
 		mockDockerProvider := &mockProvider{name: "docker"}
-		registry.Register("docker", func(opts interface{}) (Provider, error) {
+		registry.Register("docker", func(opts any) (Provider, error) {
 			return mockDockerProvider, nil
 		})
 		DefaultRegistry = registry

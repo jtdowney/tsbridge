@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -163,12 +164,7 @@ func TestRegisterProviders(t *testing.T) {
 
 	// Helper to check if string is in slice
 	contains := func(slice []string, str string) bool {
-		for _, s := range slice {
-			if s == str {
-				return true
-			}
-		}
-		return false
+		return slices.Contains(slice, str)
 	}
 
 	assert.True(t, contains(providers, "file"), "file provider should be registered")
@@ -1586,7 +1582,7 @@ func TestCreateProviderWithInvalidOptions(t *testing.T) {
 
 	// Create a registry with a provider that always fails
 	testRegistry := config.NewProviderRegistry()
-	testRegistry.Register("failing", func(opts interface{}) (config.Provider, error) {
+	testRegistry.Register("failing", func(opts any) (config.Provider, error) {
 		return nil, fmt.Errorf("provider creation failed")
 	})
 	config.DefaultRegistry = testRegistry

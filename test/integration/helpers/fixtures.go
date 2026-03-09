@@ -79,13 +79,13 @@ func (f *TestFixture) WithOAuth(clientID, clientSecret string) *TestFixture {
 func (f *TestFixture) WithTimeout(name string, duration time.Duration) *TestFixture {
 	switch name {
 	case "read":
-		f.cfg.Global.ReadHeaderTimeout = testhelpers.DurationPtr(duration)
+		f.cfg.Global.ReadHeaderTimeout = new(duration)
 	case "write":
-		f.cfg.Global.WriteTimeout = testhelpers.DurationPtr(duration)
+		f.cfg.Global.WriteTimeout = new(duration)
 	case "idle":
-		f.cfg.Global.IdleTimeout = testhelpers.DurationPtr(duration)
+		f.cfg.Global.IdleTimeout = new(duration)
 	case "shutdown":
-		f.cfg.Global.ShutdownTimeout = testhelpers.DurationPtr(duration)
+		f.cfg.Global.ShutdownTimeout = new(duration)
 	}
 	return f
 }

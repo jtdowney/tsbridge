@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -315,60 +316,61 @@ func WriteConfigFile(t *testing.T, cfg *config.Config) string {
 	configPath := filepath.Join(tmpDir, "test-config.toml")
 
 	// Simple TOML generation for common test cases
-	content := fmt.Sprintf(`[tailscale]
+	var content strings.Builder
+	fmt.Fprintf(&content, `[tailscale]
 state_dir = "%s"`, cfg.Tailscale.StateDir)
 
 	// Add auth configuration
 	if cfg.Tailscale.AuthKey.Value() != "" {
-		content += fmt.Sprintf(`
+		fmt.Fprintf(&content, `
 auth_key = "%s"`, cfg.Tailscale.AuthKey.Value())
 	}
 	if cfg.Tailscale.OAuthClientID != "" {
-		content += fmt.Sprintf(`
+		fmt.Fprintf(&content, `
 oauth_client_id = "%s"
 oauth_client_secret = "%s"`, cfg.Tailscale.OAuthClientID, cfg.Tailscale.OAuthClientSecret.Value())
 	}
 
 	// Add default_tags if present
 	if len(cfg.Tailscale.DefaultTags) > 0 {
-		content += `
-default_tags = [`
+		content.WriteString(`
+default_tags = [`)
 		for i, tag := range cfg.Tailscale.DefaultTags {
 			if i > 0 {
-				content += ", "
+				content.WriteString(", ")
 			}
-			content += fmt.Sprintf(`"%s"`, tag)
+			fmt.Fprintf(&content, `"%s"`, tag)
 		}
-		content += `]`
+		content.WriteString(`]`)
 	}
 
 	// Build global section
-	content += fmt.Sprintf(`
+	fmt.Fprintf(&content, `
 
 [global]
 metrics_addr = "%s"`,
 		cfg.Global.MetricsAddr)
 
 	if cfg.Global.ReadHeaderTimeout != nil {
-		content += fmt.Sprintf(`
+		fmt.Fprintf(&content, `
 read_header_timeout = "%s"`, *cfg.Global.ReadHeaderTimeout)
 	}
 	if cfg.Global.WriteTimeout != nil {
-		content += fmt.Sprintf(`
+		fmt.Fprintf(&content, `
 write_timeout = "%s"`, *cfg.Global.WriteTimeout)
 	}
 	if cfg.Global.IdleTimeout != nil {
-		content += fmt.Sprintf(`
+		fmt.Fprintf(&content, `
 idle_timeout = "%s"`, *cfg.Global.IdleTimeout)
 	}
 	if cfg.Global.ShutdownTimeout != nil {
-		content += fmt.Sprintf(`
+		fmt.Fprintf(&content, `
 shutdown_timeout = "%s"`, *cfg.Global.ShutdownTimeout)
 	}
 
-	content += `
+	content.WriteString(`
 
-`
+`)
 
 	// Add services
 	for _, svc := range cfg.Services {
@@ -377,7 +379,7 @@ shutdown_timeout = "%s"`, *cfg.Global.ShutdownTimeout)
 			whoisEnabled = "true"
 		}
 
-		content += fmt.Sprintf(`[[services]]
+		fmt.Fprintf(&content, `[[services]]
 name = "%s"
 backend_addr = "%s"
 tls_mode = "%s"
@@ -386,25 +388,25 @@ whois_enabled = %s
 
 		// Add optional fields
 		if svc.WhoisTimeout != nil && *svc.WhoisTimeout > 0 {
-			content += fmt.Sprintf(`whois_timeout = "%s"
+			fmt.Fprintf(&content, `whois_timeout = "%s"
 `, *svc.WhoisTimeout)
 		}
 
 		// Add tags if present
 		if len(svc.Tags) > 0 {
-			content += `tags = [`
+			content.WriteString(`tags = [`)
 			for i, tag := range svc.Tags {
 				if i > 0 {
-					content += ", "
+					content.WriteString(", ")
 				}
-				content += fmt.Sprintf(`"%s"`, tag)
+				fmt.Fprintf(&content, `"%s"`, tag)
 			}
-			content += `]
-`
+			content.WriteString(`]
+`)
 		}
 	}
 
-	err := os.WriteFile(configPath, []byte(content), 0600)
+	err := os.WriteFile(configPath, []byte(content.String()), 0600)
 	require.NoError(t, err, "failed to write config file")
 
 	return configPath

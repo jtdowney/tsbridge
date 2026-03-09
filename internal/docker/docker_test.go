@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -580,10 +581,8 @@ func TestRaceConditionFixed(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Goroutine 1: Simulates Watch reading lastConfig using thread-safe getter
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 100; i++ {
+	wg.Go(func() {
+		for range 100 {
 			// This uses the thread-safe getLastConfig method
 			cfg := provider.getLastConfig()
 			if cfg != nil {
@@ -591,13 +590,11 @@ func TestRaceConditionFixed(t *testing.T) {
 			}
 			time.Sleep(time.Microsecond)
 		}
-	}()
+	})
 
 	// Goroutine 2: Simulates Load writing lastConfig with mutex
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 100; i++ {
+	wg.Go(func() {
+		for i := range 100 {
 			// Writing lastConfig with mutex protection
 			provider.mu.Lock()
 			provider.lastConfig = &config.Config{
@@ -608,7 +605,7 @@ func TestRaceConditionFixed(t *testing.T) {
 			provider.mu.Unlock()
 			time.Sleep(time.Microsecond)
 		}
-	}()
+	})
 
 	wg.Wait()
 }
@@ -974,7 +971,7 @@ func (m *mockFileInfo) Size() int64        { return 0 }
 func (m *mockFileInfo) Mode() os.FileMode  { return m.mode }
 func (m *mockFileInfo) ModTime() time.Time { return time.Time{} }
 func (m *mockFileInfo) IsDir() bool        { return false }
-func (m *mockFileInfo) Sys() interface{}   { return nil }
+func (m *mockFileInfo) Sys() any           { return nil }
 
 // mockDockerClient is a mock implementation of DockerClient for testing
 type mockDockerClient struct {
@@ -1017,13 +1014,7 @@ func (m *mockDockerClient) ContainerList(ctx context.Context, options container.
 
 		// Check status filters
 		if len(statusFilters) > 0 {
-			statusMatch := false
-			for _, status := range statusFilters {
-				if c.State == status {
-					statusMatch = true
-					break
-				}
-			}
+			statusMatch := slices.Contains(statusFilters, c.State)
 			if !statusMatch {
 				includeContainer = false
 			}
@@ -1396,8 +1387,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 		}
 
 		// Load initial config to set lastConfig
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		_, err := provider.Load(ctx)
 		require.NoError(t, err)
@@ -1456,8 +1446,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 		}
 
 		// Load initial config to set lastConfig
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		_, err := provider.Load(ctx)
 		require.NoError(t, err)
@@ -1508,8 +1497,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			labelPrefix: "tsbridge",
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		configCh, err := provider.Watch(ctx)
 		require.NoError(t, err)
@@ -1578,8 +1566,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			labelPrefix: "tsbridge",
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		configCh, err := provider.Watch(ctx)
 		require.NoError(t, err)
@@ -1616,8 +1603,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 			labelPrefix: "tsbridge",
 		}
 
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		// Load initial config to set lastConfig
 		_, err := provider.Load(ctx)
@@ -1666,8 +1652,7 @@ func TestProvider_Watch_Enhanced(t *testing.T) {
 		}
 
 		// Load initial config
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx := t.Context()
 
 		initialCfg, err := provider.Load(ctx)
 		require.NoError(t, err)
@@ -1850,14 +1835,14 @@ func TestProvider_SimpleMethods(t *testing.T) {
 		done := make(chan bool, 2)
 
 		go func() {
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				provider.getLastConfig()
 			}
 			done <- true
 		}()
 
 		go func() {
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				provider.mu.Lock()
 				provider.lastConfig = &config.Config{}
 				provider.mu.Unlock()
@@ -2347,7 +2332,7 @@ func TestDebouncedReload(t *testing.T) {
 
 	// Trigger multiple rapid debounced reloads
 	// Each call should cancel the previous timer and set a new one
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		provider.debounceMu.Lock()
 		// Cancel existing timer if any
 		if provider.debounceTimer != nil {
@@ -2699,8 +2684,7 @@ func TestWatchDoesNotStartPollTickerWhenDisabled(t *testing.T) {
 		pollInterval: 0, // Disabled
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	_, err := p.Watch(ctx)
 	require.NoError(t, err)
@@ -2724,8 +2708,7 @@ func TestWatchStartsPollTickerWhenEnabled(t *testing.T) {
 		pollInterval: time.Minute,
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	_, err := p.Watch(ctx)
 	require.NoError(t, err)
