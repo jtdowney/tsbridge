@@ -5,6 +5,33 @@ All notable changes to tsbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.14.0] - 2026-03-08
+
+### Added
+
+- StripTailscaleHeaders middleware to remove internal Tailscale headers from proxied requests
+
+### Changed
+
+- Migrated ReverseProxy from deprecated Director to Rewrite function
+- Applied `go fix` modernizations across codebase
+
+### Fixed
+
+- Resolved golangci-lint warnings in test files
+
+### Dependencies
+
+- Bump tailscale.com from 1.92.5 to 1.96.0 (#170, #171, #180, #185)
+- Bump github.com/knadh/koanf/v2 from 2.3.0 to 2.3.3 (#172, #183)
+- Bump golang.org/x/oauth2 from 0.34.0 to 0.36.0 (#178, #184)
+- Bump github.com/go-viper/mapstructure/v2 from 2.4.0 to 2.5.0 (#169)
+- Bump filippo.io/edwards25519 from 1.1.0 to 1.1.1 (#181)
+
+### Development
+
+- Updated Go version to 1.26
+
 ## [0.13.1] - 2025-01-11
 
 ### Fixed
@@ -544,6 +571,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of tsbridge - a lightweight proxy manager built on Tailscale's tsnet library
 
+[0.14.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.14.0
 [0.13.1]: https://github.com/jtdowney/tsbridge/releases/tag/v0.13.1
 [0.13.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.13.0
 [0.12.3]: https://github.com/jtdowney/tsbridge/releases/tag/v0.12.3
