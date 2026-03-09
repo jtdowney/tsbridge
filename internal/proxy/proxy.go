@@ -100,20 +100,15 @@ func NewHandler(cfg *HandlerConfig) (Handler, error) {
 		return nil, errors.WrapConfig(err, "invalid backend address")
 	}
 
-	// Create reverse proxy using NewSingleHostReverseProxy for simplicity
-	h.proxy = httputil.NewSingleHostReverseProxy(target)
-
-	// Apply flush interval if specified
+	// Create reverse proxy with Rewrite function
+	flushInterval := time.Duration(0)
 	if cfg.FlushInterval != nil {
-		h.proxy.FlushInterval = *cfg.FlushInterval
-	} else {
-		// Set to 0 for standard buffering behavior (not immediate flushing)
-		h.proxy.FlushInterval = 0
+		flushInterval = *cfg.FlushInterval
 	}
-
-	// Configure director
-	originalDirector := h.proxy.Director                        //nolint:staticcheck // SA1019 - Rewrite migration tracked in migration.md
-	h.proxy.Director = createProxyDirector(h, originalDirector) //nolint:staticcheck // SA1019
+	h.proxy = &httputil.ReverseProxy{
+		Rewrite:       createProxyRewrite(h, target),
+		FlushInterval: flushInterval,
+	}
 
 	// Configure transport (default to empty config if nil)
 	transportConfig := cfg.TransportConfig
@@ -215,60 +210,49 @@ func configureTrustedProxies(h *httpHandler, trustedProxies []string) error {
 	return nil
 }
 
-// createProxyDirector creates the director function for the reverse proxy
-func createProxyDirector(h *httpHandler, originalDirector func(*http.Request)) func(*http.Request) {
-	return func(req *http.Request) {
-		// Call original director to set up the request
-		originalDirector(req)
+// createProxyRewrite creates the Rewrite function for the reverse proxy.
+// The Rewrite API strips X-Forwarded-For/Host/Proto before calling this function;
+// SetXForwarded() repopulates them. For trusted proxies, we copy the inbound XFF
+// first so SetXForwarded appends to the existing chain.
+func createProxyRewrite(h *httpHandler, target *url.URL) func(*httputil.ProxyRequest) {
+	return func(pr *httputil.ProxyRequest) {
+		pr.SetURL(target)
+		pr.Out.Host = pr.In.Host
 
-		// Get the remote IP
-		clientIP, _, _ := net.SplitHostPort(req.RemoteAddr)
-
-		// Check if request is from a trusted proxy
+		clientIP, _, _ := net.SplitHostPort(pr.In.RemoteAddr)
 		fromTrustedProxy := h.isTrustedProxy(clientIP)
 
-		// Handle X-Forwarded-For based on trust
-		existingXFF := req.Header.Get("X-Forwarded-For")
-
-		// Always delete X-Real-IP to prevent spoofing
-		req.Header.Del("X-Real-IP")
-
-		if fromTrustedProxy && existingXFF != "" {
-			// Request is from trusted proxy with existing X-Forwarded-For
-			// Keep the existing header, ReverseProxy will append the current proxy IP
-
-			// Extract the real client IP (first in the chain)
-			ips := strings.Split(existingXFF, ",")
-			if len(ips) > 0 {
-				realIP := strings.TrimSpace(ips[0])
-				req.Header.Set("X-Real-IP", realIP)
-			}
-		} else {
-			// Request is not from trusted proxy or no existing X-Forwarded-For
-			// Delete any existing X-Forwarded-For to prevent spoofing
-			req.Header.Del("X-Forwarded-For")
-
-			// ReverseProxy will add the immediate client IP
-			if clientIP != "" {
-				req.Header.Set("X-Real-IP", clientIP)
+		// For trusted proxies, copy inbound XFF so SetXForwarded appends to it
+		if fromTrustedProxy {
+			if xff := pr.In.Header["X-Forwarded-For"]; len(xff) > 0 {
+				pr.Out.Header["X-Forwarded-For"] = xff
 			}
 		}
 
-		// Set X-Forwarded-Proto
-		if req.TLS != nil {
-			req.Header.Set("X-Forwarded-Proto", "https")
-		} else {
-			req.Header.Set("X-Forwarded-Proto", "http")
+		pr.SetXForwarded()
+
+		// Set X-Real-IP
+		if fromTrustedProxy {
+			if existingXFF := pr.In.Header.Get("X-Forwarded-For"); existingXFF != "" {
+				ips := strings.Split(existingXFF, ",")
+				if len(ips) > 0 {
+					pr.Out.Header.Set("X-Real-IP", strings.TrimSpace(ips[0]))
+				}
+			} else if clientIP != "" {
+				pr.Out.Header.Set("X-Real-IP", clientIP)
+			}
+		} else if clientIP != "" {
+			pr.Out.Header.Set("X-Real-IP", clientIP)
 		}
 
 		// Remove headers specified in removeUpstream
 		for _, header := range h.removeUpstream {
-			req.Header.Del(header)
+			pr.Out.Header.Del(header)
 		}
 
 		// Add/override headers specified in upstreamHeaders
 		for key, value := range h.upstreamHeaders {
-			req.Header.Set(key, value)
+			pr.Out.Header.Set(key, value)
 		}
 	}
 }
