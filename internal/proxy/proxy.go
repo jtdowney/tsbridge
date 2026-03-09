@@ -112,8 +112,8 @@ func NewHandler(cfg *HandlerConfig) (Handler, error) {
 	}
 
 	// Configure director
-	originalDirector := h.proxy.Director
-	h.proxy.Director = createProxyDirector(h, originalDirector)
+	originalDirector := h.proxy.Director                        //nolint:staticcheck // SA1019 - Rewrite migration tracked in migration.md
+	h.proxy.Director = createProxyDirector(h, originalDirector) //nolint:staticcheck // SA1019
 
 	// Configure transport (default to empty config if nil)
 	transportConfig := cfg.TransportConfig
