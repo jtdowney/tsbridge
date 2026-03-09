@@ -936,20 +936,12 @@ func TestTransportConnectionPoolLimits(t *testing.T) {
 
 type trackingBody struct {
 	*strings.Reader
-	read   *bool
-	closed *bool
+	read *bool
 }
 
 func (tb *trackingBody) Read(p []byte) (n int, err error) {
 	*tb.read = true
 	return tb.Reader.Read(p)
-}
-
-func (tb *trackingBody) Close() error {
-	if tb.closed != nil {
-		*tb.closed = true
-	}
-	return nil
 }
 
 func TestErrorHandlerDrainsRequestBody(t *testing.T) {
@@ -970,13 +962,11 @@ func TestErrorHandlerDrainsRequestBody(t *testing.T) {
 	require.NoError(t, err)
 
 	bodyRead := false
-	closeCalled := false
 
 	bodyContent := "test request body content that should be drained"
 	body := &trackingBody{
 		Reader: strings.NewReader(bodyContent),
 		read:   &bodyRead,
-		closed: &closeCalled,
 	}
 
 	req := httptest.NewRequest("POST", "/test", body)
@@ -992,8 +982,7 @@ func TestErrorHandlerDrainsRequestBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadGateway, w.Code)
 	assert.Contains(t, w.Body.String(), "Bad Gateway")
 
-	// Verify body was closed (draining may not read if already sent)
-	assert.True(t, closeCalled, "Request body Close() should have been called")
+	assert.True(t, bodyRead, "Request body should have been drained")
 }
 
 func TestNewHandlerWithHeaders(t *testing.T) {
