@@ -179,7 +179,7 @@ func StartTSBridge(t *testing.T, configPath string, extraEnv ...string) *TSBridg
 
 	binPath := BuildTestBinary(t)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118 - cancel called via t.Cleanup
 	t.Cleanup(func() { cancel() })
 
 	cmd := exec.CommandContext(ctx, binPath, "-config", configPath, "-verbose")

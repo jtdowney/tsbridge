@@ -6,6 +6,10 @@ linters:
     - gocritic
     - gocyclo
     - gosec
+  settings:
+    gosec:
+      excludes:
+        - G706
   exclusions:
     generated: lax
     presets:

@@ -823,16 +823,16 @@ func isValidHostname(host string) bool {
 			return false
 		}
 		// Label must start with letter or digit
-		if !isAlphaNum(label[0]) {
+		if !isAlphaNum(rune(label[0])) {
 			return false
 		}
 		// Label must end with letter or digit
-		if !isAlphaNum(label[len(label)-1]) {
+		if !isAlphaNum(rune(label[len(label)-1])) {
 			return false
 		}
 		// Middle characters can be alphanumeric, hyphen, or underscore
 		for _, ch := range label {
-			if !isAlphaNum(byte(ch)) && ch != '-' && ch != '_' {
+			if !isAlphaNum(ch) && ch != '-' && ch != '_' {
 				return false
 			}
 		}
@@ -840,8 +840,7 @@ func isValidHostname(host string) bool {
 	return true
 }
 
-// isAlphaNum checks if a byte is alphanumeric
-func isAlphaNum(ch byte) bool {
+func isAlphaNum(ch rune) bool {
 	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
 }
 
@@ -991,9 +990,9 @@ func (t Tailscale) String() string {
 	b.WriteString("Tailscale:\n")
 
 	// OAuth Client ID (not sensitive)
-	b.WriteString(fmt.Sprintf("  OAuthClientID: %s\n", t.OAuthClientID))
-	b.WriteString(fmt.Sprintf("  OAuthClientIDEnv: %s\n", t.OAuthClientIDEnv))
-	b.WriteString(fmt.Sprintf("  OAuthClientIDFile: %s\n", t.OAuthClientIDFile))
+	fmt.Fprintf(&b, "  OAuthClientID: %s\n", t.OAuthClientID)
+	fmt.Fprintf(&b, "  OAuthClientIDEnv: %s\n", t.OAuthClientIDEnv)
+	fmt.Fprintf(&b, "  OAuthClientIDFile: %s\n", t.OAuthClientIDFile)
 
 	// OAuth Client Secret (only the actual value is sensitive)
 	if t.OAuthClientSecret.Value() != "" {
@@ -1001,8 +1000,8 @@ func (t Tailscale) String() string {
 	} else {
 		b.WriteString("  OAuthClientSecret: \n")
 	}
-	b.WriteString(fmt.Sprintf("  OAuthClientSecretEnv: %s\n", t.OAuthClientSecretEnv))
-	b.WriteString(fmt.Sprintf("  OAuthClientSecretFile: %s\n", t.OAuthClientSecretFile))
+	fmt.Fprintf(&b, "  OAuthClientSecretEnv: %s\n", t.OAuthClientSecretEnv)
+	fmt.Fprintf(&b, "  OAuthClientSecretFile: %s\n", t.OAuthClientSecretFile)
 
 	// Auth Key (only the actual value is sensitive)
 	if t.AuthKey.Value() != "" {
@@ -1010,18 +1009,18 @@ func (t Tailscale) String() string {
 	} else {
 		b.WriteString("  AuthKey: \n")
 	}
-	b.WriteString(fmt.Sprintf("  AuthKeyEnv: %s\n", t.AuthKeyEnv))
-	b.WriteString(fmt.Sprintf("  AuthKeyFile: %s\n", t.AuthKeyFile))
+	fmt.Fprintf(&b, "  AuthKeyEnv: %s\n", t.AuthKeyEnv)
+	fmt.Fprintf(&b, "  AuthKeyFile: %s\n", t.AuthKeyFile)
 
 	// State Directory (not sensitive)
-	b.WriteString(fmt.Sprintf("  StateDir: %s\n", t.StateDir))
-	b.WriteString(fmt.Sprintf("  StateDirEnv: %s\n", t.StateDirEnv))
+	fmt.Fprintf(&b, "  StateDir: %s\n", t.StateDir)
+	fmt.Fprintf(&b, "  StateDirEnv: %s\n", t.StateDirEnv)
 
 	// Default Tags (not sensitive)
-	b.WriteString(fmt.Sprintf("  DefaultTags: %v\n", t.DefaultTags))
+	fmt.Fprintf(&b, "  DefaultTags: %v\n", t.DefaultTags)
 
 	// Control URL (not sensitive)
-	b.WriteString(fmt.Sprintf("  ControlURL: %s\n", t.ControlURL))
+	fmt.Fprintf(&b, "  ControlURL: %s\n", t.ControlURL)
 
 	return b.String()
 }

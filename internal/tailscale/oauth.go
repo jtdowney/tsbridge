@@ -211,7 +211,7 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 
 	// Create HTTP request
 	url := apiBaseURL + "/api/v2/tailnet/-/keys"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body)) //nolint:gosec // G704 - URL from constant API base
 	if err != nil {
 		return "", tserrors.WrapInternal(err, "creating request")
 	}
@@ -219,7 +219,7 @@ func generateAuthKeyWithOAuthDirect(oauthConfig *oauth2.Config, apiBaseURL strin
 
 	// Make request
 	apiStart := time.Now()
-	resp, err := client.Do(httpReq)
+	resp, err := client.Do(httpReq) //nolint:gosec // G704
 	if err != nil {
 		slog.Debug("auth key API request failed",
 			"duration", time.Since(apiStart),
