@@ -162,13 +162,8 @@ func TestRegisterProviders(t *testing.T) {
 	providers := testRegistry.List()
 	assert.Equal(t, 2, len(providers))
 
-	// Helper to check if string is in slice
-	contains := func(slice []string, str string) bool {
-		return slices.Contains(slice, str)
-	}
-
-	assert.True(t, contains(providers, "file"), "file provider should be registered")
-	assert.True(t, contains(providers, "docker"), "docker provider should be registered")
+	assert.True(t, slices.Contains(providers, "file"), "file provider should be registered")
+	assert.True(t, slices.Contains(providers, "docker"), "docker provider should be registered")
 
 	// Verify file provider works
 	fileProvider, err := testRegistry.Get("file", config.FileProviderOptions{Path: "/test/path"})

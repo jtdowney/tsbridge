@@ -492,13 +492,6 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 	}
 }
 
-// Helper functions for creating pointers
-//
-//go:fix inline
-func boolPtr(b bool) *bool {
-	return new(b)
-}
-
 // TestServiceConfigEqualWithGoCmp tests the improved implementation using go-cmp
 func TestServiceConfigEqualWithGoCmp(t *testing.T) {
 	tests := []struct {

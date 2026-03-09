@@ -293,18 +293,6 @@ func TestLabelParser(t *testing.T) {
 	})
 }
 
-// Helper functions
-//
-//go:fix inline
-func boolPtr(b bool) *bool {
-	return new(b)
-}
-
-//go:fix inline
-func intPtr(i int) *int {
-	return new(i)
-}
-
 // TestHeaderInjectionVulnerabilities tests for header injection security issues
 func TestHeaderInjectionVulnerabilities(t *testing.T) {
 	tests := []struct {
