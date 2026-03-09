@@ -344,6 +344,11 @@ func (s *Service) CreateHandler() (http.Handler, error) {
 		}
 	}
 
+	// Strip X-Tailscale-* headers unconditionally to prevent identity spoofing.
+	// This wraps the whois middleware so spoofed headers are removed before
+	// reaching any handler, regardless of whether whois lookup is enabled.
+	httpHandler = middleware.StripTailscaleHeaders(httpHandler)
+
 	// Wrap with metrics middleware if collector is available
 	if s.metricsCollector != nil {
 		httpHandler = s.metricsCollector.Middleware(s.Config.Name, httpHandler)

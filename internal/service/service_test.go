@@ -16,6 +16,7 @@ import (
 	"github.com/jtdowney/tsbridge/internal/errors"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/middleware"
+	"github.com/jtdowney/tsbridge/internal/proxy"
 	"github.com/jtdowney/tsbridge/internal/tailscale"
 	"github.com/jtdowney/tsbridge/internal/testhelpers"
 	"github.com/jtdowney/tsbridge/internal/tsnet"
@@ -509,14 +510,21 @@ func TestServiceWithWhoisMiddleware(t *testing.T) {
 	}))
 	defer backend.Close()
 
+	spoofedHeaders := map[string]string{
+		"X-Tailscale-User":  "admin@evil.com",
+		"X-Tailscale-Name":  "Evil Admin",
+		"X-Tailscale-Login": "admin@evil.com",
+	}
+
 	tests := []struct {
 		name         string
 		whoisEnabled bool
 		whoisFunc    func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error)
 		wantHeaders  map[string]string
+		wantEmpty    []string
 	}{
 		{
-			name:         "whois_disabled",
+			name:         "whois_disabled_strips_spoofed_headers",
 			whoisEnabled: false,
 			whoisFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
 				return &apitype.WhoIsResponse{
@@ -525,10 +533,11 @@ func TestServiceWithWhoisMiddleware(t *testing.T) {
 					},
 				}, nil
 			},
-			wantHeaders: map[string]string{}, // No headers should be added
+			wantHeaders: map[string]string{},
+			wantEmpty:   []string{"Echo-X-Tailscale-User", "Echo-X-Tailscale-Name", "Echo-X-Tailscale-Login"},
 		},
 		{
-			name:         "whois_enabled_with_user_info",
+			name:         "whois_enabled_replaces_spoofed_with_real",
 			whoisEnabled: true,
 			whoisFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
 				return &apitype.WhoIsResponse{
@@ -548,41 +557,31 @@ func TestServiceWithWhoisMiddleware(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create service config
-			svcConfig := config.Service{
-				Name:         "test-service",
-				BackendAddr:  backend.URL,
-				WhoisEnabled: &tt.whoisEnabled,
-				WhoisTimeout: testhelpers.DurationPtr(100 * time.Millisecond),
-			}
-
 			// Create mock tsnet server
 			mockTsnetServer := &MockTsnetServer{
 				whoisFunc: tt.whoisFunc,
 			}
 
-			// Create service with handler
-			svc := &Service{
-				Config: svcConfig,
-			}
+			// Build the handler chain manually to match the real deployment
+			// ordering: StripTailscaleHeaders -> Whois -> proxy
+			proxyHandler, err := proxy.NewHandler(&proxy.HandlerConfig{
+				BackendAddr: backend.URL,
+			})
+			require.NoError(t, err, "failed to create proxy handler")
 
-			// Initialize the handler
-			handler, err := svc.CreateHandler()
-			require.NoError(t, err, "failed to create handler")
-			svc.handler = handler
-
-			// Create the handler manually to simulate what would happen
-			handler = svc.Handler()
-
-			// If whois is enabled, wrap with middleware
+			var handler http.Handler = proxyHandler
 			if tt.whoisEnabled {
 				whoisAdapter := &MockWhoisAdapter{server: mockTsnetServer}
 				handler = middleware.Whois(whoisAdapter, true, 100*time.Millisecond, 0, 0)(handler)
 			}
+			handler = middleware.StripTailscaleHeaders(handler)
 
-			// Create test request
+			// Create test request with spoofed headers
 			req := httptest.NewRequest(http.MethodGet, "/test", nil)
 			req.RemoteAddr = "100.64.1.2:12345"
+			for k, v := range spoofedHeaders {
+				req.Header.Set(k, v)
+			}
 			w := httptest.NewRecorder()
 
 			// Execute request
@@ -591,18 +590,16 @@ func TestServiceWithWhoisMiddleware(t *testing.T) {
 			// Check status
 			assert.Equal(t, http.StatusOK, w.Code)
 
-			// Check headers
+			// Check headers that should have real values
 			for header, want := range tt.wantHeaders {
 				got := w.Header().Get(header)
 				assert.Equal(t, want, got, "header %s", header)
 			}
 
-			// Check that no headers are present when whois is disabled
-			if !tt.whoisEnabled {
-				for _, header := range []string{"Echo-X-Tailscale-User", "Echo-X-Tailscale-Name", "Echo-X-Tailscale-Login"} {
-					got := w.Header().Get(header)
-					assert.Empty(t, got, "header %s should be empty (whois disabled)", header)
-				}
+			// Check that spoofed headers were stripped (not echoed back)
+			for _, header := range tt.wantEmpty {
+				got := w.Header().Get(header)
+				assert.Empty(t, got, "header %s should be empty (spoofed value stripped)", header)
 			}
 		})
 	}

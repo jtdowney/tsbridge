@@ -646,6 +646,230 @@ func TestWhois_HandlesPartialResponse(t *testing.T) {
 	}
 }
 
+func TestStripTailscaleHeaders(t *testing.T) {
+	spoofedHeaders := map[string]string{
+		"X-Tailscale-User":            "admin@company.com",
+		"X-Tailscale-Login":           "admin@company.com",
+		"X-Tailscale-Name":            "Admin User",
+		"X-Tailscale-Profile-Picture": "https://evil.com/pic.jpg",
+		"X-Tailscale-Addresses":       "100.64.0.99",
+	}
+
+	allTailscaleHeaders := []string{
+		"X-Tailscale-User", "X-Tailscale-Login", "X-Tailscale-Name",
+		"X-Tailscale-Profile-Picture", "X-Tailscale-Addresses",
+	}
+
+	t.Run("strips all X-Tailscale-* headers", func(t *testing.T) {
+		var capturedHeaders http.Header
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedHeaders = r.Header.Clone()
+			w.WriteHeader(http.StatusOK)
+		})
+
+		handler := StripTailscaleHeaders(nextHandler)
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		for k, v := range spoofedHeaders {
+			req.Header.Set(k, v)
+		}
+		req.Header.Set("Authorization", "Bearer token")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		for _, header := range allTailscaleHeaders {
+			assert.Empty(t, capturedHeaders.Get(header), "header %s should be stripped", header)
+		}
+		assert.Equal(t, "Bearer token", capturedHeaders.Get("Authorization"), "non-tailscale headers should be preserved")
+	})
+
+	t.Run("passes through when no tailscale headers", func(t *testing.T) {
+		var capturedHeaders http.Header
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedHeaders = r.Header.Clone()
+			w.WriteHeader(http.StatusOK)
+		})
+
+		handler := StripTailscaleHeaders(nextHandler)
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("Authorization", "Bearer token")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		assert.Equal(t, "Bearer token", capturedHeaders.Get("Authorization"))
+	})
+
+	t.Run("handles case-insensitive header names", func(t *testing.T) {
+		var capturedHeaders http.Header
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedHeaders = r.Header.Clone()
+			w.WriteHeader(http.StatusOK)
+		})
+
+		handler := StripTailscaleHeaders(nextHandler)
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		req.Header.Set("x-tailscale-user", "spoofed@evil.com")
+		req.Header.Set("X-TAILSCALE-NAME", "Evil Admin")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		assert.Empty(t, capturedHeaders.Get("X-Tailscale-User"))
+		assert.Empty(t, capturedHeaders.Get("X-Tailscale-Name"))
+	})
+
+	t.Run("strips non-canonical header keys via raw map access", func(t *testing.T) {
+		var capturedHeaders http.Header
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			capturedHeaders = r.Header.Clone()
+			w.WriteHeader(http.StatusOK)
+		})
+
+		handler := StripTailscaleHeaders(nextHandler)
+
+		req := httptest.NewRequest(http.MethodGet, "/test", nil)
+		// Inject headers via raw map to bypass canonicalization
+		req.Header["x-tailscale-user"] = []string{"spoofed@evil.com"}
+		req.Header["x-tailscale-name"] = []string{"Evil Admin"}
+		req.Header["X-Tailscale-Login"] = []string{"spoofed@evil.com"}
+		req.Header.Set("Authorization", "Bearer token")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		// Verify using raw map key checks (not Header.Get which canonicalizes)
+		_, existsLower := capturedHeaders["x-tailscale-user"] //nolint:staticcheck // intentionally checking non-canonical key
+		assert.False(t, existsLower, "non-canonical key x-tailscale-user should be removed")
+
+		_, existsLowerName := capturedHeaders["x-tailscale-name"] //nolint:staticcheck // intentionally checking non-canonical key
+		assert.False(t, existsLowerName, "non-canonical key x-tailscale-name should be removed")
+
+		_, existsCanonical := capturedHeaders["X-Tailscale-Login"]
+		assert.False(t, existsCanonical, "canonical key X-Tailscale-Login should be removed")
+
+		// Also verify via Header.Get for completeness
+		assert.Empty(t, capturedHeaders.Get("X-Tailscale-User"))
+		assert.Empty(t, capturedHeaders.Get("X-Tailscale-Name"))
+		assert.Empty(t, capturedHeaders.Get("X-Tailscale-Login"))
+
+		assert.Equal(t, "Bearer token", capturedHeaders.Get("Authorization"), "non-tailscale headers should be preserved")
+	})
+}
+
+func TestStripTailscaleHeadersWithWhois(t *testing.T) {
+	spoofedHeaders := map[string]string{
+		"X-Tailscale-User":            "admin@company.com",
+		"X-Tailscale-Login":           "admin@company.com",
+		"X-Tailscale-Name":            "Admin User",
+		"X-Tailscale-Profile-Picture": "https://evil.com/pic.jpg",
+		"X-Tailscale-Addresses":       "100.64.0.99",
+	}
+
+	allTailscaleHeaders := []string{
+		"X-Tailscale-User", "X-Tailscale-Login", "X-Tailscale-Name",
+		"X-Tailscale-Profile-Picture", "X-Tailscale-Addresses",
+	}
+
+	tests := []struct {
+		name      string
+		enabled   bool
+		whoisFunc func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error)
+		wantEmpty []string
+		wantSet   map[string]string
+	}{
+		{
+			name:    "spoofed headers stripped when whois disabled",
+			enabled: false,
+			whoisFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+				return nil, nil
+			},
+			wantEmpty: allTailscaleHeaders,
+		},
+		{
+			name:    "spoofed headers stripped when whois lookup fails",
+			enabled: true,
+			whoisFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+				return nil, errors.New("lookup failed")
+			},
+			wantEmpty: allTailscaleHeaders,
+		},
+		{
+			name:    "spoofed headers stripped when whois returns nil response",
+			enabled: true,
+			whoisFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+				return nil, nil
+			},
+			wantEmpty: allTailscaleHeaders,
+		},
+		{
+			name:    "spoofed headers stripped when whois returns nil user profile",
+			enabled: true,
+			whoisFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+				return &apitype.WhoIsResponse{UserProfile: nil}, nil
+			},
+			wantEmpty: allTailscaleHeaders,
+		},
+		{
+			name:    "spoofed headers replaced with real values on success",
+			enabled: true,
+			whoisFunc: func(ctx context.Context, remoteAddr string) (*apitype.WhoIsResponse, error) {
+				return &apitype.WhoIsResponse{
+					UserProfile: &tailcfg.UserProfile{
+						LoginName:   "real@company.com",
+						DisplayName: "Real User",
+					},
+				}, nil
+			},
+			wantSet: map[string]string{
+				"X-Tailscale-User":  "real@company.com",
+				"X-Tailscale-Login": "real@company.com",
+				"X-Tailscale-Name":  "Real User",
+			},
+			wantEmpty: []string{
+				"X-Tailscale-Profile-Picture", "X-Tailscale-Addresses",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			whoisClient := &MockWhoisClient{WhoIsFunc: tt.whoisFunc}
+
+			var capturedHeaders http.Header
+			innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				capturedHeaders = r.Header.Clone()
+				w.WriteHeader(http.StatusOK)
+			})
+
+			// Chain: StripTailscaleHeaders -> Whois -> innerHandler
+			// This mirrors the real request flow in service.go
+			whoisHandler := Whois(whoisClient, tt.enabled, 100*time.Millisecond, 0, 0)(innerHandler)
+			handler := StripTailscaleHeaders(whoisHandler)
+
+			req := httptest.NewRequest(http.MethodGet, "/test", nil)
+			req.RemoteAddr = "100.64.1.2:12345"
+			for k, v := range spoofedHeaders {
+				req.Header.Set(k, v)
+			}
+
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			for _, header := range tt.wantEmpty {
+				assert.Empty(t, capturedHeaders.Get(header), "spoofed header %s should be stripped", header)
+			}
+
+			for header, want := range tt.wantSet {
+				assert.Equal(t, want, capturedHeaders.Get(header), "header %s should have real value", header)
+			}
+		})
+	}
+}
+
 func TestWhoisRetryBehavior(t *testing.T) {
 	tests := []struct {
 		name          string
