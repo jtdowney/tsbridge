@@ -689,6 +689,7 @@ func TestDockerInsecureSkipVerifyParsing(t *testing.T) {
 func getDockerParsedGlobalFields() map[string]bool {
 	return map[string]bool{
 		"global.metrics_addr":                true,
+		"global.web_addr":                    true,
 		"global.read_header_timeout":         true,
 		"global.write_timeout":               true,
 		"global.idle_timeout":                true,
