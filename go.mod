@@ -1,6 +1,6 @@
 module github.com/jtdowney/tsbridge
 
-go 1.26.0
+go 1.26.1
 
 require (
 	github.com/adrg/xdg v0.5.3
@@ -18,7 +18,7 @@ require (
 	github.com/prometheus/client_model v0.6.2
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/oauth2 v0.36.0
-	tailscale.com v1.96.0
+	tailscale.com v1.96.1
 )
 
 require (
