@@ -17,6 +17,7 @@ import (
 
 	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/funnel"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/middleware"
 )
@@ -214,6 +215,10 @@ func configureTrustedProxies(h *httpHandler, trustedProxies []string) error {
 // The Rewrite API strips X-Forwarded-For/Host/Proto before calling this function;
 // SetXForwarded() repopulates them. For trusted proxies, we copy the inbound XFF
 // first so SetXForwarded appends to the existing chain.
+//
+// For Funnel connections, the real client IP is stored in the request context
+// by the ConnContext callback. The Tailscale ingress node is implicitly trusted,
+// and the real client IP is injected into the X-Forwarded-For chain.
 func createProxyRewrite(h *httpHandler, target *url.URL) func(*httputil.ProxyRequest) {
 	return func(pr *httputil.ProxyRequest) {
 		pr.SetURL(target)
@@ -222,8 +227,14 @@ func createProxyRewrite(h *httpHandler, target *url.URL) func(*httputil.ProxyReq
 		clientIP, _, _ := net.SplitHostPort(pr.In.RemoteAddr)
 		fromTrustedProxy := h.isTrustedProxy(clientIP)
 
-		// For trusted proxies, copy inbound XFF so SetXForwarded appends to it
-		if fromTrustedProxy {
+		// For Funnel connections, the ingress node is implicitly trusted and
+		// the real client IP is injected as the start of the XFF chain.
+		funnelSrc, isFunnel := funnel.SourceAddrFromContext(pr.In.Context())
+		if isFunnel {
+			pr.Out.Header.Set("X-Forwarded-For", funnelSrc.Addr().String())
+			fromTrustedProxy = true
+		} else if fromTrustedProxy {
+			// For trusted proxies, copy inbound XFF so SetXForwarded appends to it
 			if xff := pr.In.Header["X-Forwarded-For"]; len(xff) > 0 {
 				pr.Out.Header["X-Forwarded-For"] = xff
 			}
@@ -232,7 +243,10 @@ func createProxyRewrite(h *httpHandler, target *url.URL) func(*httputil.ProxyReq
 		pr.SetXForwarded()
 
 		// Set X-Real-IP
-		if fromTrustedProxy {
+		switch {
+		case isFunnel:
+			pr.Out.Header.Set("X-Real-IP", funnelSrc.Addr().String())
+		case fromTrustedProxy:
 			if existingXFF := pr.In.Header.Get("X-Forwarded-For"); existingXFF != "" {
 				ips := strings.Split(existingXFF, ",")
 				if len(ips) > 0 {
@@ -241,7 +255,7 @@ func createProxyRewrite(h *httpHandler, target *url.URL) func(*httputil.ProxyReq
 			} else if clientIP != "" {
 				pr.Out.Header.Set("X-Real-IP", clientIP)
 			}
-		} else if clientIP != "" {
+		case clientIP != "":
 			pr.Out.Header.Set("X-Real-IP", clientIP)
 		}
 
