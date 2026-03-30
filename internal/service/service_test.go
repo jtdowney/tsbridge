@@ -2612,3 +2612,75 @@ func TestStartService_PartialFailure_CleansUpTsnetServers(t *testing.T) {
 	assert.True(t, exists, "good-service should exist in registry")
 	assert.NotNil(t, goodSvc, "good-service should not be nil")
 }
+
+func TestStartService_FunnelEnabled_SetsConnContext(t *testing.T) {
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return tsnet.NewMockTSNetServer()
+	}
+
+	tsServerCfg := config.Tailscale{AuthKey: "test-key"}
+	tsServer, err := tailscale.NewServerWithFactory(tsServerCfg, factory)
+	require.NoError(t, err)
+	defer tsServer.Close()
+
+	funnelEnabled := true
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backendServer.Close()
+
+	cfg := &config.Config{
+		Services: []config.Service{
+			{
+				Name:          "funnel-svc",
+				BackendAddr:   backendServer.URL,
+				TLSMode:       "off",
+				FunnelEnabled: &funnelEnabled,
+			},
+		},
+	}
+
+	registry := NewRegistry(cfg, tsServer)
+	err = registry.StartServices()
+	require.NoError(t, err)
+	defer registry.Shutdown(context.Background())
+
+	svc, exists := registry.GetService("funnel-svc")
+	require.True(t, exists)
+	assert.NotNil(t, svc.server.ConnContext, "ConnContext should be set for Funnel-enabled service")
+}
+
+func TestStartService_FunnelDisabled_NoConnContext(t *testing.T) {
+	factory := func(serviceName string) tsnet.TSNetServer {
+		return tsnet.NewMockTSNetServer()
+	}
+
+	tsServerCfg := config.Tailscale{AuthKey: "test-key"}
+	tsServer, err := tailscale.NewServerWithFactory(tsServerCfg, factory)
+	require.NoError(t, err)
+	defer tsServer.Close()
+
+	backendServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer backendServer.Close()
+
+	cfg := &config.Config{
+		Services: []config.Service{
+			{
+				Name:        "plain-svc",
+				BackendAddr: backendServer.URL,
+				TLSMode:     "off",
+			},
+		},
+	}
+
+	registry := NewRegistry(cfg, tsServer)
+	err = registry.StartServices()
+	require.NoError(t, err)
+	defer registry.Shutdown(context.Background())
+
+	svc, exists := registry.GetService("plain-svc")
+	require.True(t, exists)
+	assert.Nil(t, svc.server.ConnContext, "ConnContext should not be set for non-Funnel service")
+}
