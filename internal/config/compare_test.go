@@ -452,6 +452,7 @@ func TestServiceConfigEqualCoversAllFields(t *testing.T) {
 		"WhoisTimeout":          true,
 		"TLSMode":               true,
 		"Tags":                  true,
+		"StartupTimeout":        true,
 		"ReadHeaderTimeout":     true,
 		"WriteTimeout":          true,
 		"IdleTimeout":           true,

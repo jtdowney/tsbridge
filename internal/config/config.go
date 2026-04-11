@@ -55,6 +55,7 @@ type Global struct {
 	MetricsAddr           string         `mapstructure:"metrics_addr"`            // Address for Prometheus metrics
 	ResponseHeaderTimeout *time.Duration `mapstructure:"response_header_timeout"` // Timeout for backend response headers
 	ShutdownTimeout       *time.Duration `mapstructure:"shutdown_timeout"`        // Max duration for graceful shutdown
+	StartupTimeout        *time.Duration `mapstructure:"startup_timeout"`         // Max duration for Tailscale server startup
 	WriteTimeout          *time.Duration `mapstructure:"write_timeout"`           // Max duration for writing response
 	IdleTimeout           *time.Duration `mapstructure:"idle_timeout"`            // Max time to wait for next request
 	ReadHeaderTimeout     *time.Duration `mapstructure:"read_header_timeout"`     // Time allowed to read request headers
@@ -78,6 +79,7 @@ type Service struct {
 	TLSMode      string         `mapstructure:"tls_mode"`      // "auto" (default), "off"
 	Tags         []string       `mapstructure:"tags"`          // Service-specific tags
 	// Optional overrides
+	StartupTimeout        *time.Duration `mapstructure:"startup_timeout"`         // Override global Tailscale server startup timeout
 	ReadHeaderTimeout     *time.Duration `mapstructure:"read_header_timeout"`     // Override global read header timeout
 	WriteTimeout          *time.Duration `mapstructure:"write_timeout"`           // Override global write timeout
 	IdleTimeout           *time.Duration `mapstructure:"idle_timeout"`            // Override global idle timeout
@@ -468,6 +470,10 @@ func (c *Config) SetDefaults() {
 		defaultTimeout := constants.DefaultShutdownTimeout
 		c.Global.ShutdownTimeout = &defaultTimeout
 	}
+	if c.Global.StartupTimeout == nil {
+		defaultTimeout := constants.DefaultStartupTimeout
+		c.Global.StartupTimeout = &defaultTimeout
+	}
 
 	// Default access_log to true if not specified
 	if c.Global.AccessLog == nil {
@@ -545,6 +551,10 @@ func (c *Config) Normalize() {
 		svc := &c.Services[i]
 
 		// Only copy if the service value is nil
+		if svc.StartupTimeout == nil && c.Global.StartupTimeout != nil {
+			timeout := *c.Global.StartupTimeout
+			svc.StartupTimeout = &timeout
+		}
 		if svc.ReadHeaderTimeout == nil && c.Global.ReadHeaderTimeout != nil {
 			// Copy the value, not the pointer
 			timeout := *c.Global.ReadHeaderTimeout
@@ -858,6 +868,9 @@ func (c *Config) validateGlobal() error {
 	if err := validateTimeoutPositive("shutdown_timeout", c.Global.ShutdownTimeout); err != nil {
 		return err
 	}
+	if err := validateTimeoutPositive("startup_timeout", c.Global.StartupTimeout); err != nil {
+		return err
+	}
 
 	// Validate response timeout
 	if err := validateTimeout("response_header_timeout", c.Global.ResponseHeaderTimeout, false); err != nil {
@@ -949,6 +962,9 @@ func (c *Config) validateService(svc *Service) error {
 	}
 
 	// Validate service-level timeout overrides
+	if err := validateTimeoutPositive("startup_timeout", svc.StartupTimeout); err != nil {
+		return err
+	}
 	if err := validateTimeout("read_header_timeout", svc.ReadHeaderTimeout, false); err != nil {
 		return err
 	}
