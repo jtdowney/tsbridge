@@ -19,6 +19,7 @@ import (
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/constants"
 	tserrors "github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/funnel"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 	"github.com/jtdowney/tsbridge/internal/middleware"
 	"github.com/jtdowney/tsbridge/internal/proxy"
@@ -217,6 +218,11 @@ func (r *Registry) startService(svcCfg config.Service) (*Service, error) {
 	svc.server = &http.Server{
 		Handler:           svc.handler,
 		ReadHeaderTimeout: constants.DefaultReadHeaderTimeout, // Set default to satisfy linter
+	}
+
+	// For Funnel-enabled services, extract the real client IP from FunnelConn
+	if svcCfg.FunnelEnabled != nil && *svcCfg.FunnelEnabled {
+		svc.server.ConnContext = funnel.ConnContext
 	}
 
 	// Override with configured values if provided

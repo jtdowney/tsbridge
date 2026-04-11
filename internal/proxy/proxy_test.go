@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/jtdowney/tsbridge/internal/constants"
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/jtdowney/tsbridge/internal/funnel"
 	"github.com/jtdowney/tsbridge/internal/metrics"
 )
 
@@ -601,6 +603,84 @@ func TestXForwardedForWithTrustedProxies(t *testing.T) {
 
 			actualRealIP := rr.Header().Get("X-Echo-Real-IP")
 			assert.Equal(t, tt.expectedRealIP, actualRealIP, "X-Real-IP mismatch")
+		})
+	}
+}
+
+func TestXForwardedForWithFunnelSourceIP(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Echo-Forwarded-For", r.Header.Get("X-Forwarded-For"))
+		w.Header().Set("X-Echo-Real-IP", r.Header.Get("X-Real-IP"))
+		fmt.Fprint(w, "OK")
+	}))
+	defer backend.Close()
+
+	tests := []struct {
+		name                 string
+		trustedProxies       []string
+		clientForwardedFor   string
+		remoteAddr           string
+		funnelSrcIP          string
+		funnelSrcPort        uint16
+		expectedForwardedFor string
+		expectedRealIP       string
+	}{
+		{
+			name:                 "funnel connection uses real client IP",
+			remoteAddr:           "100.81.217.1:12345",
+			funnelSrcIP:          "203.0.113.42",
+			funnelSrcPort:        52341,
+			expectedForwardedFor: "203.0.113.42, 100.81.217.1",
+			expectedRealIP:       "203.0.113.42",
+		},
+		{
+			name:                 "funnel connection with IPv6 source",
+			remoteAddr:           "[fd7a:115c:a1e0:ab12:4843:cd96:625a:9516]:12345",
+			funnelSrcIP:          "2001:db8::1",
+			funnelSrcPort:        8080,
+			expectedForwardedFor: "2001:db8::1, fd7a:115c:a1e0:ab12:4843:cd96:625a:9516",
+			expectedRealIP:       "2001:db8::1",
+		},
+		{
+			name:                 "funnel trusted regardless of trusted_proxies config",
+			trustedProxies:       nil,
+			remoteAddr:           "100.81.217.1:12345",
+			funnelSrcIP:          "198.51.100.1",
+			funnelSrcPort:        443,
+			expectedForwardedFor: "198.51.100.1, 100.81.217.1",
+			expectedRealIP:       "198.51.100.1",
+		},
+		{
+			name:                 "funnel connection ignores spoofed inbound X-Forwarded-For",
+			clientForwardedFor:   "8.8.8.8, 1.1.1.1",
+			remoteAddr:           "100.81.217.1:12345",
+			funnelSrcIP:          "203.0.113.42",
+			funnelSrcPort:        52341,
+			expectedForwardedFor: "203.0.113.42, 100.81.217.1",
+			expectedRealIP:       "203.0.113.42",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler, err := newTestHandler(backend.URL, defaultTestTransportConfig(), tt.trustedProxies)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest("GET", "/", nil)
+			if tt.clientForwardedFor != "" {
+				req.Header.Set("X-Forwarded-For", tt.clientForwardedFor)
+			}
+			req.RemoteAddr = tt.remoteAddr
+
+			funnelSrc := netip.AddrPortFrom(netip.MustParseAddr(tt.funnelSrcIP), tt.funnelSrcPort)
+			ctx := funnel.WithSourceAddr(req.Context(), funnelSrc)
+			req = req.WithContext(ctx)
+
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			assert.Equal(t, tt.expectedForwardedFor, rr.Header().Get("X-Echo-Forwarded-For"), "X-Forwarded-For mismatch")
+			assert.Equal(t, tt.expectedRealIP, rr.Header().Get("X-Echo-Real-IP"), "X-Real-IP mismatch")
 		})
 	}
 }
