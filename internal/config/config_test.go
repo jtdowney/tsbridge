@@ -632,6 +632,51 @@ func TestResolveSecrets(t *testing.T) {
 	})
 }
 
+func TestResolveSecrets_clears_auth_key_env_vars(t *testing.T) {
+	t.Run("clears TS_AUTHKEY after resolving from env", func(t *testing.T) {
+		t.Setenv("TS_AUTHKEY", "test-key")
+		cfg := &Config{
+			Tailscale: Tailscale{},
+		}
+
+		err := resolveSecrets(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "test-key", cfg.Tailscale.AuthKey.Value())
+
+		_, exists := os.LookupEnv("TS_AUTHKEY")
+		assert.False(t, exists, "TS_AUTHKEY should be cleared after resolution")
+	})
+
+	t.Run("clears TS_AUTH_KEY after resolving", func(t *testing.T) {
+		t.Setenv("TS_AUTH_KEY", "test-key-2")
+		cfg := &Config{
+			Tailscale: Tailscale{},
+		}
+
+		err := resolveSecrets(cfg)
+		require.NoError(t, err)
+
+		_, exists := os.LookupEnv("TS_AUTH_KEY")
+		assert.False(t, exists, "TS_AUTH_KEY should be cleared after resolution")
+	})
+
+	t.Run("clears env vars even when auth key comes from config", func(t *testing.T) {
+		t.Setenv("TS_AUTHKEY", "env-key")
+		cfg := &Config{
+			Tailscale: Tailscale{
+				AuthKey: RedactedString("direct-key"),
+			},
+		}
+
+		err := resolveSecrets(cfg)
+		require.NoError(t, err)
+		assert.Equal(t, "direct-key", cfg.Tailscale.AuthKey.Value())
+
+		_, exists := os.LookupEnv("TS_AUTHKEY")
+		assert.False(t, exists, "TS_AUTHKEY should be cleared even when auth key came from config")
+	})
+}
+
 func TestServiceTLSModeValidationInConfig(t *testing.T) {
 	tests := []struct {
 		name        string

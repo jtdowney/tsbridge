@@ -95,7 +95,7 @@ func (s *Server) Listen(svc config.Service, tlsMode string, funnelEnabled bool) 
 	)
 
 	// Prepare auth key based on service type and existing state
-	if err := s.prepareServiceAuth(serviceServer, svc, baseStateDir); err != nil {
+	if _, err := s.prepareServiceAuth(serviceServer, svc, baseStateDir); err != nil {
 		return nil, err
 	}
 
@@ -153,7 +153,8 @@ func (s *Server) resolveBaseStateDir() (string, string) {
 }
 
 // prepareServiceAuth handles auth key generation/resolution based on service type and existing state.
-func (s *Server) prepareServiceAuth(serviceServer tsnetpkg.TSNetServer, svc config.Service, baseStateDir string) error {
+// Returns true if an auth key was set on the server, false if existing state is being used.
+func (s *Server) prepareServiceAuth(serviceServer tsnetpkg.TSNetServer, svc config.Service, baseStateDir string) (bool, error) {
 	var needsAuthKey bool
 	var authKeyReason string
 
@@ -177,21 +178,21 @@ func (s *Server) prepareServiceAuth(serviceServer tsnetpkg.TSNetServer, svc conf
 	if needsAuthKey {
 		// Now we actually need auth, so validate that we have OAuth or authkey
 		if err := ValidateTailscaleSecrets(s.config); err != nil {
-			return tserrors.WrapConfig(err, fmt.Sprintf("service %q needs authentication but %s", svc.Name, err.Error()))
+			return false, tserrors.WrapConfig(err, fmt.Sprintf("service %q needs authentication but %s", svc.Name, err.Error()))
 		}
 
 		slog.Debug("generating auth key", "service", svc.Name, "reason", authKeyReason)
 		cfg := config.Config{Tailscale: s.config}
 		authKey, err := generateOrResolveAuthKey(cfg, svc)
 		if err != nil {
-			return tserrors.WrapConfig(err, fmt.Sprintf("resolving auth key for service %q", svc.Name))
+			return false, tserrors.WrapConfig(err, fmt.Sprintf("resolving auth key for service %q", svc.Name))
 		}
 		serviceServer.SetAuthKey(authKey)
 		slog.Debug("auth key set for service", "service", svc.Name)
 	} else {
 		slog.Debug("using existing state, no auth key needed", "service", svc.Name)
 	}
-	return nil
+	return needsAuthKey, nil
 }
 
 // startServiceServer starts the tsnet server for a service.

@@ -577,7 +577,7 @@ func TestPrepareServiceAuth(t *testing.T) {
 			require.NoError(t, err)
 
 			// Test prepareServiceAuth
-			err = server.prepareServiceAuth(mockServer, tt.svc, tmpDir)
+			_, err = server.prepareServiceAuth(mockServer, tt.svc, tmpDir)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -589,6 +589,44 @@ func TestPrepareServiceAuth(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPrepareServiceAuth_returns_auth_key_status(t *testing.T) {
+	t.Run("returns true when auth key is set", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		mockServer := tsnet.NewMockTSNetServer()
+		factory := func(serviceName string) tsnet.TSNetServer { return mockServer }
+		server, err := NewServerWithFactory(config.Tailscale{
+			AuthKey: config.RedactedString("tskey-auth-123"),
+		}, factory)
+		require.NoError(t, err)
+
+		svc := config.Service{Name: "test-service"}
+		authKeySet, err := server.prepareServiceAuth(mockServer, svc, tmpDir)
+		require.NoError(t, err)
+		assert.True(t, authKeySet, "should return true when auth key was set")
+		assert.Equal(t, "tskey-auth-123", mockServer.AuthKey)
+	})
+
+	t.Run("returns false when existing state is used", func(t *testing.T) {
+		tmpDir := t.TempDir()
+
+		// Create existing state
+		serviceStateDir := filepath.Join(tmpDir, "test-service")
+		require.NoError(t, os.MkdirAll(serviceStateDir, 0700))
+		require.NoError(t, os.WriteFile(filepath.Join(serviceStateDir, "tailscaled.state"), []byte("mock state"), 0600))
+
+		mockServer := tsnet.NewMockTSNetServer()
+		factory := func(serviceName string) tsnet.TSNetServer { return mockServer }
+		server, err := NewServerWithFactory(config.Tailscale{}, factory)
+		require.NoError(t, err)
+
+		svc := config.Service{Name: "test-service"}
+		authKeySet, err := server.prepareServiceAuth(mockServer, svc, tmpDir)
+		require.NoError(t, err)
+		assert.False(t, authKeySet, "should return false when existing state is used")
+		assert.Empty(t, mockServer.AuthKey, "auth key should not be set on server")
+	})
 }
 
 func TestClose(t *testing.T) {
