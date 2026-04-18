@@ -5,6 +5,24 @@ All notable changes to tsbridge will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.15.0] - 2026-04-18
+
+### Added
+
+- Configurable `startup_timeout` for tsnet (#197)
+- Extract real client IP from Funnel connections (#191)
+
+### Fixed
+
+- Clear `TS_AUTHKEY` env var after config resolution (#199)
+
+### Dependencies
+
+- Bump tailscale.com from 1.96.0 to 1.96.5 (#186, #188, #192)
+- Bump github.com/knadh/koanf/v2 from 2.3.3 to 2.3.4 (#189)
+- Bump go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp from 1.36.0 to 1.43.0 (#193)
+- Update indirect Go module dependencies (AWS SDK v2, prometheus, OpenTelemetry, golang.org/x/*)
+
 ## [0.14.0] - 2026-03-08
 
 ### Added
@@ -571,6 +589,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release of tsbridge - a lightweight proxy manager built on Tailscale's tsnet library
 
+[0.15.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.15.0
 [0.14.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.14.0
 [0.13.1]: https://github.com/jtdowney/tsbridge/releases/tag/v0.13.1
 [0.13.0]: https://github.com/jtdowney/tsbridge/releases/tag/v0.13.0
