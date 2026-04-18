@@ -112,6 +112,7 @@ labels:
   - "tsbridge.tailscale.oauth_preauthorized=false" # Require manual device approval (default: true)
   - "tsbridge.global.metrics_addr=:9090"
   - "tsbridge.global.write_timeout=30s"
+  - "tsbridge.global.startup_timeout=60s"
 ```
 
 ### On Service Containers

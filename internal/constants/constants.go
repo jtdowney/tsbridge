@@ -20,6 +20,9 @@ const (
 	// DefaultShutdownTimeout is the default timeout for graceful shutdown of services.
 	DefaultShutdownTimeout = 30 * time.Second
 
+	// DefaultStartupTimeout is the default timeout for Tailscale server startup.
+	DefaultStartupTimeout = 30 * time.Second
+
 	// DefaultWhoisTimeout is the default timeout for whois lookups.
 	// Whois operations can be slow, so we use a reasonable timeout.
 	DefaultWhoisTimeout = 5 * time.Second

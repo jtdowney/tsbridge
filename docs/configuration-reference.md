@@ -143,6 +143,7 @@ read_header_timeout = "30s"      # Time to read request headers (default: 30s)
 write_timeout = "30s"            # Time to write response (default: 30s)
 idle_timeout = "120s"            # Keep-alive timeout (default: 120s)
 shutdown_timeout = "15s"         # Graceful shutdown timeout (default: 15s)
+startup_timeout = "30s"          # Tailscale server startup timeout (default: 30s)
 
 # Backend connection timeouts
 dial_timeout = "30s"                   # Time to establish connection (default: 30s)
@@ -292,6 +293,7 @@ name = "streaming"
 backend_addr = "localhost:8080"
 
 # Override timeouts
+startup_timeout = "60s"           # More time for Tailscale startup
 write_timeout = "0s"              # No timeout for streaming
 response_header_timeout = "30s"   # Different from global
 flush_interval = "-1ms"           # Immediate flushing

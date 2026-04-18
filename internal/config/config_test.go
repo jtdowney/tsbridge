@@ -226,6 +226,7 @@ tags = ["tag:test"]
 		assert.Equal(t, 30*time.Second, *cfg.Global.WriteTimeout)
 		assert.Equal(t, 120*time.Second, *cfg.Global.IdleTimeout)
 		assert.Equal(t, 30*time.Second, *cfg.Global.ShutdownTimeout)
+		assert.Equal(t, 30*time.Second, *cfg.Global.StartupTimeout)
 
 		// Service defaults
 		svc := cfg.Services[0]
@@ -1645,6 +1646,30 @@ func TestValidate(t *testing.T) {
 			wantErr: "shutdown_timeout must be positive",
 		},
 		{
+			name: "zero startup_timeout",
+			config: &Config{
+				Tailscale: Tailscale{
+					OAuthClientID:     "test-id",
+					OAuthClientSecret: "test-secret",
+				},
+				Global: Global{
+					ReadHeaderTimeout: testhelpers.DurationPtr(5 * time.Second),
+					WriteTimeout:      testhelpers.DurationPtr(10 * time.Second),
+					IdleTimeout:       testhelpers.DurationPtr(120 * time.Second),
+					ShutdownTimeout:   testhelpers.DurationPtr(15 * time.Second),
+					StartupTimeout:    testhelpers.DurationPtr(0),
+				},
+				Services: []Service{
+					{
+						Name:        "api",
+						BackendAddr: "127.0.0.1:8080",
+						Tags:        []string{"tag:test"},
+					},
+				},
+			},
+			wantErr: "startup_timeout must be positive",
+		},
+		{
 			name: "nil timeout values are valid",
 			config: &Config{
 				Tailscale: Tailscale{
@@ -1794,6 +1819,7 @@ func TestNormalize(t *testing.T) {
 					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
 					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
 					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+					StartupTimeout:        testhelpers.DurationPtr(60 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1809,6 +1835,7 @@ func TestNormalize(t *testing.T) {
 					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
 					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
 					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+					StartupTimeout:        testhelpers.DurationPtr(60 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1818,6 +1845,7 @@ func TestNormalize(t *testing.T) {
 						WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
 						IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
 						ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+						StartupTimeout:        testhelpers.DurationPtr(60 * time.Second),
 					},
 				},
 			},
@@ -1830,6 +1858,7 @@ func TestNormalize(t *testing.T) {
 					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
 					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
 					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+					StartupTimeout:        testhelpers.DurationPtr(60 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1839,6 +1868,7 @@ func TestNormalize(t *testing.T) {
 						WriteTimeout:          testhelpers.DurationPtr(20 * time.Second),
 						IdleTimeout:           testhelpers.DurationPtr(180 * time.Second),
 						ResponseHeaderTimeout: testhelpers.DurationPtr(45 * time.Second),
+						StartupTimeout:        testhelpers.DurationPtr(90 * time.Second),
 					},
 				},
 			},
@@ -1848,6 +1878,7 @@ func TestNormalize(t *testing.T) {
 					WriteTimeout:          testhelpers.DurationPtr(10 * time.Second),
 					IdleTimeout:           testhelpers.DurationPtr(120 * time.Second),
 					ResponseHeaderTimeout: testhelpers.DurationPtr(30 * time.Second),
+					StartupTimeout:        testhelpers.DurationPtr(60 * time.Second),
 				},
 				Services: []Service{
 					{
@@ -1857,6 +1888,7 @@ func TestNormalize(t *testing.T) {
 						WriteTimeout:          testhelpers.DurationPtr(20 * time.Second),
 						IdleTimeout:           testhelpers.DurationPtr(180 * time.Second),
 						ResponseHeaderTimeout: testhelpers.DurationPtr(45 * time.Second),
+						StartupTimeout:        testhelpers.DurationPtr(90 * time.Second),
 					},
 				},
 			},
