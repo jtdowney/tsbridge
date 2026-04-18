@@ -38,15 +38,16 @@ const (
 
 // Provider implements config.Provider for Docker label-based configuration
 type Provider struct {
-	client        DockerClient
-	labelPrefix   string
-	socketPath    string
-	pollInterval  time.Duration
-	mu            sync.RWMutex
-	lastConfig    *config.Config
-	debounceTimer *time.Timer
-	debounceMu    sync.Mutex
-	pollTicker    *time.Ticker
+	client          DockerClient
+	labelPrefix     string
+	socketPath      string
+	pollInterval    time.Duration
+	mu              sync.RWMutex
+	lastConfig      *config.Config
+	cachedTailscale *config.Tailscale
+	debounceTimer   *time.Timer
+	debounceMu      sync.Mutex
+	pollTicker      *time.Ticker
 }
 
 // Options contains configuration options for the Docker provider
@@ -180,6 +181,15 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeConfig, "parsing global configuration")
 	}
 
+	// Reuse cached Tailscale config on subsequent loads. The initial
+	// config resolution clears auth key env vars (TS_AUTHKEY) to prevent
+	// the tsnet library from independently reading them. Without this
+	// cache, subsequent Load() calls would fail to re-resolve the auth
+	// key from the now-cleared env vars.
+	if p.cachedTailscale != nil {
+		cfg.Tailscale = *p.cachedTailscale
+	}
+
 	// Find all containers with tsbridge.enabled=true
 	serviceContainers, err := p.findServiceContainers(ctx)
 	if err != nil {
@@ -208,6 +218,12 @@ func (p *Provider) Load(ctx context.Context) (*config.Config, error) {
 	// Docker provider allows zero services at startup
 	if err := config.ProcessLoadedConfigWithProvider(cfg, "docker"); err != nil {
 		return nil, err
+	}
+
+	// Cache the resolved Tailscale config after first successful load
+	if p.cachedTailscale == nil {
+		cached := cfg.Tailscale
+		p.cachedTailscale = &cached
 	}
 
 	slog.Info("Docker configuration loaded successfully",

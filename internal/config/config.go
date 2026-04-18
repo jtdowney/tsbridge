@@ -407,6 +407,9 @@ func resolveSecrets(cfg *Config) error {
 		}
 	}
 
+	os.Unsetenv("TS_AUTHKEY")
+	os.Unsetenv("TS_AUTH_KEY")
+
 	// Resolve State Directory (only if state_dir is not already set)
 	if cfg.Tailscale.StateDir == "" && cfg.Tailscale.StateDirEnv != "" {
 		resolved := os.Getenv(cfg.Tailscale.StateDirEnv)
