@@ -135,6 +135,124 @@ labels:
   - "tsbridge.service.insecure_skip_verify=true" # Skip TLS cert verification (HTTPS backends only)
 ```
 
+### Service Definitions on Tsbridge Container
+
+You can also define services directly on the tsbridge container itself. This is useful when you want to pre-configure services that will be auto-discovered when their containers appear, without needing to add labels to each service container.
+
+This approach works well with dynamically created containers, such as those managed by [Nextcloud AIO](https://github.com/nextcloud/all-in-one) or other orchestrators that don't allow easy label configuration on service containers.
+
+#### Label Format
+
+Use labels in the format `tsbridge.service.{name}.{property}` on the tsbridge container:
+
+```yaml
+services:
+  tsbridge:
+    image: ghcr.io/jtdowney/tsbridge:latest
+    command: ["--provider", "docker"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - tsbridge-state:/var/lib/tsbridge
+    environment:
+      - TS_OAUTH_CLIENT_ID=${TS_OAUTH_CLIENT_ID}
+      - TS_OAUTH_CLIENT_SECRET=${TS_OAUTH_CLIENT_SECRET}
+    labels:
+      # Required: OAuth setup
+      - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
+      - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
+      - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+      # Service definitions (NEW FEATURE)
+      - "tsbridge.service.nextcloud.port=80"
+      - "tsbridge.service.redis.port=6379"
+
+  # These containers are auto-discovered when they appear
+  # No tsbridge labels needed on the service containers themselves
+  nextcloud:
+    image: nextcloud:latest
+
+  redis:
+    image: redis:latest
+```
+
+#### How It Works
+
+1. tsbridge reads service definitions from its own container labels
+2. When a container with a matching name appears on the same network, it's automatically discovered
+3. The service inherits all standard configuration options (port, tags, timeouts, etc.)
+4. If the container stops, the proxy is removed
+
+#### Comparison with tsbridge.enabled=true
+
+| Approach | Use Case | Configuration Location |
+|----------|----------|----------------------|
+| `tsbridge.enabled=true` | Static compose files, full control | On each service container |
+| `tsbridge.service.{name}.*` | Dynamic containers, external orchestrators | On tsbridge container |
+
+#### Both Mechanisms Work Together
+
+You can use both approaches simultaneously. Services discovered via `tsbridge.enabled=true` take precedence if a service is found by both methods. This lets you gradually migrate or mix static and dynamic service discovery:
+
+```yaml
+services:
+  tsbridge:
+    image: ghcr.io/jtdowney/tsbridge:latest
+    command: ["--provider", "docker"]
+    labels:
+      - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
+      - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
+      # Pre-configure services that will appear dynamically
+      - "tsbridge.service.database.port=5432"
+
+  # Traditional approach - labels on service container
+  api:
+    image: myapi:latest
+    labels:
+      - "tsbridge.enabled=true"
+      - "tsbridge.service.port=8080"
+
+  # Auto-discovered via tsbridge container labels when it appears
+  database:
+    image: postgres:latest
+    # No tsbridge labels needed
+```
+
+#### Nextcloud AIO Example
+
+Nextcloud AIO creates containers dynamically, making it difficult to add labels to each service. With this feature, you can define all services on the tsbridge container:
+
+```yaml
+services:
+  tsbridge:
+    image: ghcr.io/jtdowney/tsbridge:latest
+    command: ["--provider", "docker"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - tsbridge-state:/var/lib/tsbridge
+    environment:
+      - TS_OAUTH_CLIENT_ID=${TS_OAUTH_CLIENT_ID}
+      - TS_OAUTH_CLIENT_SECRET=${TS_OAUTH_CLIENT_SECRET}
+    networks:
+      - nextcloud-aio
+    labels:
+      - "tsbridge.tailscale.oauth_client_id_env=TS_OAUTH_CLIENT_ID"
+      - "tsbridge.tailscale.oauth_client_secret_env=TS_OAUTH_CLIENT_SECRET"
+      - "tsbridge.tailscale.state_dir=/var/lib/tsbridge"
+      # Define all Nextcloud AIO services
+      - "tsbridge.service.nextcloud-aio-apache.port=11000"
+      - "tsbridge.service.nextcloud-aio-collabora.port=9980"
+      - "tsbridge.service.nextcloud-aio-talk.port=3478"
+
+  # Nextcloud AIO master container creates these automatically
+  # They are discovered by name when they appear
+
+networks:
+  nextcloud-aio:
+    external: true
+```
+
+When Nextcloud AIO creates containers with names matching your definitions, tsbridge automatically exposes them on your Tailnet without any additional configuration.
+
+
 ## Backend Address Tips
 
 **Use port, not localhost:**

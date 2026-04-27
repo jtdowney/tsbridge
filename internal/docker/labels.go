@@ -353,3 +353,45 @@ func parseByteSize(value string) (int64, error) {
 	}
 	return config.ParseByteSizeString(value)
 }
+
+// parseServiceNames parses service names from container labels.
+// It looks for labels matching pattern {prefix}.service.{name}.{property}
+// and extracts unique service names.
+// Returns a slice of unique service names found in the labels.
+func (p *Provider) parseServiceNames(labels map[string]string) []string {
+	// Build the prefix pattern: {prefix}.service.
+	prefix := fmt.Sprintf("%s.service.", p.labelPrefix)
+
+	// Use a map to track unique service names
+	serviceNames := make(map[string]struct{})
+
+	// Iterate through all labels
+	for labelKey := range labels {
+		// Check if the label starts with {prefix}.service.
+		if strings.HasPrefix(labelKey, prefix) {
+			// Extract the remaining part after {prefix}.service.
+			rest := strings.TrimPrefix(labelKey, prefix)
+
+			// Find the service name (part before the next dot)
+			// Labels are: {prefix}.service.{name}.{property}
+			if idx := strings.Index(rest, "."); idx > 0 {
+				serviceName := rest[:idx]
+				if serviceName != "" {
+					serviceNames[serviceName] = struct{}{}
+				}
+			}
+		}
+	}
+
+	if len(serviceNames) == 0 {
+		return nil
+	}
+
+	// Convert map to slice
+	result := make([]string, 0, len(serviceNames))
+	for name := range serviceNames {
+		result = append(result, name)
+	}
+
+	return result
+}
