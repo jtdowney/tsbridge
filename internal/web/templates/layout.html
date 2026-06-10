@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - tsbridge</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <link rel="shortcut icon" type="image/png" href="/static/favicon.png">
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Custom CSS -->
+    <style>
+        /* Custom styles for better visual hierarchy */
+        .card {
+            @apply bg-white rounded-lg shadow-md border border-gray-200;
+        }
+        
+        .status-running {
+            @apply bg-green-100 text-green-800;
+        }
+        
+        .status-stopped {
+            @apply bg-yellow-100 text-yellow-800;
+        }
+        
+        .status-error {
+            @apply bg-red-100 text-red-800;
+        }
+        
+        .metric-value {
+            @apply text-2xl font-bold text-gray-900;
+        }
+        
+        .metric-label {
+            @apply text-sm text-gray-600 uppercase tracking-wide;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center space-x-3">
+                        <img src="/static/favicon.png" alt="tsbridge" class="h-8 w-8">
+                        <h1 class="text-xl font-semibold text-gray-900">tsbridge</h1>
+                    </div>
+                    <div class="ml-10 flex space-x-8">
+                        <a href="/" class="text-gray-900 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
+                    </div>
+                </div>
+                
+                <!-- Status indicator -->
+                <div class="flex items-center">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-2 h-2 bg-green-400 rounded-full"></div>
+                        <span class="text-sm text-gray-600">System Healthy</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {{block "content" .}}{{end}}
+    </main>
+
+    <!-- Scripts -->
+    <script>
+        // Custom JavaScript for enhanced interactions
+        
+        // Add loading states for HTMX requests
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            const target = evt.detail.target;
+            target.classList.add('opacity-50');
+        });
+        
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            const target = evt.detail.target;
+            target.classList.remove('opacity-50');
+        });
+        
+        // Auto-refresh indicators
+        document.body.addEventListener('htmx:afterSwap', function(evt) {
+            // Add subtle animation to indicate fresh data
+            evt.detail.target.classList.add('animate-pulse');
+            setTimeout(() => {
+                evt.detail.target.classList.remove('animate-pulse');
+            }, 200);
+        });
+    </script>
+</body>
+</html>

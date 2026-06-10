@@ -1,0 +1,38 @@
+# Multi-stage build for tsbridge with web interface
+FROM golang:1.25.6-alpine AS builder
+
+# Install dependencies
+RUN apk add --no-cache git ca-certificates
+
+# Set working directory
+WORKDIR /src
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build the binary with web interface
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=$(git describe --tags --always --dirty 2>/dev/null || echo 'dev')" -o tsbridge ./cmd/tsbridge
+
+# Final stage
+FROM alpine:3.23
+
+RUN apk --no-cache add ca-certificates
+
+# Copy the binary
+COPY --from=builder /src/tsbridge /usr/local/bin/tsbridge
+
+# Copy web interface static files
+COPY --from=builder /src/internal/web/static /app/internal/web/static
+COPY --from=builder /src/internal/web/templates /app/internal/web/templates
+
+# Set working directory so templates can be found
+WORKDIR /app
+
+# Expose ports
+EXPOSE 8080 9090
+
+ENTRYPOINT ["/usr/local/bin/tsbridge"]
