@@ -1,0 +1,85 @@
+{{define "content"}}
+<div class="space-y-6">
+    <!-- Page Header -->
+    <div class="bg-white shadow-sm rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <h2 class="text-lg font-medium text-gray-900">Dashboard</h2>
+            <p class="mt-1 text-sm text-gray-500">
+                Overview of your tsbridge proxy services.
+            </p>
+        </div>
+    </div>
+
+    <!-- Services List -->
+    <div class="bg-white shadow-sm rounded-lg">
+        <div class="px-4 py-5 sm:p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium text-gray-900">Services</h3>
+                <span class="text-xs text-gray-400">Auto-refreshes every 10s</span>
+            </div>
+            
+            <div id="services-list"
+                 hx-get="/partials/services"
+                 hx-trigger="every 10s"
+                 hx-swap="innerHTML">
+            {{template "services-list" .}}
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+{{define "services-list"}}
+{{if .Services}}
+<div class="space-y-4">
+    {{range .Services}}
+    <div class="border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-colors">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+                <div>
+                    <h4 class="text-sm font-medium text-gray-900">{{.Name}}</h4>
+                    <p class="text-sm text-gray-500">{{.Backend}}</p>
+                </div>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium status-{{.Status}}">
+                    {{.Status}}
+                </span>
+            </div>
+            
+            <div class="flex items-center space-x-6 text-sm text-gray-500">
+                <div class="text-center">
+                    <div class="text-gray-900 font-medium">{{.RequestCount}}</div>
+                    <div>Requests</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-gray-900 font-medium">{{printf "%.0fms" .AvgResponseTime}}</div>
+                    <div>Avg Time</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-gray-900 font-medium">{{.ErrorCount}}</div>
+                    <div>Errors</div>
+                </div>
+            </div>
+        </div>
+        
+        {{if .Tags}}
+        <div class="mt-2 flex flex-wrap gap-2">
+            {{range .Tags}}
+            <span class="inline-flex items-center px-2 py-1 rounded text-xs bg-gray-100 text-gray-800">
+                {{.}}
+            </span>
+            {{end}}
+        </div>
+        {{end}}
+    </div>
+    {{end}}
+</div>
+{{else}}
+<div class="text-center py-12">
+    <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
+        <path d="M34 40h10v-4a6 6 0 00-10.712-3.714M34 40H14m20 0v-4a9.971 9.971 0 00-.712-3.714M14 40H4v-4a6 6 0 0110.713-3.714M14 40v-4c0-1.313.253-2.566.713-3.714m0 0A10.003 10.003 0 0124 26c4.21 0 7.813 2.602 9.288 6.286" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No services configured</h3>
+    <p class="mt-1 text-sm text-gray-500">Get started by configuring your first service in the TOML configuration file.</p>
+</div>
+{{end}}
+{{end}}
