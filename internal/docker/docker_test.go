@@ -2733,3 +2733,158 @@ func TestCloseStopsPollTicker(t *testing.T) {
 	// (calling Stop on an already stopped ticker is safe)
 	p.pollTicker.Stop()
 }
+
+func TestProvider_findContainersByNames(t *testing.T) {
+	provider := &Provider{labelPrefix: "tsbridge"}
+
+	tests := []struct {
+		name          string
+		serviceNames  []string
+		containers    []container.Summary
+		wantErr       bool
+		wantCount     int
+		wantNames     []string
+	}{
+		{
+			name:         "empty service names slice",
+			serviceNames: []string{},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/nextcloud"}},
+			},
+			wantErr:   false,
+			wantCount: 0,
+		},
+		{
+			name:         "nil service names",
+			serviceNames: nil,
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/nextcloud"}},
+			},
+			wantErr:   false,
+			wantCount: 0,
+		},
+		{
+			name:         "no matching containers",
+			serviceNames: []string{"nextcloud", "redis"},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/other"}},
+				{ID: "c2", Names: []string{"/nginx"}},
+			},
+			wantErr:   false,
+			wantCount: 0,
+		},
+		{
+			name:         "single matching container",
+			serviceNames: []string{"nextcloud"},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/nextcloud"}},
+				{ID: "c2", Names: []string{"/other"}},
+			},
+			wantErr:   false,
+			wantCount: 1,
+			wantNames: []string{"/nextcloud"},
+		},
+		{
+			name:         "multiple matching containers",
+			serviceNames: []string{"nextcloud", "redis"},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/nextcloud"}},
+				{ID: "c2", Names: []string{"/redis"}},
+				{ID: "c3", Names: []string{"/nginx"}},
+			},
+			wantErr:   false,
+			wantCount: 2,
+		},
+		{
+			name:         "container name with leading slash",
+			serviceNames: []string{"nextcloud"},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/nextcloud"}}, // Has leading slash
+			},
+			wantErr:   false,
+			wantCount: 1,
+			wantNames: []string{"/nextcloud"},
+		},
+		{
+			name:         "container without leading slash in input",
+			serviceNames: []string{"nextcloud"},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"nextcloud"}}, // No leading slash (edge case)
+			},
+			wantErr:   false,
+			wantCount: 1,
+			wantNames: []string{"nextcloud"},
+		},
+		{
+			name:         "container with multiple names - first matches",
+			serviceNames: []string{"nextcloud"},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/nextcloud", "/nc-alias"}},
+			},
+			wantErr:   false,
+			wantCount: 1,
+		},
+		{
+			name:         "no containers at all",
+			serviceNames: []string{"nextcloud"},
+			containers:  []container.Summary{},
+			wantErr:     false,
+			wantCount:   0,
+		},
+		{
+			name:         "service name not in list returns empty",
+			serviceNames: []string{"mysql", "postgres"},
+			containers: []container.Summary{
+				{ID: "c1", Names: []string{"/redis"}},
+				{ID: "c2", Names: []string{"/mongo"}},
+			},
+			wantErr:   false,
+			wantCount: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockClient := newMockDockerClient()
+			mockClient.containers = tt.containers
+
+			provider.client = mockClient
+
+			ctx := context.Background()
+			result, err := provider.findContainersByNames(ctx, tt.serviceNames)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Len(t, result, tt.wantCount)
+
+			if tt.wantNames != nil && len(result) > 0 {
+				var resultNames []string
+				for _, c := range result {
+					resultNames = append(resultNames, c.Names...)
+				}
+				assert.Equal(t, tt.wantNames, resultNames)
+			}
+		})
+	}
+}
+
+func TestProvider_findContainersByNames_Error(t *testing.T) {
+	mockClient := newMockDockerClient()
+	mockClient.listError = fmt.Errorf("docker API error")
+
+	provider := &Provider{
+		client:      mockClient,
+		labelPrefix: "tsbridge",
+	}
+
+	ctx := context.Background()
+	_, err := provider.findContainersByNames(ctx, []string{"nextcloud"})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "docker API error")
+}
+
