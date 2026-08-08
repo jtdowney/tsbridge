@@ -10,13 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/client"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 )
 
 const (
@@ -28,9 +26,9 @@ const (
 
 // DockerClient defines the methods required from a Docker client to be used by the provider
 type DockerClient interface {
-	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
-	Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error)
-	Ping(ctx context.Context) (types.Ping, error)
+	ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error)
+	Events(ctx context.Context, options client.EventsListOptions) client.EventsResult
+	Ping(ctx context.Context, options client.PingOptions) (client.PingResult, error)
 	Close() error
 }
 
@@ -135,9 +133,8 @@ func NewProvider(opts Options) (*Provider, error) {
 	}
 
 	// Create Docker client
-	dockerClient, err := client.NewClientWithOpts(
+	dockerClient, err := client.New(
 		client.WithHost(opts.DockerEndpoint),
-		client.WithAPIVersionNegotiation(),
 	)
 	if err != nil {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeResource, "creating Docker client")
@@ -147,7 +144,7 @@ func NewProvider(opts Options) (*Provider, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), pingTimeout)
 	defer cancel()
 
-	pingInfo, err := dockerClient.Ping(ctx)
+	pingInfo, err := dockerClient.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
 	if err != nil {
 		return nil, errors.WrapProviderError(err, "docker", errors.ErrTypeResource, "connecting to Docker")
 	}
@@ -294,25 +291,19 @@ func (p *Provider) pollLoop(ctx context.Context, configCh chan<- *config.Config)
 }
 
 // createEventOptions creates the event filter options for Docker events
-func createEventOptions() events.ListOptions {
-	eventFilters := filters.NewArgs()
-	eventFilters.Add("type", "container")
-	eventFilters.Add("event", "start")
-	eventFilters.Add("event", "stop")
-	eventFilters.Add("event", "die")
-	eventFilters.Add("event", "pause")
-	eventFilters.Add("event", "unpause")
+func createEventOptions() client.EventsListOptions {
 	// Note: We don't filter by label here because Docker treats multiple
 	// label filters as AND conditions. We'll check labels client-side
 	// to support both "enabled" and "enable" labels.
-
-	return events.ListOptions{
-		Filters: eventFilters,
+	return client.EventsListOptions{
+		Filters: make(client.Filters).
+			Add("type", "container").
+			Add("event", "start", "stop", "die", "pause", "unpause"),
 	}
 }
 
 // watchLoop runs the main event watching loop with reconnection
-func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) {
+func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config, eventOptions client.EventsListOptions) {
 	backoff := time.Second
 
 	for {
@@ -352,20 +343,20 @@ func (p *Provider) watchLoop(ctx context.Context, configCh chan<- *config.Config
 // Returns (cancelled, streamEstablished) where:
 // - cancelled is true if context was cancelled
 // - streamEstablished is true if we successfully received at least one event
-func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *config.Config, eventOptions events.ListOptions) (bool, bool) {
-	events, errs := p.client.Events(ctx, eventOptions)
+func (p *Provider) processEventStream(ctx context.Context, configCh chan<- *config.Config, eventOptions client.EventsListOptions) (bool, bool) {
+	stream := p.client.Events(ctx, eventOptions)
 	streamEstablished := false
 
 	for {
 		select {
 		case <-ctx.Done():
 			return true, streamEstablished
-		case err := <-errs:
+		case err := <-stream.Err:
 			if err != nil {
 				slog.Error("Docker events stream error", "error", err)
 				return false, streamEstablished // Return to restart event stream
 			}
-		case event := <-events:
+		case event := <-stream.Messages:
 			// Mark stream as established after receiving first event
 			streamEstablished = true
 
@@ -569,36 +560,35 @@ func (p *Provider) findSelfContainer(ctx context.Context) (*container.Summary, e
 	}
 
 	// Fallback: find container with tsbridge labels
-	opts := container.ListOptions{
-		Filters: filters.NewArgs(
-			filters.Arg("label", fmt.Sprintf("%s.tailscale.oauth_client_id", p.labelPrefix)),
-		),
+	opts := client.ContainerListOptions{
+		Filters: make(client.Filters).
+			Add("label", fmt.Sprintf("%s.tailscale.oauth_client_id", p.labelPrefix)),
 	}
 
-	containers, err := p.client.ContainerList(ctx, opts)
+	res, err := p.client.ContainerList(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(containers) == 0 {
+	if len(res.Items) == 0 {
 		return nil, errors.NewValidationError("unable to find tsbridge container")
 	}
 
 	// Return the first one (there should only be one)
-	return &containers[0], nil
+	return &res.Items[0], nil
 }
 
 // findServiceContainers finds all containers with tsbridge.enabled=true or tsbridge.enable=true
 func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summary, error) {
 	// Query running containers carrying a single "label=value" filter.
 	listByLabel := func(label string) ([]container.Summary, error) {
-		opts := container.ListOptions{
-			Filters: filters.NewArgs(
-				filters.Arg("status", "running"),
-				filters.Arg("label", label),
-			),
+		opts := client.ContainerListOptions{
+			Filters: make(client.Filters).
+				Add("status", "running").
+				Add("label", label),
 		}
-		return p.client.ContainerList(ctx, opts)
+		res, err := p.client.ContainerList(ctx, opts)
+		return res.Items, err
 	}
 
 	// Query both "enabled" and "enable" labels separately, since Docker ANDs
@@ -629,14 +619,15 @@ func (p *Provider) findServiceContainers(ctx context.Context) ([]container.Summa
 // getContainerByID gets a container by ID
 func (p *Provider) getContainerByID(ctx context.Context, id string) (*container.Summary, error) {
 	// List all containers since Docker's ID filter might not work with partial IDs
-	opts := container.ListOptions{
+	opts := client.ContainerListOptions{
 		All: true, // Include stopped containers too
 	}
 
-	containers, err := p.client.ContainerList(ctx, opts)
+	res, err := p.client.ContainerList(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
+	containers := res.Items
 
 	slog.Debug("searching for container by ID",
 		"target_id", id,

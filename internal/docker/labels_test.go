@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -774,7 +774,7 @@ func TestParseServiceConfigPortDetection(t *testing.T) {
 	tests := []struct {
 		name        string
 		labels      map[string]string
-		ports       []container.Port
+		ports       []container.PortSummary
 		shouldError bool
 		errorMsg    string
 		wantBackend string
@@ -784,7 +784,7 @@ func TestParseServiceConfigPortDetection(t *testing.T) {
 			labels: map[string]string{
 				"tsbridge.enabled": "true",
 			},
-			ports: []container.Port{
+			ports: []container.PortSummary{
 				{PrivatePort: 8080},
 			},
 			shouldError: false,
@@ -795,7 +795,7 @@ func TestParseServiceConfigPortDetection(t *testing.T) {
 			labels: map[string]string{
 				"tsbridge.enabled": "true",
 			},
-			ports: []container.Port{
+			ports: []container.PortSummary{
 				{PrivatePort: 8080},
 				{PrivatePort: 8443},
 			},
@@ -808,7 +808,7 @@ func TestParseServiceConfigPortDetection(t *testing.T) {
 				"tsbridge.enabled":      "true",
 				"tsbridge.service.port": "8080",
 			},
-			ports: []container.Port{
+			ports: []container.PortSummary{
 				{PrivatePort: 8080},
 				{PrivatePort: 8443},
 			},
@@ -821,7 +821,7 @@ func TestParseServiceConfigPortDetection(t *testing.T) {
 				"tsbridge.enabled":              "true",
 				"tsbridge.service.backend_addr": "mybackend:9000",
 			},
-			ports: []container.Port{
+			ports: []container.PortSummary{
 				{PrivatePort: 8080},
 				{PrivatePort: 8443},
 			},
@@ -833,7 +833,7 @@ func TestParseServiceConfigPortDetection(t *testing.T) {
 			labels: map[string]string{
 				"tsbridge.enabled": "true",
 			},
-			ports:       []container.Port{},
+			ports:       []container.PortSummary{},
 			shouldError: true,
 			errorMsg:    "backend address could not be determined",
 		},
@@ -842,7 +842,7 @@ func TestParseServiceConfigPortDetection(t *testing.T) {
 			labels: map[string]string{
 				"tsbridge.enabled": "true",
 			},
-			ports: []container.Port{
+			ports: []container.PortSummary{
 				{PrivatePort: 0, PublicPort: 32000}, // Only host binding, no private port
 				{PrivatePort: 8080},
 			},

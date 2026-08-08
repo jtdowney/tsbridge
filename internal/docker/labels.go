@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
 	"github.com/jtdowney/tsbridge/internal/config"
 	"github.com/jtdowney/tsbridge/internal/errors"
+	"github.com/moby/moby/api/types/container"
 )
 
 var (

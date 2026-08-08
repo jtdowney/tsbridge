@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -11,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/events"
 	"github.com/jtdowney/tsbridge/internal/config"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -154,7 +155,7 @@ func TestParseServiceConfig(t *testing.T) {
 					"tsbridge.enabled":      "true",
 					"tsbridge.service.port": "3000",
 				},
-				Ports: []container.Port{
+				Ports: []container.PortSummary{
 					{PrivatePort: 3000, PublicPort: 0},
 				},
 			},
@@ -777,20 +778,18 @@ func TestDockerProvider_WatchWithEvents(t *testing.T) {
 		assert.NotNil(t, options.Filters)
 
 		// Verify event filters are properly configured
-		filters := options.Filters.Get("type")
-		assert.Contains(t, filters, "container")
-
-		events := options.Filters.Get("event")
-		assert.Contains(t, events, "start")
-		assert.Contains(t, events, "stop")
-		assert.Contains(t, events, "die")
-		assert.Contains(t, events, "pause")
-		assert.Contains(t, events, "unpause")
+		assert.Equal(t, map[string]bool{"container": true}, options.Filters["type"])
+		assert.Equal(t, map[string]bool{
+			"start":   true,
+			"stop":    true,
+			"die":     true,
+			"pause":   true,
+			"unpause": true,
+		}, options.Filters["event"])
 
 		// We no longer filter by labels in the event stream
 		// Label checking is done client-side to support both "enabled" and "enable"
-		labels := options.Filters.Get("label")
-		assert.Empty(t, labels, "should not filter by labels in event stream")
+		assert.Empty(t, options.Filters["label"], "should not filter by labels in event stream")
 	})
 
 	t.Run("watch event filtering configuration", func(t *testing.T) {
@@ -900,13 +899,13 @@ type testEventStreamClient struct {
 	errorsCh chan error
 }
 
-func (t *testEventStreamClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
-	return t.eventsCh, t.errorsCh
+func (t *testEventStreamClient) Events(ctx context.Context, options client.EventsListOptions) client.EventsResult {
+	return client.EventsResult{Messages: t.eventsCh, Err: t.errorsCh}
 }
 
-func (t *testEventStreamClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+func (t *testEventStreamClient) ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
 	// Return minimal container for test
-	return []container.Summary{
+	return client.ContainerListResult{Items: []container.Summary{
 		{
 			ID:    "tsbridge123",
 			Names: []string{"/tsbridge"},
@@ -915,11 +914,11 @@ func (t *testEventStreamClient) ContainerList(ctx context.Context, options conta
 			},
 			State: "running",
 		},
-	}, nil
+	}}, nil
 }
 
-func (t *testEventStreamClient) Ping(ctx context.Context) (types.Ping, error) {
-	return types.Ping{}, nil
+func (t *testEventStreamClient) Ping(ctx context.Context, options client.PingOptions) (client.PingResult, error) {
+	return client.PingResult{}, nil
 }
 
 func (t *testEventStreamClient) Close() error {
@@ -960,9 +959,9 @@ func newMockDockerClient() *mockDockerClient {
 	}
 }
 
-func (m *mockDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+func (m *mockDockerClient) ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
 	if m.listError != nil {
-		return nil, m.listError
+		return client.ContainerListResult{}, m.listError
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -971,15 +970,15 @@ func (m *mockDockerClient) ContainerList(ctx context.Context, options container.
 	var result []container.Summary
 
 	// Get filters
-	labelFilters := options.Filters.Get("label")
-	statusFilters := options.Filters.Get("status")
+	labelFilters := filterValues(options.Filters, "label")
+	statusFilters := filterValues(options.Filters, "status")
 
 	for _, c := range m.containers {
 		includeContainer := true
 
 		// Check status filters
 		if len(statusFilters) > 0 {
-			statusMatch := slices.Contains(statusFilters, c.State)
+			statusMatch := slices.Contains(statusFilters, string(c.State))
 			if !statusMatch {
 				includeContainer = false
 			}
@@ -1011,10 +1010,15 @@ func (m *mockDockerClient) ContainerList(ctx context.Context, options container.
 		}
 	}
 
-	return result, nil
+	return client.ContainerListResult{Items: result}, nil
 }
 
-func (m *mockDockerClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+// filterValues returns the values set for a filter term, sorted for determinism.
+func filterValues(f client.Filters, term string) []string {
+	return slices.Sorted(maps.Keys(f[term]))
+}
+
+func (m *mockDockerClient) Events(ctx context.Context, options client.EventsListOptions) client.EventsResult {
 	m.mu.Lock()
 	m.eventsStarted = true
 	// Create fresh channels for this Events call
@@ -1040,14 +1044,14 @@ func (m *mockDockerClient) Events(ctx context.Context, options events.ListOption
 		close(errsChan)
 	}()
 
-	return eventsChan, errsChan
+	return client.EventsResult{Messages: eventsChan, Err: errsChan}
 }
 
-func (m *mockDockerClient) Ping(ctx context.Context) (types.Ping, error) {
+func (m *mockDockerClient) Ping(ctx context.Context, options client.PingOptions) (client.PingResult, error) {
 	if m.pingError != nil {
-		return types.Ping{}, m.pingError
+		return client.PingResult{}, m.pingError
 	}
-	return types.Ping{APIVersion: "1.41"}, nil
+	return client.PingResult{APIVersion: "1.41"}, nil
 }
 
 func (m *mockDockerClient) Close() error {
@@ -2136,7 +2140,7 @@ func TestWatchLoopWithFailingClient(t *testing.T) {
 	defer cancel()
 
 	configCh := make(chan *config.Config, 1)
-	eventOptions := events.ListOptions{}
+	eventOptions := client.EventsListOptions{}
 
 	start := time.Now()
 
@@ -2160,7 +2164,7 @@ func TestWatchLoopContextCancellation(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	configCh := make(chan *config.Config, 1)
-	eventOptions := events.ListOptions{}
+	eventOptions := client.EventsListOptions{}
 
 	// Cancel context immediately
 	cancel()
@@ -2189,10 +2193,10 @@ func TestWatchLoopBackoffCap(t *testing.T) {
 	defer cancel()
 
 	configCh := make(chan *config.Config, 1)
-	eventOptions := events.ListOptions{}
+	eventOptions := client.EventsListOptions{}
 
 	// Track attempt times
-	mockClient.EventsFunc = func(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+	mockClient.EventsFunc = func(ctx context.Context, options client.EventsListOptions) client.EventsResult {
 		attemptCount++
 		attemptTimes = append(attemptTimes, time.Now())
 
@@ -2203,7 +2207,7 @@ func TestWatchLoopBackoffCap(t *testing.T) {
 		close(eventCh)
 		errCh <- fmt.Errorf("simulated failure")
 
-		return eventCh, errCh
+		return client.EventsResult{Messages: eventCh, Err: errCh}
 	}
 
 	// Run watchLoop
@@ -2265,10 +2269,10 @@ func TestWatchLoopStreamEstablished(t *testing.T) {
 	defer cancel()
 
 	configCh := make(chan *config.Config, 1)
-	eventOptions := events.ListOptions{}
+	eventOptions := client.EventsListOptions{}
 
 	// Mock Events to fail first, then succeed with events
-	mockClient.EventsFunc = func(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+	mockClient.EventsFunc = func(ctx context.Context, options client.EventsListOptions) client.EventsResult {
 		callCount++
 
 		eventCh := make(chan events.Message, 1)
@@ -2303,7 +2307,7 @@ func TestWatchLoopStreamEstablished(t *testing.T) {
 			}()
 		}
 
-		return eventCh, errCh
+		return client.EventsResult{Messages: eventCh, Err: errCh}
 	}
 
 	// Run watchLoop
@@ -2318,14 +2322,14 @@ func TestWatchLoopStreamEstablished(t *testing.T) {
 
 // MockFailingDockerClient simulates a Docker client that always fails
 type MockFailingDockerClient struct {
-	EventsFunc func(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error)
+	EventsFunc func(ctx context.Context, options client.EventsListOptions) client.EventsResult
 }
 
-func (m *MockFailingDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
-	return nil, fmt.Errorf("simulated Docker connection failure")
+func (m *MockFailingDockerClient) ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
+	return client.ContainerListResult{}, fmt.Errorf("simulated Docker connection failure")
 }
 
-func (m *MockFailingDockerClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+func (m *MockFailingDockerClient) Events(ctx context.Context, options client.EventsListOptions) client.EventsResult {
 	if m.EventsFunc != nil {
 		return m.EventsFunc(ctx, options)
 	}
@@ -2337,11 +2341,11 @@ func (m *MockFailingDockerClient) Events(ctx context.Context, options events.Lis
 	close(eventCh)
 	errCh <- fmt.Errorf("simulated Docker connection failure")
 
-	return eventCh, errCh
+	return client.EventsResult{Messages: eventCh, Err: errCh}
 }
 
-func (m *MockFailingDockerClient) Ping(ctx context.Context) (types.Ping, error) {
-	return types.Ping{}, fmt.Errorf("simulated Docker connection failure")
+func (m *MockFailingDockerClient) Ping(ctx context.Context, options client.PingOptions) (client.PingResult, error) {
+	return client.PingResult{}, fmt.Errorf("simulated Docker connection failure")
 }
 
 func (m *MockFailingDockerClient) Close() error {
@@ -2526,9 +2530,9 @@ type MockPollDockerClient struct {
 	callCount int32
 }
 
-func (m *MockPollDockerClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+func (m *MockPollDockerClient) ContainerList(ctx context.Context, options client.ContainerListOptions) (client.ContainerListResult, error) {
 	atomic.AddInt32(&m.callCount, 1)
-	return []container.Summary{
+	return client.ContainerListResult{Items: []container.Summary{
 		{
 			ID:    "tsbridge-container-id",
 			Names: []string{"/tsbridge"},
@@ -2550,17 +2554,17 @@ func (m *MockPollDockerClient) ContainerList(ctx context.Context, options contai
 			},
 			NetworkSettings: &container.NetworkSettingsSummary{},
 		},
-	}, nil
+	}}, nil
 }
 
-func (m *MockPollDockerClient) Events(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+func (m *MockPollDockerClient) Events(ctx context.Context, options client.EventsListOptions) client.EventsResult {
 	eventCh := make(chan events.Message)
 	errCh := make(chan error)
-	return eventCh, errCh
+	return client.EventsResult{Messages: eventCh, Err: errCh}
 }
 
-func (m *MockPollDockerClient) Ping(ctx context.Context) (types.Ping, error) {
-	return types.Ping{}, nil
+func (m *MockPollDockerClient) Ping(ctx context.Context, options client.PingOptions) (client.PingResult, error) {
+	return client.PingResult{}, nil
 }
 
 func (m *MockPollDockerClient) Close() error {
@@ -2623,10 +2627,10 @@ func TestPollLoopExitsOnContextCancellation(t *testing.T) {
 
 func TestWatchDoesNotStartPollTickerWhenDisabled(t *testing.T) {
 	mockClient := &MockFailingDockerClient{
-		EventsFunc: func(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+		EventsFunc: func(ctx context.Context, options client.EventsListOptions) client.EventsResult {
 			eventCh := make(chan events.Message)
 			errCh := make(chan error)
-			return eventCh, errCh
+			return client.EventsResult{Messages: eventCh, Err: errCh}
 		},
 	}
 
@@ -2647,10 +2651,10 @@ func TestWatchDoesNotStartPollTickerWhenDisabled(t *testing.T) {
 
 func TestWatchStartsPollTickerWhenEnabled(t *testing.T) {
 	mockClient := &MockFailingDockerClient{
-		EventsFunc: func(ctx context.Context, options events.ListOptions) (<-chan events.Message, <-chan error) {
+		EventsFunc: func(ctx context.Context, options client.EventsListOptions) client.EventsResult {
 			eventCh := make(chan events.Message)
 			errCh := make(chan error)
-			return eventCh, errCh
+			return client.EventsResult{Messages: eventCh, Err: errCh}
 		},
 	}
 

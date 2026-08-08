@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/client"
 	"github.com/jtdowney/tsbridge/test/integration/helpers"
+	"github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -78,7 +78,7 @@ func TestDockerProviderDynamicConfiguration(t *testing.T) {
 	}
 
 	// Create Docker client
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	require.NoError(t, err)
 	defer cli.Close()
 
@@ -286,7 +286,7 @@ func runHTTPBin(t *testing.T, ctx context.Context, name string, labels ...string
 
 // isDockerAvailable checks if Docker is available on the system
 func isDockerAvailable() bool {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return false
 	}
@@ -295,7 +295,7 @@ func isDockerAvailable() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	_, err = cli.Ping(ctx)
+	_, err = cli.Ping(ctx, client.PingOptions{NegotiateAPIVersion: true})
 	return err == nil
 }
 
