@@ -329,5 +329,5 @@ pgregory.net/rapid v1.2.0 h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=
 pgregory.net/rapid v1.2.0/go.mod h1:PY5XlDGj0+V1FCq0o192FdRhpKHGTRIWBgqjDBTrq04=
 software.sslmate.com/src/go-pkcs12 v0.4.0 h1:H2g08FrTvSFKUj+D309j1DPfk5APnIdAQAB8aEykJ5k=
 software.sslmate.com/src/go-pkcs12 v0.4.0/go.mod h1:Qiz0EyvDRJjjxGyUQa2cCNZn/wMyzrRJ/qcDXOQazLI=
-tailscale.com v1.102.0 h1:yAYrykMZWlgp7Qq2ECDrDnxeySWBhNXNMkXdDmVMyrE=
-tailscale.com v1.102.0/go.mod h1:NdndXfkSklVPbRUZMAzzRuDNaR5B+YWGbAyE1HpSQZg=
+tailscale.com v1.102.2 h1:K0TJMOFv0F9aJDSjM/C2uVtrwnLn+ek22c42x61FXeA=
+tailscale.com v1.102.2/go.mod h1:ynxKzc9hDxwGLHORQE0qrTH1b8NBRrIsXcnfnug/3dg=
